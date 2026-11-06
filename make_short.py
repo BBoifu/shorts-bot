@@ -24,7 +24,7 @@ OUT = ROOT / "output"
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 PIXABAY_API_KEY = os.environ.get("PIXABAY_API_KEY", "")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
 VOICE = os.environ.get("TTS_VOICE", "en-US-AndrewNeural")
 PRIVACY = os.environ.get("PRIVACY", "private")  # private = you review first
 DRY_RUN = os.environ.get("DRY_RUN", "0") == "1"  # 1 = make video, do not upload
