@@ -1218,7 +1218,8 @@ def main():
 # ---------------------------------------------------------------- two-step mode: plan, then build
 PLAN_DIR = ROOT / "plan"
 CLIPS_DIR = ROOT / "clips"
-CLIP_EXT = (".mp4", ".mov", ".webm", ".m4v")
+CLIP_EXT = (".mp4", ".mov", ".webm", ".m4v", ".gif")
+IMAGE_EXT = (".jpg", ".jpeg", ".png", ".webp")
 
 
 def clip_prompts(look, place_name, place_desc):
@@ -1286,6 +1287,21 @@ def find_clips():
     return good[:3]
 
 
+def find_user_image():
+    """A picture you made yourself (jpg/png/webp in the clips folder). Used as the hybrid's picture."""
+    files = sorted(p for p in CLIPS_DIR.glob("*") if p.suffix.lower() in IMAGE_EXT) if CLIPS_DIR.exists() else []
+    for p in files:
+        dst = WORK / f"user_img{p.suffix.lower()}"
+        shutil.copy(p, dst)
+        try:
+            compose_vertical(dst.name, "user_h.png")
+            log(f"Using your picture {p.name} as the hybrid picture")
+            return "user_h.png"
+        except RuntimeError:
+            log(f"Picture {p.name} cannot be read, skipping it.")
+    return None
+
+
 def build_main():
     if not (CF_ACCOUNT and CF_TOKEN):
         sys.exit("Missing secret: CLOUDFLARE_ACCOUNT_ID and/or CLOUDFLARE_API_TOKEN")
@@ -1333,7 +1349,10 @@ def build_main():
         assets[nm] = {"plate": f"port_{nm}.png", "sprite": None}
     hybrid_prompt = (f"{STYLE} An imaginary hybrid creature: {look} It is {FIERCE}. "
                      f"It stands in {place_name}, shown clearly and dominantly, lit by {place_light}.")
-    if not make_picture("port_h", hybrid_prompt):
+    mine = find_user_image()
+    if mine:
+        shutil.copy(WORK / mine, WORK / "port_h.png")
+    elif not make_picture("port_h", hybrid_prompt):
         log("Hybrid picture failed. Using a blend of the two animals instead.")
         run(["ffmpeg", "-y", "-i", assets["a"]["plate"], "-i", assets["b"]["plate"], "-filter_complex",
              "[0:v][1:v]blend=all_mode=average", "-frames:v", "1", "port_h.png"], cwd=WORK)
