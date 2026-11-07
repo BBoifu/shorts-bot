@@ -1,0 +1,61 @@
+{
+ "key": "crocodile+gorilla@Antarctica",
+ "a": "crocodile",
+ "b": "gorilla",
+ "place": [
+  "Antarctica",
+  "a frozen white ice plain under a stormy sky",
+  "arctic wind blizzard",
+  "flat cold blue overcast light",
+  "cool"
+ ],
+ "story": {
+  "title": "Could this frozen gorilla croc survive the South Pole?",
+  "creature_name": "Goricile",
+  "hybrid_look": "A terrifying apex predator featuring the massive muscular frame and scarred knuckles of a silverback gorilla, fused with the armored osteoderm scales, crushing jaws, and razor-sharp teeth of a giant Nile crocodile.",
+  "sentences": [
+   {
+    "text": "Have you ever imagined what a fictional monster ruling the frozen ice sheets of Antarctica would look like?",
+    "image": "vast expanses of jagged blue glaciers under a pitch black sky with swirling snow"
+   },
+   {
+    "text": "Meet the Goricile, an imaginary beast built with the crushing bite of a crocodile and the brutal arm strength of a gorilla.",
+    "image": "a freezing frozen wasteland with fierce howling winds whipping through sharp ice cliffs"
+   },
+   {
+    "text": "When bone chilling polar vortexes freeze the continent, its thick reptilian scales and dense ape fur trap vital body heat.",
+    "image": "a violent blizzard of heavy snow blinding the entire icy horizon in white chaos"
+   },
+   {
+    "text": "Navigating treacherous hidden crevasses is easy because its powerful knuckle walking grip secures a safe hold on slick ice.",
+    "image": "a deep dark abyss plunging down between massive walls of ancient blue glacial ice"
+   },
+   {
+    "text": "To hunt seals beneath thick ocean ice, its modified crocodile lungs hold oxygen for over an hour in freezing depths.",
+    "image": "dark churning freezing ocean water crashing violently against towering walls of coastal ice"
+   },
+   {
+    "text": "Even fierce katabatic winds cannot knock it down, as a low center of gravity keeps the heavy brute completely grounded.",
+    "image": "a desolate polar plain battered by extreme wind blowing heavy sheets of loose snow"
+   },
+   {
+    "text": "Yet this mighty nightmare instantly falls asleep during sudden solar eclipses, so what clever trick would you use to escape it?",
+    "image": "a pale eerie twilight casting long dark shadows across a barren frozen snowfield"
+   }
+  ]
+ },
+ "clips": [
+  {
+   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature slowly emerges and steps toward the camera in Antarctica: a frozen white ice plain under a stormy sky. A terrifying apex predator featuring the massive muscular frame and scarred knuckles of a silverback gorilla, fused with the armored osteoderm scales, crushing jaws, and razor-sharp teeth of a giant Nile crocodile. It is menacing and dominant. The camera slowly pushes in."
+  },
+  {
+   "title": "Clip 2 - the stalk (plays in the middle of the story)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. The same hybrid creature stalks forward through a frozen white ice plain under a stormy sky, heavy footsteps, each step shifting its weight, the camera tracks beside it at ground level. A terrifying apex predator featuring the massive muscular frame and scarred knuckles of a silverback gorilla, fused with the armored osteoderm scales, crushing jaws, and razor-sharp teeth of a giant Nile crocodile."
+  },
+  {
+   "title": "Clip 3 - the close-up (plays at the end)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A terrifying apex predator featuring the massive muscular frame and scarred knuckles of a silverback gorilla, fused with the armored osteoderm scales, crushing jaws, and razor-sharp teeth of a giant Nile crocodile."
+  }
+ ]
+}
