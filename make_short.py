@@ -49,9 +49,14 @@ API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 TTS_MODELS = ["gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts",
               "gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts"]
 
-STYLE = ("Cinematic photorealistic wildlife photograph, dramatic lighting, rich detail, "
-         "sharp focus, vertical composition, no text, no watermark, no people.")
-STYLE_SPRITE = "Photorealistic wildlife photograph, sharp focus, rich detail, no text, no watermark."
+VINTAGE = ("vintage 1970s wildlife documentary film photograph, shot on 35mm Kodak film, fine film grain, "
+           "faded muted colors, soft natural light, photorealistic, real photograph, not a cartoon, "
+           "not an illustration, not CGI")
+STYLE = f"{VINTAGE}, vertical composition, no text, no watermark, no people."
+STYLE_SPRITE = (f"{VINTAGE}, telephoto lens, realistic fur, skin and scale texture, sharp focus, "
+                "no text, no watermark.")
+FIERCE = ("a fierce, terrifying, dominant apex predator, menacing snarling expression, bared fangs, "
+          "glowing eyes, scarred battle-worn hide, huge muscular body, intimidating horror-creature look")
 
 ANIMALS = [
     "camel", "octopus", "penguin", "axolotl", "bat", "cheetah", "crocodile",
@@ -61,21 +66,42 @@ ANIMALS = [
     "ant", "crab", "hummingbird", "lizard", "bear",
 ]
 
-# (place, what the background should show, sound-effect search for the ambience)
+# (place, background description, ambience sound search, light on the creature, color grade)
 PLACES = [
-    ("the Sahara desert", "endless sand dunes under a blazing sun", "desert wind"),
-    ("Antarctica", "a frozen white ice plain under a stormy sky", "arctic wind blizzard"),
-    ("the deep ocean", "the dark deep sea floor with faint blue light", "underwater ambience"),
-    ("a land of active volcanoes", "black rock and glowing red lava rivers", "volcano rumble"),
-    ("Mars", "a rusty red desert of rocks and dust under a pink sky", "alien wind"),
-    ("the clouds of Venus", "thick orange storm clouds with lightning", "thunder storm"),
-    ("an icy moon like Europa", "cracked blue ice with a huge planet in the sky", "ice cracking wind"),
-    ("a rainforest after a flood", "a flooded jungle with heavy rain and mist", "rainforest rain"),
-    ("a mountain peak above the clouds", "a snowy rocky summit above a sea of clouds", "mountain wind"),
-    ("a planet with two suns", "an alien plain under two glowing suns", "sci-fi ambience drone"),
-    ("a swamp full of toxic mud", "a foggy swamp with bubbling green mud", "swamp night ambience"),
-    ("the edge of a black hole", "a glowing black hole warping stars in deep space", "deep space drone"),
+    ("the Sahara desert", "endless sand dunes under a blazing sun", "desert wind",
+     "harsh golden afternoon sunlight with long shadows", "warm"),
+    ("Antarctica", "a frozen white ice plain under a stormy sky", "arctic wind blizzard",
+     "flat cold blue overcast light", "cool"),
+    ("the deep ocean", "the dark deep sea floor with faint blue light", "underwater ambience",
+     "dim murky blue light from above", "teal"),
+    ("a land of active volcanoes", "black rock and glowing red lava rivers", "volcano rumble",
+     "glowing orange light from lava and smoke", "red"),
+    ("Mars", "a rusty red desert of rocks and dust under a pink sky", "alien wind",
+     "dusty pinkish-orange hazy light", "red"),
+    ("the clouds of Venus", "thick orange storm clouds with lightning", "thunder storm",
+     "sickly orange light through thick haze", "warm"),
+    ("an icy moon like Europa", "cracked blue ice with a huge planet in the sky", "ice cracking wind",
+     "cold pale blue light", "cool"),
+    ("a rainforest after a flood", "a flooded jungle with heavy rain and mist", "rainforest rain",
+     "dim green light filtered through mist", "green"),
+    ("a mountain peak above the clouds", "a snowy rocky summit above a sea of clouds", "mountain wind",
+     "crisp cold sunlight", "cool"),
+    ("a planet with two suns", "an alien plain under two glowing suns", "sci-fi ambience drone",
+     "warm light from two suns", "warm"),
+    ("a swamp full of toxic mud", "a foggy swamp with bubbling green mud", "swamp night ambience",
+     "murky greenish dim light and fog", "green"),
+    ("the edge of a black hole", "a glowing black hole warping stars in deep space", "deep space drone",
+     "eerie dim bluish glow", "cool"),
 ]
+
+# One color grade applied to the whole frame (and the creature) so everything shares one look.
+GRADES = {
+    "warm": "colorbalance=rs=0.05:bs=-0.06:rm=0.08:bm=-0.07:rh=0.06:bh=-0.05",
+    "cool": "colorbalance=rs=-0.04:bs=0.07:rm=-0.05:bm=0.09:rh=-0.03:bh=0.06",
+    "red": "colorbalance=rs=0.08:gs=-0.02:bs=-0.05:rm=0.12:gm=-0.03:bm=-0.08",
+    "green": "colorbalance=gs=0.05:rs=-0.03:gm=0.07:rm=-0.04:bm=-0.03",
+    "teal": "colorbalance=rs=-0.06:bs=0.05:gs=0.03:rm=-0.08:bm=0.06:gm=0.04",
+}
 
 # Backdrop color used to cut creatures out; pick the one least like the animals' own colors.
 KEYS = {
@@ -92,10 +118,11 @@ KEY_CONFLICTS = {
 
 FPS = 30
 FADE = 0.6          # seconds of cross-dissolve in the opening morph
-MAX_SPRITE_W = 780  # biggest the creature is drawn, in pixels
-MAX_SPRITE_H = 900
+MAX_SPRITE_W = 640  # biggest a parent animal is drawn, in pixels (the hybrid is drawn bigger)
+MAX_SPRITE_H = 780
 GROUND_Y = 1320     # where the creature's feet are
-STEP_RATE = 2.2     # steps per second
+STEP_RATE = 1.9     # steps per second
+HYBRID_SCALE = 1.3  # the hybrid is drawn bigger so it dominates the frame
 MOTIONS = ["in", "left", "out", "right"]
 
 
@@ -105,6 +132,8 @@ def log(msg):
 
 
 def run(cmd, cwd=None):
+    if cmd and cmd[0] == "ffmpeg":  # show only real errors, not the long banner and progress lines
+        cmd = [cmd[0], "-hide_banner", "-loglevel", "error"] + list(cmd[1:])
     result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
     if result.returncode != 0:
         log(result.stderr[-2000:])
@@ -190,7 +219,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
 {{
   "title": "catchy title under 70 characters, no hashtags",
   "creature_name": "a fun invented name for the hybrid",
-  "hybrid_look": "one detailed sentence describing how the creature LOOKS (body shape, skin or fur, colors), naming specific features taken from the {a} and from the {b}",
+  "hybrid_look": "one detailed sentence describing how the creature LOOKS: a fierce, scary, dominant apex predator (menacing face, glowing eyes, scars, fangs or claws or spikes, huge muscular body), clearly showing specific features taken from the {a} and from the {b}",
   "sentences": [
     {{"text": "one spoken sentence", "image": "the SETTING shown while this sentence is spoken"}}
   ]
@@ -256,7 +285,7 @@ def facing_direction(img_name):
 
 
 # ---------------------------------------------------------------- AI pictures
-def cloudflare_image(prompt, dest):
+def cloudflare_image(prompt, dest, steps=6):
     """One AI picture from Cloudflare Workers AI (FLUX). Returns True on success."""
     if not (CF_ACCOUNT and CF_TOKEN):
         return False
@@ -264,7 +293,7 @@ def cloudflare_image(prompt, dest):
     headers = {"Authorization": f"Bearer {CF_TOKEN}"}
     for attempt in range(3):
         for with_size in (True, False):
-            body = {"prompt": prompt[:1800], "steps": 6}
+            body = {"prompt": prompt[:1800], "steps": steps}
             if with_size:
                 body.update({"width": 768, "height": 1344})
             try:
@@ -299,10 +328,10 @@ def cloudflare_image(prompt, dest):
     return False
 
 
-def fetch_ai_image(name, prompt):
+def fetch_ai_image(name, prompt, steps=6):
     """Download an AI picture into WORK with the right file ending. Returns the file name or None."""
     tmp = WORK / f"{name}.download"
-    if not cloudflare_image(prompt, str(tmp)):
+    if not cloudflare_image(prompt, str(tmp), steps):
         return None
     head = tmp.read_bytes()[:16]
     if head[:4] == b"\x89PNG":
@@ -362,7 +391,8 @@ def key_sprite(raw, color_hex, despill, out_png):
     chain = f"[0:v]format=rgba,colorkey={color_hex}:0.34:0.12"
     if despill:
         chain += f",despill=type={despill}"
-    chain += (",split[c][d];[d]alphaextract,erosion,erosion,dilation,dilation[m];"
+    # erode one pixel more than we grow back, so no colored fringe from the backdrop is left on the edge
+    chain += (",split[c][d];[d]alphaextract,erosion,erosion,erosion,dilation,dilation[m];"
               "[c][m]alphamerge,format=rgba")
     run(["ffmpeg", "-y", "-i", raw, "-filter_complex", chain, "-frames:v", "1", out_png], cwd=WORK)
     text = run_capture(["ffmpeg", "-i", out_png, "-vf",
@@ -383,14 +413,15 @@ def sprite_bbox(png):
     return vals
 
 
-def make_sprite(name, desc, key):
+def make_sprite(name, desc, key, light, fierce=False):
     """A cut-out creature. Returns {'png','w','h','face'} or None if it did not work out."""
     color_hex, color_words, despill = KEYS[key]
-    prompt = (f"{STYLE_SPRITE} {desc}. Full-body side view, walking pose, facing right, whole body "
-              f"in frame, isolated on a solid flat {color_words} background, even lighting, "
-              "no ground, no shadow, no other objects.")
+    mood = f" It is {FIERCE}." if fierce else ""
+    prompt = (f"{STYLE_SPRITE} {desc}.{mood} Lit by {light}. Full-body side view, walking pose, "
+              f"facing right, whole body in frame, photographed in front of a solid flat {color_words} "
+              "green-screen style background, no ground, no shadow, no other objects.")
     for attempt in range(2):
-        raw = fetch_ai_image(f"{name}{attempt}", prompt)
+        raw = fetch_ai_image(f"{name}{attempt}", prompt, steps=8)
         if not raw:
             continue
         try:
@@ -450,9 +481,9 @@ def frame_from_clip(clip, out_png):
     return False
 
 
-def get_animal(animal, name, key):
+def get_animal(animal, name, key, light):
     """Everything needed to show one parent animal: a background plate and a walking sprite."""
-    sprite = make_sprite(f"spr_{name}", f"A {animal}", key)
+    sprite = make_sprite(f"spr_{name}", f"A real {animal}", key, light)
     plate = f"plate_{name}.png"
     if sprite:
         make_plate(f"plate_{name}", f"the natural habitat of a {animal}")
@@ -746,12 +777,35 @@ def write_captions(words, total, path):
 
 
 # ---------------------------------------------------------------- video: shots
+LOOK = {"grade": "null"}  # color grade of the current video, set in main()
+
+
 def ensure_shadow():
     if (WORK / "shadow.png").exists():
         return
     run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=600x90,format=rgba,"
-         "geq=r=0:g=0:b=0:a='255*0.55*max(0,1-hypot((X-W/2)/(W/2),(Y-H/2)/(H/2)))'",
+         "geq=r=0:g=0:b=0:a='255*0.85*pow(max(0,1-hypot((X-W/2)/(W/2),(Y-H/2)/(H/2))),1.4)'",
          "-frames:v", "1", "shadow.png"], cwd=WORK)
+
+
+def ensure_fog():
+    """A soft, drifting band of dust/mist that sits in front of the creature's feet."""
+    if (WORK / "fog.png").exists():
+        return
+    # small random noise stretched up gives soft cloud shapes (no streaks), faded out top and bottom
+    fc = ("color=c=0x808080:s=54x13,format=gray,noise=alls=100:allf=u,"
+          "scale=2160:520:flags=bicubic,gblur=sigma=42,eq=contrast=2.0:brightness=0.04,"
+          "geq=lum='min(255,lum(X,Y)*1.15)*(1-pow(abs(Y-H/2)/(H/2),1.4))'[g];"
+          "color=c=0xd9cfbf:s=2160x520,format=rgba[c];[c][g]alphamerge")
+    run(["ffmpeg", "-y", "-filter_complex", fc, "-frames:v", "1", "fog.png"], cwd=WORK)
+
+
+def desaturate(s):
+    """colorchannelmixer settings that pull colors toward gray (s=1 keeps them, 0 is black and white)."""
+    k = 1 - s
+    return (f"colorchannelmixer=rr={s + k * 0.299:.3f}:rg={k * 0.587:.3f}:rb={k * 0.114:.3f}:"
+            f"gr={k * 0.299:.3f}:gg={s + k * 0.587:.3f}:gb={k * 0.114:.3f}:"
+            f"br={k * 0.299:.3f}:bg={k * 0.587:.3f}:bb={s + k * 0.114:.3f}")
 
 
 def still_clip(img, dur, out, mode="in"):
@@ -771,8 +825,8 @@ def still_clip(img, dur, out, mode="in"):
          "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", out], cwd=WORK)
 
 
-def sprite_geometry(spr):
-    scale = min(MAX_SPRITE_W / spr["w"], MAX_SPRITE_H / spr["h"])
+def sprite_geometry(spr, factor=1.0):
+    scale = min(MAX_SPRITE_W * factor / spr["w"], MAX_SPRITE_H * factor / spr["h"])
     tw, th = int(spr["w"] * scale) // 2 * 2, int(spr["h"] * scale) // 2 * 2
     ang = 0.045
     rw = int(tw * math.cos(ang) + th * math.sin(ang)) // 2 * 2 + 4
@@ -789,31 +843,43 @@ def shot(plate, sprites, dur, out, bg_mode="in"):
         (WORK / bg).replace(WORK / out)
         return
     ensure_shadow()
+    ensure_fog()
     cmd = ["ffmpeg", "-y", "-i", bg]
     for sp in sprites:
         cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{dur:.3f}", "-i", sp["spec"]["png"]]
     cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{dur:.3f}", "-i", "shadow.png"]
+    cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{dur:.3f}", "-i", "fog.png"]
     shadow_idx = len(sprites) + 1
+    fog_idx = len(sprites) + 2
     parts, last = [], "[0:v]"
     for i, sp in enumerate(sprites):
         spec = sp["spec"]
-        tw, th, rw, rh, ang = sprite_geometry(spec)
+        tw, th, rw, rh, ang = sprite_geometry(spec, sp.get("scale", 1.0))
         # walk a few steps, but never so far that the creature leaves the screen
         dist = max(0.0, min(420.0, 70 * dur, 1080 - rw - 80 - 2 * abs(sp.get("dx", 0))))
         flip = "hflip," if spec["face"] != sp["move"] else ""
         alpha = f",colorchannelmixer=aa={sp['alpha']}" if sp.get("alpha", 1) < 1 else ""
-        parts.append(f"[{i + 1}:v]format=rgba,{flip}scale={tw}:{th},"
-                     f"rotate=a='{ang}*sin(PI*{STEP_RATE}*t)':c=none:ow={rw}:oh={rh}{alpha}[s{i}]")
-        parts.append(f"[{shadow_idx}:v]format=rgba,scale={int(tw * 0.9)}:60"
-                     f"{alpha}[sh{i}]")
+        lean = 0.02 * sp["move"]  # lean slightly into the walk
+        # soften edges, match the scene's colors, breathe a little, sway with each step
+        parts.append(
+            f"[{i + 1}:v]format=rgba,{flip}gblur=sigma=0.8,"
+            f"scale=w='trunc({tw}*(1+0.012*sin(2*PI*0.7*t))/2)*2':"
+            f"h='trunc({th}*(1-0.01*sin(2*PI*0.7*t))/2)*2':eval=frame,"
+            f"{desaturate(0.82)},{LOOK['grade']},"
+            f"rotate=a='{ang}*sin(PI*{STEP_RATE}*t)+{lean}':c=none:ow={rw}:oh={rh}{alpha}[s{i}]")
+        parts.append(f"[{shadow_idx}:v]format=rgba,scale={int(tw * 0.8)}:46{alpha}[sh{i}]")
         cx = 540 + sp.get("dx", 0)
         xexpr = f"{cx - rw / 2:.1f}+{sp['move']}*{dist:.1f}*(t/{dur:.3f}-0.5)"
-        yexpr = f"{GROUND_Y - rh}-26*abs(sin(PI*{STEP_RATE}*t))"
-        sh_x = f"{cx - tw * 0.45:.1f}+{sp['move']}*{dist:.1f}*(t/{dur:.3f}-0.5)"
-        parts.append(f"{last}[sh{i}]overlay=x='{sh_x}':y='{GROUND_Y - 38}':eval=frame:format=auto[b{i}]")
+        # feet sink a few pixels into the ground so the creature does not float
+        yexpr = f"{GROUND_Y + 14 - rh}-18*abs(sin(PI*{STEP_RATE}*t))"
+        sh_x = f"{cx - tw * 0.4:.1f}+{sp['move']}*{dist:.1f}*(t/{dur:.3f}-0.5)"
+        parts.append(f"{last}[sh{i}]overlay=x='{sh_x}':y='{GROUND_Y - 22}':eval=frame:format=auto[b{i}]")
         parts.append(f"[b{i}][s{i}]overlay=x='{xexpr}':y='{yexpr}':eval=frame:format=auto[o{i}]")
         last = f"[o{i}]"
-    parts.append(f"{last}format=yuv420p[v]")
+    # drifting dust/mist in front of the feet ties the creature into the ground
+    parts.append(f"[{fog_idx}:v]format=rgba,colorchannelmixer=aa=0.55[fogl]")
+    parts.append(f"{last}[fogl]overlay=x='-100-t*35':y='{GROUND_Y - 320}':eval=frame:format=auto,"
+                 "format=yuv420p[v]")
     cmd += ["-filter_complex", ";".join(parts), "-map", "[v]", "-t", f"{dur:.3f}", "-an",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", out]
     run(cmd, cwd=WORK)
@@ -845,7 +911,7 @@ def open_block(dh, dm, assets, out):
         run(["ffmpeg", "-y", "-i", a["plate"], "-i", b["plate"], "-filter_complex",
              "[0:v][1:v]blend=all_mode=average", "-frames:v", "1", "mix.png"], cwd=WORK)
         still_clip("mix.png", t["lm"], "o_m.mp4", "in")
-    shot(h["plate"], [{"spec": h["sprite"], "move": 1}] if h["sprite"] else [], t["lh"], "o_h.mp4", "in")
+    shot(h["plate"], [{"spec": h["sprite"], "move": 1, "scale": HYBRID_SCALE}] if h["sprite"] else [], t["lh"], "o_h.mp4", "in")
     o1, o2, o3 = t["b"], t["mix"], t["reveal"]
     fc = (f"[0][1]xfade=transition=fade:duration={FADE}:offset={o1:.3f}[v1];"
           f"[v1][2]xfade=transition=dissolve:duration={FADE}:offset={o2:.3f}[v2];"
@@ -885,22 +951,25 @@ def build_video(scenes, assets, audio_name, captions_name, out_path):
             t = open_block(sc["hook"], sc["morph"], assets, seg)
             reveal = t["reveal"]
         elif sc["kind"] == "hold":
-            shot(h["plate"], [{"spec": h["sprite"], "move": 1}] if h["sprite"] else [], sc["dur"], seg, "in")
+            shot(h["plate"], [{"spec": h["sprite"], "move": 1, "scale": HYBRID_SCALE}] if h["sprite"] else [], sc["dur"], seg, "in")
         else:
             move = 1 if k % 2 == 0 else -1
-            shot(sc["plate"], [{"spec": h["sprite"], "move": move}] if h["sprite"] else [],
+            shot(sc["plate"], [{"spec": h["sprite"], "move": move, "scale": HYBRID_SCALE}] if h["sprite"] else [],
                  sc["dur"], seg, MOTIONS[k % len(MOTIONS)])
             k += 1
         segs.append(seg)
     (WORK / "list.txt").write_text("".join(f"file '{s}'\n" for s in segs))
     T = reveal
     shake = (f"between(t,{T:.2f},{T + 0.9:.2f})")
-    xe = f"27+{shake}*24*sin(t*65)*(1-(t-{T:.2f})/0.9)"
-    ye = f"48+{shake}*30*cos(t*57)*(1-(t-{T:.2f})/0.9)"
+    # gentle handheld wobble all the time, a hard shake when the hybrid is revealed
+    xe = f"27+3*sin(t*2.1)+2*sin(t*5.3)+{shake}*24*sin(t*65)*(1-(t-{T:.2f})/0.9)"
+    ye = f"48+3*cos(t*1.7)+2*cos(t*4.9)+{shake}*30*cos(t*57)*(1-(t-{T:.2f})/0.9)"
     flash = f"if(between(t,{T:.2f},{T + 0.35:.2f}),0.6*(1-(t-{T:.2f})/0.35),0)"
+    # one shared "old film" look over everything: faded colors, scene color grade, heavy grain, vignette
     vf = (f"scale=1134:2016,crop=1080:1920:x='{xe}':y='{ye}',"
-          f"eq=brightness='{flash}':saturation=1.12:contrast=1.06:eval=frame,"
-          "vignette=PI/5,noise=alls=5:allf=t")
+          f"curves=preset=vintage,{LOOK['grade']},"
+          f"eq=brightness='{flash}':saturation=0.92:contrast=1.06:eval=frame,"
+          "vignette=PI/4.5,noise=alls=16:allf=t+u")
     if captions_name:
         vf += f",subtitles={captions_name}"
     run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "list.txt", "-i", audio_name,
@@ -968,7 +1037,8 @@ def main():
     WORK.mkdir(exist_ok=True)
     OUT.mkdir(exist_ok=True)
     history = load_history()
-    key, a, b, (place_name, place_desc, ambient_query) = pick_idea(history)
+    key, a, b, (place_name, place_desc, ambient_query, place_light, place_grade) = pick_idea(history)
+    LOOK["grade"] = GRADES.get(place_grade, "null")
     log(f"Idea: {a} + {b} in {place_name}")
 
     story = ask_gemini(a, b, place_name)
@@ -992,15 +1062,17 @@ def main():
     # --- creatures and backgrounds
     keycolor = pick_key([a, b])
     log(f"Cut-out backdrop color: {keycolor}")
-    assets = {"a": get_animal(a, "a", pick_key([a])), "b": get_animal(b, "b", pick_key([b]))}
-    h_sprite = make_sprite("spr_h", f"An imaginary hybrid creature: {look}", keycolor)
+    assets = {"a": get_animal(a, "a", pick_key([a]), place_light),
+              "b": get_animal(b, "b", pick_key([b]), place_light)}
+    h_sprite = make_sprite("spr_h", f"An imaginary hybrid creature: {look}", keycolor,
+                           place_light, fierce=True)
     plate_ok = make_plate("plate_h", place_desc)
     if h_sprite:
         assets["h"] = {"plate": "plate_h.png", "sprite": h_sprite}
     else:
         log("Hybrid cut-out failed. Trying a full-frame hybrid picture.")
-        prompt = (f"{STYLE} An imaginary hybrid creature: {look} It stands in {place_name}, "
-                  "shown clearly and heroically.")
+        prompt = (f"{STYLE} An imaginary hybrid creature: {look} It is {FIERCE}. "
+                  f"It stands in {place_name}, shown clearly and dominantly.")
         if not make_picture("port_h", prompt):
             log("Hybrid picture failed. Using a blend of the two animals instead.")
             run(["ffmpeg", "-y", "-i", assets["a"]["plate"], "-i", assets["b"]["plate"], "-filter_complex",
