@@ -1,0 +1,54 @@
+name: 2 - Build the Short
+
+on:
+  push:
+    paths:
+      - "clips/**"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "1 = make the video but do NOT upload, 0 = upload"
+        default: "1"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install video tools
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
+      - run: pip install -r requirements.txt
+      - name: Build the Short
+        run: python make_short.py build
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          FREESOUND_API_KEY: ${{ secrets.FREESOUND_API_KEY }}
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+          PRIVACY: private
+          DRY_RUN: ${{ github.event.inputs.dry_run || '0' }}
+      - name: Keep the video for download
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: short
+          path: output/
+          if-no-files-found: ignore
+      - name: Clear the used clips
+        if: success()
+        run: |
+          git config user.name "shorts-bot"
+          git config user.email "shorts-bot@users.noreply.github.com"
+          git rm -q --ignore-unmatch clips/*.mp4 clips/*.mov clips/*.webm clips/*.m4v
+          git diff --cached --quiet || (git commit -m "Clear used clips" && git push)
