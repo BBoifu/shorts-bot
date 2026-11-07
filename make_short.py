@@ -939,6 +939,43 @@ def shot(plate, sprites, dur, out, bg_mode="in"):
     (WORK / bg).replace(WORK / out)
 
 
+def clip_seconds(path):
+    try:
+        path = pathlib.Path(path)
+        if not path.is_absolute():
+            path = WORK / path
+        out = run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)])
+        return float(out.strip())
+    except Exception:
+        return 0.0
+
+
+def clip_shot(clip, dur, out):
+    """Use an AI-made video clip for `dur` seconds: fill the tall frame, trim it, or slow it down a
+    little (at most 1.5x) and hold the last frame if the clip is shorter than needed."""
+    d = clip_seconds(clip)
+    if d < 0.5:
+        raise RuntimeError("clip unreadable")
+    f = 1.0 if d >= dur else min(dur / d, 1.5)
+    extra = max(dur - d * f, 0.0)
+    vf = (f"scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,setsar=1,"
+          f"fps={FPS},setpts={f:.4f}*PTS,tpad=stop_mode=clone:stop_duration={extra + 0.2:.3f}")
+    run(["ffmpeg", "-y", "-i", clip, "-vf", vf, "-t", f"{dur:.3f}", "-an",
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", out], cwd=WORK)
+
+
+def shot_or_clip(plate, clip, dur, out, mode="in"):
+    """The AI video clip if there is one (and it works), otherwise the still picture with camera motion."""
+    if clip:
+        try:
+            clip_shot(clip, dur, out)
+            log(f"Used video clip {pathlib.Path(clip).name} for {dur:.1f}s")
+            return
+        except RuntimeError as e:
+            log(f"Clip {clip} could not be used ({e}); using a still picture instead.")
+    shot(plate, [], dur, out, mode)
+
+
 def open_times(dh, dm):
     """Timing of the opening block: hook + morph. Times are seconds from the start of the video."""
     la, lb, lm = 1.3, 1.3, 0.9
@@ -965,7 +1002,7 @@ def open_block(dh, dm, assets, out):
         run(["ffmpeg", "-y", "-i", a["plate"], "-i", b["plate"], "-filter_complex",
              "[0:v][1:v]blend=all_mode=average", "-frames:v", "1", "mix.png"], cwd=WORK)
         still_clip("mix.png", t["lm"], "o_m.mp4", "in")
-    shot(h["plate"], [{"spec": h["sprite"], "move": 1, "scale": HYBRID_SCALE}] if h["sprite"] else [], t["lh"], "o_h.mp4", "in")
+    shot_or_clip(h["plate"], h.get("clip"), t["lh"], "o_h.mp4", "in")
     o1, o2, o3 = t["b"], t["mix"], t["reveal"]
     fc = (f"[0][1]xfade=transition=fade:duration={FADE}:offset={o1:.3f}[v1];"
           f"[v1][2]xfade=transition=dissolve:duration={FADE}:offset={o2:.3f}[v2];"
@@ -1005,11 +1042,9 @@ def build_video(scenes, assets, audio_name, captions_name, out_path):
             t = open_block(sc["hook"], sc["morph"], assets, seg)
             reveal = t["reveal"]
         elif sc["kind"] == "hold":
-            shot(h["plate"], [{"spec": h["sprite"], "move": 1, "scale": HYBRID_SCALE}] if h["sprite"] else [], sc["dur"], seg, "in")
+            shot_or_clip(h["plate"], sc.get("clip"), sc["dur"], seg, "in")
         else:
-            move = 1 if k % 2 == 0 else -1
-            shot(sc["plate"], [{"spec": h["sprite"], "move": move, "scale": HYBRID_SCALE}] if h["sprite"] else [],
-                 sc["dur"], seg, MOTIONS[k % len(MOTIONS)])
+            shot_or_clip(sc["plate"], sc.get("clip"), sc["dur"], seg, MOTIONS[k % len(MOTIONS)])
             k += 1
         segs.append(seg)
     (WORK / "list.txt").write_text("".join(f"file '{s}'\n" for s in segs))
@@ -1180,5 +1215,181 @@ def main():
     HISTORY_FILE.write_text(json.dumps(history, indent=1))
 
 
+# ---------------------------------------------------------------- two-step mode: plan, then build
+PLAN_DIR = ROOT / "plan"
+CLIPS_DIR = ROOT / "clips"
+CLIP_EXT = (".mp4", ".mov", ".webm", ".m4v")
+
+
+def clip_prompts(look, place_name, place_desc):
+    """Three prompts to paste into an AI video website. Clip 1 is the reveal, 2 the stalk, 3 the finale."""
+    base = ("Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, "
+            "real fur, skin and scale texture, vertical 9:16, no text, no people.")
+    return [
+        ("Clip 1 - the reveal (plays when the hybrid first appears)",
+         f"{base} A massive imaginary hybrid creature slowly emerges and steps toward the camera in "
+         f"{place_name}: {place_desc}. {look} It is menacing and dominant. The camera slowly pushes in."),
+        ("Clip 2 - the stalk (plays in the middle of the story)",
+         f"{base} The same hybrid creature stalks forward through {place_desc}, heavy footsteps, each step "
+         f"shifting its weight, the camera tracks beside it at ground level. {look}"),
+        ("Clip 3 - the close-up (plays at the end)",
+         f"{base} Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and "
+         f"breathing heavily, wind and dust moving around it. {look}"),
+    ]
+
+
+def plan_main():
+    if not GEMINI_API_KEY:
+        sys.exit("Missing secret: GEMINI_API_KEY")
+    OUT.mkdir(exist_ok=True)
+    PLAN_DIR.mkdir(exist_ok=True)
+    history = load_history()
+    key, a, b, place = pick_idea(history)
+    place_name, place_desc = place[0], place[1]
+    log(f"Idea: {a} + {b} in {place_name}")
+    story = ask_gemini(a, b, place_name)
+    plan = {"key": key, "a": a, "b": b, "place": list(place), "story": story,
+            "clips": [{"title": t, "prompt": p} for t, p in
+                      clip_prompts(story["hybrid_look"], place_name, place_desc)]}
+    (PLAN_DIR / "plan.json").write_text(json.dumps(plan, indent=1))
+    history.append(key)
+    HISTORY_FILE.write_text(json.dumps(history, indent=1))
+
+    lines = [f"# {story['title']}", "",
+             f"**Hybrid:** {story['creature_name']} ({a} + {b}) in {place_name}", "",
+             "## Your job: make 3 short videos (5 seconds each), then upload them", "",
+             "Use PixVerse or Kling (text-to-video). Pick **9:16 vertical**, **5 seconds**, **720p or better**.",
+             "Paste each prompt below. Save the results as `clip1.mp4`, `clip2.mp4`, `clip3.mp4`.", ""]
+    for i, c in enumerate(plan["clips"], 1):
+        lines += [f"### {c['title']}", "", "```", c["prompt"], "```", ""]
+    lines += ["## The story that will be spoken", "", " ".join(x["text"] for x in story["sentences"]), ""]
+    md = "\n".join(lines)
+    (OUT / "PROMPTS.md").write_text(md)
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a") as f:
+            f.write(md)
+    log("Plan saved. Open the run page and read the prompts in the Summary.")
+
+
+def find_clips():
+    files = sorted(p for p in CLIPS_DIR.glob("*") if p.suffix.lower() in CLIP_EXT) if CLIPS_DIR.exists() else []
+    good = []
+    for p in files:
+        dst = WORK / f"in_{len(good) + 1}{p.suffix.lower()}"
+        shutil.copy(p, dst)
+        if clip_seconds(dst) >= 0.5:
+            good.append(dst.name)
+        else:
+            log(f"Clip {p.name} cannot be read, skipping it.")
+    log(f"Video clips found: {len(good)}")
+    return good[:3]
+
+
+def build_main():
+    if not (CF_ACCOUNT and CF_TOKEN):
+        sys.exit("Missing secret: CLOUDFLARE_ACCOUNT_ID and/or CLOUDFLARE_API_TOKEN")
+    if not GEMINI_API_KEY:
+        sys.exit("Missing secret: GEMINI_API_KEY")
+    plan_file = PLAN_DIR / "plan.json"
+    if not plan_file.exists():
+        sys.exit("No plan found. Run the 'Plan' workflow first.")
+    plan = json.loads(plan_file.read_text())
+    WORK.mkdir(exist_ok=True)
+    OUT.mkdir(exist_ok=True)
+    key, a, b = plan["key"], plan["a"], plan["b"]
+    place_name, place_desc, ambient_query, place_light, place_grade = plan["place"]
+    story = plan["story"]
+    sentences = story["sentences"]
+    look = story["hybrid_look"]
+    narration = " ".join(s["text"] for s in sentences)
+    LOOK["grade"] = GRADES.get(place_grade, "null")
+    log(f"Building: {a} + {b} in {place_name}")
+    log(f"Title: {story['title']}")
+    clips = find_clips()
+
+    # --- voice
+    words = None
+    audio_name = "voice.wav"
+    if not gemini_tts(narration, WORK / "voice.wav"):
+        log("Falling back to the basic free voice.")
+        audio_name = "voice.mp3"
+        words = asyncio.run(edge_voice(narration, str(WORK / "voice.mp3")))
+    total = audio_seconds(WORK / audio_name)
+    if not words:
+        words = even_words(narration, total)
+    has_caps = write_captions(words, total, WORK / "captions.ass")
+
+    # --- still pictures (full frame, creature already inside the scene)
+    assets = {}
+    for nm, animal in (("a", a), ("b", b)):
+        ok = make_picture(f"port_{nm}", f"{STYLE} A {animal} in {place_desc}, close and clear, "
+                                        f"lit by {place_light}.")
+        if not ok:
+            if pixabay_clip(animal, str(WORK / f"{nm}.mp4")) and frame_from_clip(f"{nm}.mp4", f"{nm}_f.png"):
+                compose_vertical(f"{nm}_f.png", f"port_{nm}.png")
+            else:
+                gradient_plate(f"port_{nm}")
+        assets[nm] = {"plate": f"port_{nm}.png", "sprite": None}
+    hybrid_prompt = (f"{STYLE} An imaginary hybrid creature: {look} It is {FIERCE}. "
+                     f"It stands in {place_name}, shown clearly and dominantly, lit by {place_light}.")
+    if not make_picture("port_h", hybrid_prompt):
+        log("Hybrid picture failed. Using a blend of the two animals instead.")
+        run(["ffmpeg", "-y", "-i", assets["a"]["plate"], "-i", assets["b"]["plate"], "-filter_complex",
+             "[0:v][1:v]blend=all_mode=average", "-frames:v", "1", "port_h.png"], cwd=WORK)
+    assets["h"] = {"plate": "port_h.png", "sprite": None}
+    if clips:
+        assets["h"]["clip"] = clips[0]
+
+    scenes = plan_scenes(sentences, total)
+    middle = [i for i, sc in enumerate(scenes) if sc["kind"] == "scene"]
+    for i, sc in enumerate(scenes):
+        if sc["kind"] != "scene":
+            continue
+        name = f"plate_s{i}"
+        prompt = f"{STYLE} The creature: {look} Scene in {place_name}: {sc['image']}"
+        if not make_picture(name, prompt):
+            shutil.copy(WORK / assets["h"]["plate"], WORK / f"{name}.png")
+        sc["plate"] = f"{name}.png"
+    if len(clips) >= 2 and middle:
+        scenes[middle[len(middle) // 2]]["clip"] = clips[1]
+    if len(clips) >= 3:
+        scenes[-1]["clip"] = clips[2]
+
+    # --- sound
+    sounds = prepare_sounds(a, b, ambient_query)
+    events = sound_events(scenes, sounds)
+    build_audio(audio_name, total, events, sounds["ambient"], "mix.wav")
+
+    out_path = OUT / "short.mp4"
+    build_video(scenes, assets, "mix.wav", "captions.ass" if has_caps else None, out_path)
+    log(f"Video ready: {out_path} ({total:.1f}s of speech, AI video clips used: {len(clips)}/3, "
+        f"real animal calls: {sounds['real_calls']}/2)")
+
+    title = story["title"][:80].rstrip() + " #Shorts"
+    description = (
+        f"{story['creature_name']}: an imaginary animal hybrid ({a} + {b}) in {place_name}.\n"
+        "This is a fictional story made for fun and the creature is not real. "
+        "The images and animation are AI-generated, the narration uses a synthetic voice, "
+        "and the sound effects are synthesized or CC0.\n\n"
+        "#shorts #animals #whatif #speculativebiology"
+    )
+    tags = ["shorts", "animals", "what if", "hybrid animals", "speculative biology", a, b]
+    (OUT / "meta.json").write_text(json.dumps(
+        {"title": title, "description": description, "narration": narration,
+         "video_clips_used": len(clips), "real_animal_calls": sounds["real_calls"]}, indent=2))
+
+    if DRY_RUN or not os.environ.get("YT_REFRESH_TOKEN"):
+        log("Not uploading (dry run, or YouTube is not set up yet). Download the video from the run's Artifacts.")
+        return
+    video_id = upload_to_youtube(out_path, title, description, tags)
+    log(f"Uploaded as '{PRIVACY}': https://youtube.com/shorts/{video_id}")
+
+
+
 if __name__ == "__main__":
-    main()
+    mode = sys.argv[1] if len(sys.argv) > 1 else "build"
+    if mode == "plan":
+        plan_main()
+    else:
+        build_main()
