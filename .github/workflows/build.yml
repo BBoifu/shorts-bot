@@ -50,5 +50,5 @@ jobs:
         run: |
           git config user.name "shorts-bot"
           git config user.email "shorts-bot@users.noreply.github.com"
-          git rm -q --ignore-unmatch clips/*.mp4 clips/*.mov clips/*.webm clips/*.m4v
+          git rm -q --ignore-unmatch clips/*.mp4 clips/*.mov clips/*.webm clips/*.m4v clips/*.gif clips/*.jpg clips/*.jpeg clips/*.png clips/*.webp
           git diff --cached --quiet || (git commit -m "Clear used clips" && git push)
