@@ -53,8 +53,10 @@ VINTAGE = ("vintage 1970s wildlife documentary film photograph, shot on 35mm Kod
            "faded muted colors, soft natural light, photorealistic, real photograph, not a cartoon, "
            "not an illustration, not CGI")
 STYLE = f"{VINTAGE}, vertical composition, no text, no watermark, no people."
-STYLE_SPRITE = (f"{VINTAGE}, telephoto lens, realistic fur, skin and scale texture, sharp focus, "
-                "no text, no watermark.")
+# The cut-out creature is photographed in clean, natural colors (so the backdrop is easy to remove);
+# the vintage film look is added afterwards by the color grade, so it matches the background.
+STYLE_SPRITE = ("Photorealistic wildlife photograph, telephoto lens, realistic fur, skin and scale "
+                "texture, sharp focus, not a cartoon, not an illustration, no text, no watermark.")
 FIERCE = ("a fierce, terrifying, dominant apex predator, menacing snarling expression, bared fangs, "
           "glowing eyes, scarred battle-worn hide, huge muscular body, intimidating horror-creature look")
 
@@ -137,7 +139,9 @@ def run(cmd, cwd=None):
     result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
     if result.returncode != 0:
         log(result.stderr[-2000:])
-        raise RuntimeError("Command failed: " + " ".join(str(c) for c in cmd[:4]))
+        crash = " - ffmpeg crashed" if result.returncode < 0 else ""
+        raise RuntimeError(f"Command failed (code {result.returncode}{crash}): "
+                           + " ".join(str(c) for c in cmd[:12]))
     return result.stdout
 
 
@@ -286,45 +290,39 @@ def facing_direction(img_name):
 
 # ---------------------------------------------------------------- AI pictures
 def cloudflare_image(prompt, dest, steps=6):
-    """One AI picture from Cloudflare Workers AI (FLUX). Returns True on success."""
+    """One AI picture from Cloudflare Workers AI (FLUX). Returns True on success.
+    This model accepts only a prompt and a step count, and always makes a 1024x1024 square."""
     if not (CF_ACCOUNT and CF_TOKEN):
         return False
     url = f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT}/ai/run/{CF_MODEL}"
     headers = {"Authorization": f"Bearer {CF_TOKEN}"}
     for attempt in range(3):
-        for with_size in (True, False):
-            body = {"prompt": prompt[:1800], "steps": steps}
-            if with_size:
-                body.update({"width": 768, "height": 1344})
+        body = {"prompt": prompt[:1800], "steps": steps}
+        try:
+            r = requests.post(url, headers=headers, json=body, timeout=180)
+        except Exception as e:
+            log(f"Cloudflare image request failed: {e}")
+            time.sleep(5)
+            continue
+        if r.status_code == 200:
+            ctype = r.headers.get("content-type", "")
+            if ctype.startswith("image/"):
+                pathlib.Path(dest).write_bytes(r.content)
+                return True
             try:
-                r = requests.post(url, headers=headers, json=body, timeout=180)
-            except Exception as e:
-                log(f"Cloudflare image request failed: {e}")
-                time.sleep(5)
-                break
-            if r.status_code == 200:
-                ctype = r.headers.get("content-type", "")
-                if ctype.startswith("image/"):
-                    pathlib.Path(dest).write_bytes(r.content)
+                b64 = longest_b64(r.json())
+                if b64:
+                    pathlib.Path(dest).write_bytes(base64.b64decode(b64))
                     return True
-                try:
-                    b64 = longest_b64(r.json())
-                    if b64:
-                        pathlib.Path(dest).write_bytes(base64.b64decode(b64))
-                        return True
-                except Exception as e:
-                    log(f"Could not read Cloudflare reply: {e}")
-                log(f"Cloudflare reply had no picture: {r.text[:200]}")
-                break
-            log(f"Cloudflare image -> {r.status_code}: {r.text[:300]}")
-            if r.status_code in (401, 403):
-                return False
-            if r.status_code == 400 and with_size:
-                continue
-            if r.status_code == 429:
-                time.sleep(15)
-            break
-        time.sleep(3)
+            except Exception as e:
+                log(f"Could not read Cloudflare reply: {e}")
+            log(f"Cloudflare reply had no picture: {r.text[:200]}")
+            time.sleep(3)
+            continue
+        log(f"Cloudflare image -> {r.status_code}: {r.text[:300]}")
+        if r.status_code in (401, 403):
+            return False  # wrong token or account, retrying will not help
+        time.sleep(15 if r.status_code == 429 else 3)
     return False
 
 
@@ -345,12 +343,16 @@ def fetch_ai_image(name, prompt, steps=6):
     return raw
 
 
-def compose_vertical(raw, out_png):
-    """Fit any picture onto a 1080x1920 canvas with a blurred copy behind it."""
-    fc = ("[0:v]split[a][b];"
-          "[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=40:5[bg];"
-          "[b]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
-          "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1")
+def compose_vertical(raw, out_png, cover=True):
+    """Put a picture on a 1080x1920 canvas. cover=True fills the frame (crops the sides);
+    cover=False keeps the whole picture on top of a blurred copy of itself."""
+    if cover:
+        fc = "[0:v]scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,setsar=1"
+    else:
+        fc = ("[0:v]split[a][b];"
+              "[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=40:5[bg];"
+              "[b]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
+              "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1")
     run(["ffmpeg", "-y", "-i", raw, "-filter_complex", fc, "-frames:v", "1", out_png], cwd=WORK)
 
 
@@ -386,9 +388,35 @@ def make_plate(name, desc):
 
 
 # ---------------------------------------------------------------- creature cutouts
-def key_sprite(raw, color_hex, despill, out_png):
+def image_size(path):
+    out = run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+               "stream=width,height", "-of", "csv=p=0", str(WORK / path)])
+    w, h = out.strip().split(",")[:2]
+    return int(w), int(h)
+
+
+def backdrop_color(raw):
+    """Average color of the four corners, as (hex, (r, g, b)). None if the corners do not match,
+    which means the picture has no plain backdrop to cut out."""
+    w, h = image_size(raw)
+    cols = []
+    for x, y in ((0, 0), (w - 24, 0), (0, h - 24), (w - 24, h - 24)):
+        r = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", raw, "-vf",
+                            f"crop=24:24:{x}:{y},scale=1:1", "-frames:v", "1", "-f", "rawvideo",
+                            "-pix_fmt", "rgb24", "-"], cwd=WORK, capture_output=True)
+        if r.returncode != 0 or len(r.stdout) < 3:
+            return None
+        cols.append(tuple(r.stdout[:3]))
+    spread = max(max(c[i] for c in cols) - min(c[i] for c in cols) for i in range(3))
+    if spread > 70:
+        return None
+    rgb = tuple(sum(c[i] for c in cols) // 4 for i in range(3))
+    return f"0x{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}", rgb
+
+
+def key_sprite(raw, color_hex, despill, out_png, similarity=0.30):
     """Remove the plain backdrop. Returns how much of the picture is creature (percent)."""
-    chain = f"[0:v]format=rgba,colorkey={color_hex}:0.34:0.12"
+    chain = f"[0:v]format=rgba,colorkey={color_hex}:{similarity}:0.12"
     if despill:
         chain += f",despill=type={despill}"
     # erode one pixel more than we grow back, so no colored fringe from the backdrop is left on the edge
@@ -415,32 +443,45 @@ def sprite_bbox(png):
 
 def make_sprite(name, desc, key, light, fierce=False):
     """A cut-out creature. Returns {'png','w','h','face'} or None if it did not work out."""
-    color_hex, color_words, despill = KEYS[key]
+    color_words = KEYS[key][1]
     mood = f" It is {FIERCE}." if fierce else ""
     prompt = (f"{STYLE_SPRITE} {desc}.{mood} Lit by {light}. Full-body side view, walking pose, "
-              f"facing right, whole body in frame, photographed in front of a solid flat {color_words} "
-              "green-screen style background, no ground, no shadow, no other objects.")
+              f"facing right, whole body in frame, standing in front of a perfectly flat, evenly lit "
+              f"{color_words} chroma key backdrop: one plain solid color, no gradient, no texture, "
+              "no ground, no shadow, no other objects.")
     for attempt in range(2):
+        tag = f"Sprite '{name}' attempt {attempt + 1}"
         raw = fetch_ai_image(f"{name}{attempt}", prompt, steps=8)
         if not raw:
             continue
         try:
+            bd = backdrop_color(raw)
+            if not bd:
+                log(f"{tag}: the picture has no plain backdrop, rejected")
+                continue
+            color_hex, (r, g, b) = bd
+            despill = "green" if g > r + 30 and g > b + 30 else ("blue" if b > r + 30 and b > g + 30 else None)
             cover = key_sprite(raw, color_hex, despill, f"{name}_k.png")
             if not 4 <= cover <= 70:
-                log(f"Sprite '{name}' attempt {attempt + 1}: cut-out covers {cover:.0f}% of the picture, rejected")
+                log(f"{tag}: cut-out covers {cover:.0f}% of the picture (backdrop {color_hex}), rejected")
                 continue
             bb = sprite_bbox(f"{name}_k.png")
             if not bb or bb["w"] < 120 or bb["h"] < 120:
-                log(f"Sprite '{name}' attempt {attempt + 1}: could not find the creature outline")
+                log(f"{tag}: could not find the creature outline")
+                continue
+            iw, ih = image_size(f"{name}_k.png")
+            if bb["w"] > 0.97 * iw and bb["h"] > 0.97 * ih:
+                log(f"{tag}: cut-out reaches every edge of the picture, so backdrop is left in, rejected")
                 continue
             run(["ffmpeg", "-y", "-i", f"{name}_k.png", "-vf",
                  f"crop={bb['w']}:{bb['h']}:{bb['x1']}:{bb['y1']}", "-frames:v", "1", f"{name}_c.png"],
                 cwd=WORK)
             face = facing_direction(raw)
-            log(f"Sprite '{name}': AI cut-out {bb['w']}x{bb['h']}, faces {'right' if face == 1 else 'left'}")
+            log(f"Sprite '{name}': AI cut-out {bb['w']}x{bb['h']}, backdrop {color_hex}, "
+                f"faces {'right' if face == 1 else 'left'}")
             return {"png": f"{name}_c.png", "w": bb["w"], "h": bb["h"], "face": face}
         except RuntimeError:
-            log(f"Sprite '{name}' attempt {attempt + 1}: cut-out failed")
+            log(f"{tag}: cut-out failed")
     return None
 
 
@@ -834,23 +875,18 @@ def sprite_geometry(spr, factor=1.0):
     return tw, th, rw, rh, ang
 
 
-def shot(plate, sprites, dur, out, bg_mode="in"):
-    """A background with walking creatures on top.
-    sprites: list of {'spec': sprite, 'move': +1/-1, 'alpha': 0-1, 'dx': pixels offset}."""
-    bg = f"bg_{abs(hash(out)) % 10**8}.mp4"
-    still_clip(plate, dur, bg, bg_mode)
-    if not sprites:
-        (WORK / bg).replace(WORK / out)
-        return
+def composite_shot(bg, sprites, dur, out, simple):
+    """Put walking creatures on a background clip. simple=True drops the fancy effects."""
     ensure_shadow()
-    ensure_fog()
     cmd = ["ffmpeg", "-y", "-i", bg]
     for sp in sprites:
         cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{dur:.3f}", "-i", sp["spec"]["png"]]
     cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{dur:.3f}", "-i", "shadow.png"]
-    cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{dur:.3f}", "-i", "fog.png"]
     shadow_idx = len(sprites) + 1
     fog_idx = len(sprites) + 2
+    if not simple:
+        ensure_fog()
+        cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{dur:.3f}", "-i", "fog.png"]
     parts, last = [], "[0:v]"
     for i, sp in enumerate(sprites):
         spec = sp["spec"]
@@ -860,12 +896,10 @@ def shot(plate, sprites, dur, out, bg_mode="in"):
         flip = "hflip," if spec["face"] != sp["move"] else ""
         alpha = f",colorchannelmixer=aa={sp['alpha']}" if sp.get("alpha", 1) < 1 else ""
         lean = 0.02 * sp["move"]  # lean slightly into the walk
-        # soften edges, match the scene's colors, breathe a little, sway with each step
+        # soften edges and match the scene's colors, then sway with each step
+        look = "" if simple else f"gblur=sigma=0.8,{desaturate(0.82)},{LOOK['grade']},"
         parts.append(
-            f"[{i + 1}:v]format=rgba,{flip}gblur=sigma=0.8,"
-            f"scale=w='trunc({tw}*(1+0.012*sin(2*PI*0.7*t))/2)*2':"
-            f"h='trunc({th}*(1-0.01*sin(2*PI*0.7*t))/2)*2':eval=frame,"
-            f"{desaturate(0.82)},{LOOK['grade']},"
+            f"[{i + 1}:v]format=rgba,{flip}{look}scale={tw}:{th},"
             f"rotate=a='{ang}*sin(PI*{STEP_RATE}*t)+{lean}':c=none:ow={rw}:oh={rh}{alpha}[s{i}]")
         parts.append(f"[{shadow_idx}:v]format=rgba,scale={int(tw * 0.8)}:46{alpha}[sh{i}]")
         cx = 540 + sp.get("dx", 0)
@@ -876,13 +910,33 @@ def shot(plate, sprites, dur, out, bg_mode="in"):
         parts.append(f"{last}[sh{i}]overlay=x='{sh_x}':y='{GROUND_Y - 22}':eval=frame:format=auto[b{i}]")
         parts.append(f"[b{i}][s{i}]overlay=x='{xexpr}':y='{yexpr}':eval=frame:format=auto[o{i}]")
         last = f"[o{i}]"
-    # drifting dust/mist in front of the feet ties the creature into the ground
-    parts.append(f"[{fog_idx}:v]format=rgba,colorchannelmixer=aa=0.55[fogl]")
-    parts.append(f"{last}[fogl]overlay=x='-100-t*35':y='{GROUND_Y - 320}':eval=frame:format=auto,"
-                 "format=yuv420p[v]")
+    if simple:
+        parts.append(f"{last}format=yuv420p[v]")
+    else:
+        # drifting dust/mist in front of the feet ties the creature into the ground
+        parts.append(f"[{fog_idx}:v]format=rgba,colorchannelmixer=aa=0.55[fogl]")
+        parts.append(f"{last}[fogl]overlay=x='-100-t*35':y='{GROUND_Y - 320}':eval=frame:format=auto,"
+                     "format=yuv420p[v]")
     cmd += ["-filter_complex", ";".join(parts), "-map", "[v]", "-t", f"{dur:.3f}", "-an",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", out]
     run(cmd, cwd=WORK)
+
+
+def shot(plate, sprites, dur, out, bg_mode="in"):
+    """A background with walking creatures on top.
+    sprites: list of {'spec': sprite, 'move': +1/-1, 'alpha': 0-1, 'dx': pixels offset}.
+    If the full effects fail, a simpler version is tried, and last of all the background alone."""
+    bg = f"bg_{abs(hash(out)) % 10**8}.mp4"
+    still_clip(plate, dur, bg, bg_mode)
+    if sprites:
+        for simple in (False, True):
+            try:
+                composite_shot(bg, sprites, dur, out, simple)
+                return
+            except RuntimeError as e:
+                log(f"Shot '{out}': {'simple ' if simple else 'full '}compositing failed ({e})")
+        log(f"Shot '{out}': showing the background only.")
+    (WORK / bg).replace(WORK / out)
 
 
 def open_times(dh, dm):
