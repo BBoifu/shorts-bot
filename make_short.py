@@ -118,6 +118,16 @@ KEY_CONFLICTS = {
     "blue": {"shark", "whale", "seal", "penguin"},
 }
 
+# What to search for in the free stock footage library for each place
+PLACE_STOCK = {
+    "the Sahara desert": "desert sand dunes", "Antarctica": "antarctica snow ice storm",
+    "the deep ocean": "deep sea underwater dark", "a land of active volcanoes": "volcano lava eruption",
+    "Mars": "red desert rocks dust", "the clouds of Venus": "storm clouds lightning",
+    "an icy moon like Europa": "frozen ice glacier", "a rainforest after a flood": "flooded jungle rain",
+    "a mountain peak above the clouds": "mountain summit clouds", "a planet with two suns": "alien landscape sunset",
+    "a swamp full of toxic mud": "swamp fog", "the edge of a black hole": "space galaxy nebula",
+}
+
 FPS = 30
 FADE = 0.6          # seconds of cross-dissolve in the opening morph
 MAX_SPRITE_W = 640  # biggest a parent animal is drawn, in pixels (the hybrid is drawn bigger)
@@ -223,6 +233,8 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
 {{
   "title": "catchy title under 70 characters, no hashtags",
   "creature_name": "a fun invented name for the hybrid",
+  "prey": "a specific animal that lives in {place_name} and that the hybrid hunts",
+  "signature_move": "one sentence: the hybrid's signature move on that prey, using abilities taken from the {a} and the {b} (an action, not gore)",
   "hybrid_look": "one detailed sentence describing how the creature LOOKS: a fierce, scary, dominant apex predator (menacing face, glowing eyes, scars, fangs or claws or spikes, huge muscular body), clearly showing specific features taken from the {a} and from the {b}",
   "sentences": [
     {{"text": "one spoken sentence", "image": "the SETTING shown while this sentence is spoken"}}
@@ -232,6 +244,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
 Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken English, no emojis):
 - Sentence 1: a gripping hook question that makes clear the creature is imaginary.
 - Sentence 2: names the creature and says what it inherits from the {a} and from the {b}.
+- One middle sentence describes the signature move on its prey.
 - Middle sentences: each one a specific danger of {place_name} and the clever trait that solves it.
 - Last sentence: a surprising weakness as a twist, then ask viewers one question to answer in the comments.
 - Use real science about the parent animals where possible. Do not present false facts as real.
@@ -259,6 +272,8 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
                 s["text"] = s["text"].strip()
                 s["image"] = str(s.get("image") or f"a dramatic view of {place_name}").strip()
             data["sentences"] = sents[:9]
+            data["prey"] = str(data.get("prey") or "a small desert animal").strip()
+            data["signature_move"] = str(data.get("signature_move") or "it pounces with lightning speed").strip()
             return data
         except Exception as e:
             last_err = e
@@ -486,9 +501,11 @@ def make_sprite(name, desc, key, light, fierce=False):
 
 
 # ---------------------------------------------------------------- backup footage (Pixabay)
-def pixabay_clip(query, dest):
+def pixabay_clip(query, dest, exclude=None):
+    """Free stock footage. `exclude` is a set of clip ids already used; the chosen id is added to it."""
     if not PIXABAY_API_KEY:
         return False
+    exclude = exclude if exclude is not None else set()
     try:
         r = requests.get("https://pixabay.com/api/videos/",
                          params={"key": PIXABAY_API_KEY, "q": query[:90], "per_page": 20,
@@ -497,6 +514,8 @@ def pixabay_clip(query, dest):
         hits = r.json().get("hits", [])
         random.shuffle(hits)
         for h in hits:
+            if h.get("id") in exclude:
+                continue
             for size in ("medium", "large", "small"):
                 url = h.get("videos", {}).get(size, {}).get("url")
                 if url:
@@ -505,6 +524,7 @@ def pixabay_clip(query, dest):
                         with open(dest, "wb") as f:
                             for chunk in resp.iter_content(1 << 20):
                                 f.write(chunk)
+                    exclude.add(h.get("id"))
                     return True
     except Exception as e:
         log(f"Pixabay backup for '{query}' failed: {e}")
@@ -800,18 +820,21 @@ def write_captions(words, total, path):
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, "
         "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
         "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        "Style: Default,DejaVu Sans,86,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,"
-        "1,0,0,0,100,100,0,0,1,7,2,2,60,60,520,1\n\n"
+        "Style: Default,Liberation Sans Narrow,112,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,"
+        "1,0,0,0,100,100,1,0,1,8,3,2,60,60,520,1\n\n"
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
     lines = []
-    group = 3
+    group = 2
     for i in range(0, len(words), group):
         chunk = words[i:i + group]
         start = chunk[0][0]
         nxt = words[i + group][0] if i + group < len(words) else total
         end = max(chunk[-1][1], min(nxt, chunk[-1][1] + 0.4))
-        text = " ".join(w[2] for w in chunk).upper().replace("{", "").replace("}", "")
+        toks = [w[2].upper().replace("{", "").replace("}", "") for w in chunk]
+        key = max(range(len(toks)), key=lambda j: len(toks[j]))  # the longest word is shown in orange
+        toks[key] = "{\\c&H001E9BFF&}" + toks[key] + "{\\c&H00FFFFFF&}"
+        text = " ".join(toks)
         lines.append(f"Dialogue: 0,{ass_time(start)},{ass_time(end)},Default,,0,0,0,,{text}")
     path.write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
     return True
@@ -966,6 +989,10 @@ def clip_shot(clip, dur, out):
 
 def shot_or_clip(plate, clip, dur, out, mode="in"):
     """The AI video clip if there is one (and it works), otherwise the still picture with camera motion."""
+    if not plate:
+        if not (WORK / "grad.png").exists():
+            gradient_plate("grad")
+        plate = "grad.png"
     if clip:
         try:
             clip_shot(clip, dur, out)
@@ -992,16 +1019,30 @@ def open_block(dh, dm, assets, out):
     if t["lh"] < 1.0:
         raise RuntimeError("Opening too short")
     a, b, h = assets["a"], assets["b"], assets["h"]
-    shot(a["plate"], [{"spec": a["sprite"], "move": 1}] if a["sprite"] else [], t["la"], "o_a.mp4", "right")
-    shot(b["plate"], [{"spec": b["sprite"], "move": -1}] if b["sprite"] else [], t["lb"], "o_b.mp4", "left")
-    if a["sprite"] and b["sprite"]:
-        shot(h["plate"], [{"spec": a["sprite"], "move": 1, "alpha": 0.6, "dx": -130},
-                          {"spec": b["sprite"], "move": -1, "alpha": 0.6, "dx": 130}],
-             t["lm"], "o_m.mp4", "in")
-    else:
-        run(["ffmpeg", "-y", "-i", a["plate"], "-i", b["plate"], "-filter_complex",
-             "[0:v][1:v]blend=all_mode=average", "-frames:v", "1", "mix.png"], cwd=WORK)
-        still_clip("mix.png", t["lm"], "o_m.mp4", "in")
+    shot_or_clip(a["plate"], a.get("clip"), t["la"], "o_a.mp4", "right")
+    shot_or_clip(b["plate"], b.get("clip"), t["lb"], "o_b.mp4", "left")
+    mixed = False
+    if assets.get("mix"):
+        shot_or_clip(None, assets["mix"], t["lm"], "o_m.mp4", "in")
+        mixed = True
+    elif a.get("clip") and b.get("clip"):
+        try:
+            clip_shot(a["clip"], t["lm"], "m_a.mp4")
+            clip_shot(b["clip"], t["lm"], "m_b.mp4")
+            run(["ffmpeg", "-y", "-i", "m_a.mp4", "-i", "m_b.mp4", "-filter_complex",
+                 "[0:v][1:v]blend=all_mode=average,format=yuv420p", "-t", f"{t['lm']:.3f}", "-an",
+                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "o_m.mp4"], cwd=WORK)
+            mixed = True
+        except RuntimeError:
+            log("Footage overlap failed; using a simple fade instead.")
+    if not mixed:
+        pa, pb = a["plate"], b["plate"]
+        if pa and pb:
+            run(["ffmpeg", "-y", "-i", pa, "-i", pb, "-filter_complex",
+                 "[0:v][1:v]blend=all_mode=average", "-frames:v", "1", "mix.png"], cwd=WORK)
+            still_clip("mix.png", t["lm"], "o_m.mp4", "in")
+        else:
+            shot_or_clip(pa or pb, a.get("clip") or b.get("clip"), t["lm"], "o_m.mp4", "in")
     shot_or_clip(h["plate"], h.get("clip"), t["lh"], "o_h.mp4", "in")
     o1, o2, o3 = t["b"], t["mix"], t["reveal"]
     fc = (f"[0][1]xfade=transition=fade:duration={FADE}:offset={o1:.3f}[v1];"
@@ -1222,17 +1263,17 @@ CLIP_EXT = (".mp4", ".mov", ".webm", ".m4v", ".gif")
 IMAGE_EXT = (".jpg", ".jpeg", ".png", ".webp")
 
 
-def clip_prompts(look, place_name, place_desc):
-    """Three prompts to paste into an AI video website. Clip 1 is the reveal, 2 the stalk, 3 the finale."""
+def clip_prompts(look, place_name, place_desc, prey="a small animal", move="it pounces with lightning speed"):
+    """Three prompts to paste into an AI video website."""
     base = ("Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, "
             "real fur, skin and scale texture, vertical 9:16, no text, no people.")
     return [
         ("Clip 1 - the reveal (plays when the hybrid first appears)",
-         f"{base} A massive imaginary hybrid creature slowly emerges and steps toward the camera in "
-         f"{place_name}: {place_desc}. {look} It is menacing and dominant. The camera slowly pushes in."),
-        ("Clip 2 - the stalk (plays in the middle of the story)",
-         f"{base} The same hybrid creature stalks forward through {place_desc}, heavy footsteps, each step "
-         f"shifting its weight, the camera tracks beside it at ground level. {look}"),
+         f"{base} A massive imaginary hybrid creature steps out and walks toward the camera in "
+         f"{place_name}: {place_desc}. {look} It is menacing and dominant."),
+        ("Clip 2 - the signature move on its prey (plays in the middle of the story)",
+         f"{base} In {place_desc}, the same hybrid creature goes after {prey}. {move}. "
+         f"Fast, powerful movement, camera follows the action. {look}"),
         ("Clip 3 - the close-up (plays at the end)",
          f"{base} Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and "
          f"breathing heavily, wind and dust moving around it. {look}"),
@@ -1251,7 +1292,8 @@ def plan_main():
     story = ask_gemini(a, b, place_name)
     plan = {"key": key, "a": a, "b": b, "place": list(place), "story": story,
             "clips": [{"title": t, "prompt": p} for t, p in
-                      clip_prompts(story["hybrid_look"], place_name, place_desc)]}
+                      clip_prompts(story["hybrid_look"], place_name, place_desc,
+                         story.get("prey", "a small animal"), story.get("signature_move", "it pounces"))]}
     (PLAN_DIR / "plan.json").write_text(json.dumps(plan, indent=1))
     history.append(key)
     HISTORY_FILE.write_text(json.dumps(history, indent=1))
@@ -1260,7 +1302,7 @@ def plan_main():
              f"**Hybrid:** {story['creature_name']} ({a} + {b}) in {place_name}", "",
              "## Your job: make 3 short videos (5 seconds each), then upload them", "",
              "Use PixVerse or Kling (text-to-video). Pick **9:16 vertical**, **5 seconds**, **720p or better**.",
-             "Paste each prompt below. Save the results as `clip1.mp4`, `clip2.mp4`, `clip3.mp4`.", ""]
+             "Paste each prompt below (2 to 5 seconds is plenty). Save the results as `clip1.mp4`, `clip2.mp4`, `clip3.mp4`.", ""]
     for i, c in enumerate(plan["clips"], 1):
         lines += [f"### {c['title']}", "", "```", c["prompt"], "```", ""]
     lines += ["## The story that will be spoken", "", " ".join(x["text"] for x in story["sentences"]), ""]
@@ -1303,8 +1345,6 @@ def find_user_image():
 
 
 def build_main():
-    if not (CF_ACCOUNT and CF_TOKEN):
-        sys.exit("Missing secret: CLOUDFLARE_ACCOUNT_ID and/or CLOUDFLARE_API_TOKEN")
     if not GEMINI_API_KEY:
         sys.exit("Missing secret: GEMINI_API_KEY")
     plan_file = PLAN_DIR / "plan.json"
@@ -1336,42 +1376,47 @@ def build_main():
         words = even_words(narration, total)
     has_caps = write_captions(words, total, WORK / "captions.ass")
 
-    # --- still pictures (full frame, creature already inside the scene)
-    assets = {}
-    for nm, animal in (("a", a), ("b", b)):
-        ok = make_picture(f"port_{nm}", f"{STYLE} A {animal} in {place_desc}, close and clear, "
-                                        f"lit by {place_light}.")
-        if not ok:
-            if pixabay_clip(animal, str(WORK / f"{nm}.mp4")) and frame_from_clip(f"{nm}.mp4", f"{nm}_f.png"):
-                compose_vertical(f"{nm}_f.png", f"port_{nm}.png")
-            else:
-                gradient_plate(f"port_{nm}")
-        assets[nm] = {"plate": f"port_{nm}.png", "sprite": None}
-    hybrid_prompt = (f"{STYLE} An imaginary hybrid creature: {look} It is {FIERCE}. "
-                     f"It stands in {place_name}, shown clearly and dominantly, lit by {place_light}.")
-    mine = find_user_image()
-    if mine:
-        shutil.copy(WORK / mine, WORK / "port_h.png")
-    elif not make_picture("port_h", hybrid_prompt):
-        log("Hybrid picture failed. Using a blend of the two animals instead.")
-        run(["ffmpeg", "-y", "-i", assets["a"]["plate"], "-i", assets["b"]["plate"], "-filter_complex",
-             "[0:v][1:v]blend=all_mode=average", "-frames:v", "1", "port_h.png"], cwd=WORK)
-    assets["h"] = {"plate": "port_h.png", "sprite": None}
-    if clips:
+    # --- the animation: every creature is drawn and animated by the bot (flat, stylized look)
+    import toon
+    sa, sb = toon.animal_spec(a), toon.animal_spec(b)
+    sh = toon.hybrid_spec(a, b)
+    scenes = plan_scenes(sentences, total)
+    first = scenes[0]
+    t = open_times(first["hook"], first["morph"])
+    world = toon.World(place_name, 1)
+    log(f"Animating: {a} ({sa['kind']}), {b} ({sb['kind']}), hybrid ({sh['kind']}, traits: {', '.join(sorted(sh['traits']))})")
+    toon.walk_scene(str(WORK / "toon_a.mp4"), t["la"], world, sa, 1, (1.0, 1.1), cwd=WORK)
+    toon.walk_scene(str(WORK / "toon_b.mp4"), t["lb"], world, sb, -1, (1.0, 1.1), cwd=WORK)
+    toon.meet_scene(str(WORK / "toon_m.mp4"), t["lm"], world, sa, sb, cwd=WORK)
+    toon.walk_scene(str(WORK / "toon_h.mp4"), t["lh"], world, sh, 1, (0.95, 1.15), hybrid_roar_end=True, cwd=WORK)
+    assets = {"a": {"plate": None, "sprite": None, "clip": "toon_a.mp4"},
+              "b": {"plate": None, "sprite": None, "clip": "toon_b.mp4"},
+              "mix": "toon_m.mp4",
+              "h": {"plate": None, "sprite": None, "clip": "toon_h.mp4"}}
+    if clips:  # a clip you made yourself replaces the drawn reveal
         assets["h"]["clip"] = clips[0]
 
-    scenes = plan_scenes(sentences, total)
     middle = [i for i, sc in enumerate(scenes) if sc["kind"] == "scene"]
+    hunt_at = middle[len(middle) // 2] if middle else None
+    k = 0
     for i, sc in enumerate(scenes):
-        if sc["kind"] != "scene":
+        if sc["kind"] == "open":
             continue
-        name = f"plate_s{i}"
-        prompt = f"{STYLE} The creature: {look} Scene in {place_name}: {sc['image']}"
-        if not make_picture(name, prompt):
-            shutil.copy(WORK / assets["h"]["plate"], WORK / f"{name}.png")
-        sc["plate"] = f"{name}.png"
+        w = toon.World(place_name, i + 2)
+        out = str(WORK / f"toon_s{i}.mp4")
+        if sc["kind"] == "hold":
+            toon.walk_scene(out, sc["dur"], w, sh, 1, (1.0, 1.25), hybrid_roar_end=True, cwd=WORK)
+        elif i == hunt_at:
+            toon.hunt_scene(out, sc["dur"], w, sh, cwd=WORK)
+        else:
+            face = 1 if k % 2 == 0 else -1
+            toon.walk_scene(out, sc["dur"], w, sh, face, (1.0, 1.2 if k % 2 == 0 else 0.9),
+                            hybrid_roar_end=(k % 2 == 1), cwd=WORK)
+            k += 1
+        sc["clip"] = f"toon_s{i}.mp4"
+        sc["plate"] = None
     if len(clips) >= 2 and middle:
-        scenes[middle[len(middle) // 2]]["clip"] = clips[1]
+        scenes[hunt_at]["clip"] = clips[1]
     if len(clips) >= 3:
         scenes[-1]["clip"] = clips[2]
 
