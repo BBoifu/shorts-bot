@@ -1,45 +1,69 @@
 {
- "series": "folklore",
- "key": "folk:bull:Odiyan",
- "episode": 2,
+ "series": "hybrid",
+ "key": "crab+wolf@a mountain peak above the clouds",
+ "a": "crab",
+ "b": "wolf",
+ "place": [
+  "a mountain peak above the clouds",
+  "a snowy rocky summit above a sea of clouds",
+  "mountain wind",
+  "crisp cold sunlight",
+  "cool"
+ ],
  "story": {
-  "legend_name": "Odiyan",
-  "region": "Kerala, India",
-  "animal": "bull",
-  "title": "The Shapeshifting Shadow of Kerala",
+  "title": "The Mountain Phantom That Crushes Bones",
+  "creature_name": "Cragwolf",
+  "prey": "cloud goat",
+  "signature_move": "It corners the cloud goat against a cliff and snaps its heavy armored claws while howling to disorient it.",
+  "hybrid_look": "A massive, muscular apex predator with the thick gray fur and fangs of a dire wolf fused seamlessly with a shimmering cobalt exoskeleton, jagged crushing claws, and a heavily armored shell covered in jagged battle scars and glowing yellow eyes.",
   "sentences": [
    {
-    "text": "If a silent shadow follows you at night in Kerala... don't look back.",
-    "beat": "walk"
+    "text": "This beast shatters solid stone just to drag you into the abyss.",
+    "image": "jagged granite peaks piercing through a blinding sea of white clouds under a dark sky"
    },
    {
-    "text": "The old tales say sinister sorcerers once prowled the dark palm groves.",
-    "beat": "walk"
+    "text": "Meet the imaginary cragwolf, blending the razor teeth of a wolf with the crushing shell and lateral walk of a crab.",
+    "image": "steep vertical cliff faces swept by freezing winds high above the storm layer"
    },
    {
-    "text": "Legends claim these shadowy figures could twist their bones into the shape of a massive beast.",
-    "beat": "stalk"
+    "text": "It stalks the thin, icy air where ordinary predators suffocate from the lack of oxygen.",
+    "image": "endless jagged snowfields glittering dangerously under harsh high altitude sunlight"
    },
    {
-    "text": "Travelers walking home late would hear heavy, unnatural footsteps pacing just behind them in the fog.",
-    "beat": "stalk"
+    "text": "Using gills adapted to trap moisture, it breathes easily in the dry mountain atmosphere.",
+    "image": "deep shadowy chasms filled with swirling mist and freezing blue ice pillars"
    },
    {
-    "text": "Suddenly, a terrifying roar would shatter the midnight silence as the creature charged.",
-    "beat": "attack"
+    "text": "It corners the cloud goat against a cliff and snaps its heavy armored claws while howling to disorient it.",
+    "image": "narrow rocky ledges hanging precariously over a dizzying drop into nothingness"
    },
    {
-    "text": "By morning, only a broken lantern and a disturbed trail of red clay remained on the lonely path.",
-    "beat": "aftermath"
+    "text": "Its heavy exoskeleton anchors it firmly against sudden hurricane force winds that sweep the summit.",
+    "image": "turbulent gray storm clouds churning violently against sheer vertical mountain walls"
    },
    {
-    "text": "The villagers knew better than to search the dark woods for whoever vanished into the night.",
-    "beat": "aftermath"
+    "text": "Yet this apex hunter completely freezes if you shine a bright light directly into its compound eyes.",
+    "image": "dark rocky overhangs covered in glittering frost under the pale morning moon"
    },
    {
-    "text": "Would you turn around if heavy footsteps started chasing you?",
-    "beat": "aftermath"
+    "text": "What should I combine next? Tell me in the comments.",
+    "image": "vast panoramic view of towering mountain ranges stretching endlessly toward the horizon"
    }
   ]
- }
+ },
+ "episode": 5,
+ "clips": [
+  {
+   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in a mountain peak above the clouds: a snowy rocky summit above a sea of clouds. A massive, muscular apex predator with the thick gray fur and fangs of a dire wolf fused seamlessly with a shimmering cobalt exoskeleton, jagged crushing claws, and a heavily armored shell covered in jagged battle scars and glowing yellow eyes. It is menacing and dominant."
+  },
+  {
+   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In a snowy rocky summit above a sea of clouds, the same hybrid creature goes after cloud goat. It corners the cloud goat against a cliff and snaps its heavy armored claws while howling to disorient it.. Fast, powerful movement, camera follows the action. A massive, muscular apex predator with the thick gray fur and fangs of a dire wolf fused seamlessly with a shimmering cobalt exoskeleton, jagged crushing claws, and a heavily armored shell covered in jagged battle scars and glowing yellow eyes."
+  },
+  {
+   "title": "Clip 3 - the close-up (plays at the end)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A massive, muscular apex predator with the thick gray fur and fangs of a dire wolf fused seamlessly with a shimmering cobalt exoskeleton, jagged crushing claws, and a heavily armored shell covered in jagged battle scars and glowing yellow eyes."
+  }
+ ]
 }
