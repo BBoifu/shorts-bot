@@ -242,11 +242,11 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
 }}
 
 Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken English, no emojis):
-- Sentence 1: a gripping hook question that makes clear the creature is imaginary.
-- Sentence 2: names the creature and says what it inherits from the {a} and from the {b}.
+- Sentence 1: a short, shocking hook (under 14 words) about the most terrifying thing this creature does.
+- Sentence 2: names the creature, says it is imaginary, and says what it inherits from the {a} and from the {b}.
 - One middle sentence describes the signature move on its prey.
 - Middle sentences: each one a specific danger of {place_name} and the clever trait that solves it.
-- Last sentence: a surprising weakness as a twist, then ask viewers one question to answer in the comments.
+- Last sentence: a surprising weakness as a twist, then end with exactly these words: What should I combine next? Tell me in the comments.
 - Use real science about the parent animals where possible. Do not present false facts as real.
 - "image" is a vivid 10 to 20 word description of the BACKGROUND ONLY for that sentence: the place
   and the danger (for example "a howling sandstorm swallowing red dunes"). Never mention any animal
@@ -717,6 +717,11 @@ def synth(kind, dest):
         fc = (f"{L}='0.35*sin(2*PI*(220*t+500*t*t))':d=1.4:s=44100[a];"
               "anoisesrc=d=1.4:c=pink:a=0.5,highpass=f=800[n];[a][n]amix=inputs=2:normalize=0,"
               "afade=in:d=1.2,afade=out:st=1.3:d=0.1,alimiter=limit=0.9:level=0")
+    elif kind == "eerie":
+        fc = (f"{L}='0.32*sin(2*PI*(430*t-60*t*t))+0.3*sin(2*PI*(455*t-65*t*t))+0.22*sin(2*PI*95*t)':d=1.8:s=44100[a];"
+              "anoisesrc=d=1.8:c=pink:a=0.25,bandpass=f=1800:w=700[n];[a][n]amix=inputs=2:normalize=0,"
+              "tremolo=f=6:d=0.5,aecho=0.8:0.8:90:0.4,afade=in:d=0.25,afade=out:st=1.1:d=0.7,"
+              "alimiter=limit=0.9:level=0")
     elif kind == "ambient":
         fc = ("anoisesrc=d=12:c=brown:a=0.6,lowpass=f=700,tremolo=f=0.25:d=0.6,"
               "afade=in:d=1,afade=out:st=11:d=1")
@@ -748,7 +753,7 @@ def make_scream(call_a, call_b, dest):
 def prepare_sounds(a, b, ambient_query):
     """Returns a dict of sound file names inside WORK."""
     s = {}
-    for kind in ("whoosh", "boom", "riser", "growl"):
+    for kind in ("whoosh", "boom", "riser", "growl", "eerie"):
         synth(kind, f"{kind}.wav")
         s[kind] = f"{kind}.wav"
     queries = lambda x: [f"{x} sound", f"{x} call", f"{x} roar"]
@@ -811,7 +816,7 @@ def even_words(text, total):
     return out
 
 
-def write_captions(words, total, path):
+def write_captions(words, total, path, card=None):
     if not words:
         return False
     header = (
@@ -821,7 +826,9 @@ def write_captions(words, total, path):
         "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
         "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
         "Style: Default,Liberation Sans Narrow,112,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,"
-        "1,0,0,0,100,100,1,0,1,8,3,2,60,60,520,1\n\n"
+        "1,0,0,0,100,100,1,0,1,8,3,2,60,60,520,1\n"
+        "Style: Card,Liberation Sans Narrow,62,&H00D9D9D9,&H000000FF,&H00000000,&H00000000,"
+        "1,0,0,0,100,100,10,0,1,3,0,8,60,60,330,1\n\n"
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
     lines = []
@@ -836,6 +843,8 @@ def write_captions(words, total, path):
         toks[key] = "{\\c&H001E9BFF&}" + toks[key] + "{\\c&H00FFFFFF&}"
         text = " ".join(toks)
         lines.append(f"Dialogue: 0,{ass_time(start)},{ass_time(end)},Default,,0,0,0,,{text}")
+    if card:
+        lines.append(f"Dialogue: 1,{ass_time(1.5)},{ass_time(3.9)},Card,,0,0,0,,{{\\fad(300,450)}}{card}")
     path.write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
     return True
 
@@ -1108,12 +1117,13 @@ def build_video(scenes, assets, audio_name, captions_name, out_path):
          "-c:a", "aac", "-b:a", "160k", "-shortest", "-t", "59", str(out_path)], cwd=WORK)
 
 
-def sound_events(scenes, sounds):
+def sound_events(scenes, sounds, hunt=None):
     """When each sound effect plays, in seconds from the start of the video."""
     first = scenes[0]
     t = open_times(first["hook"], first["morph"])
     ev = [
-        {"file": sounds["call_a"], "at": 0.4, "vol": 0.8, "max": 3.0},
+        {"file": sounds["scream"], "at": 0.05, "vol": 0.8, "max": 1.4},      # scary opening flash
+        {"file": sounds["call_a"], "at": 1.5, "vol": 0.8, "max": 3.0},
         {"file": sounds["whoosh"], "at": t["b"] - 0.1, "vol": 0.45},
         {"file": sounds["call_b"], "at": t["b"] + 0.15, "vol": 0.8, "max": 3.0},
         {"file": sounds["whoosh"], "at": t["mix"] - 0.1, "vol": 0.45},
@@ -1124,9 +1134,15 @@ def sound_events(scenes, sounds):
     at = first["dur"]
     for sc in scenes[1:]:
         ev.append({"file": sounds["whoosh"], "at": at - 0.1, "vol": 0.3})
+        if sc.get("hunt") and hunt:
+            ev.append({"file": sounds["eerie"], "at": at + hunt["zoom_at"] - 0.05, "vol": 0.9})
+            ev.append({"file": sounds["boom"], "at": at + hunt["zoom_at"], "vol": 0.6})
+            ev.append({"file": sounds["growl"], "at": at + hunt["lunge_at"] - 0.1, "vol": 0.8})
+            ev.append({"file": sounds["boom"], "at": at + hunt["lunge_at"] + 0.25, "vol": 0.7})
         at += sc["dur"]
-    # a last growl on the twist ending
+    # closing close-up of the face: a last growl and a quiet eerie tone, then the video loops
     ev.append({"file": sounds["growl"], "at": max(at - scenes[-1]["dur"] + 0.3, 0), "vol": 0.6})
+    ev.append({"file": sounds["eerie"], "at": max(at - 1.4, 0), "vol": 0.5})
     return ev
 
 
@@ -1236,10 +1252,11 @@ def main():
 
     title = story["title"][:80].rstrip() + " #Shorts"
     description = (
-        f"{story['creature_name']}: an imaginary animal hybrid ({a} + {b}) in {place_name}.\n"
+        f"Impossible Animals #{plan.get('episode', 1)}: {story['creature_name']}, an imaginary animal hybrid ({a} + {b}) in {place_name}.\n"
         "This is a fictional story made for fun and the creature is not real. "
         "The images and animation are AI-generated, the narration uses a synthetic voice, "
         "and the sound effects are synthesized or CC0.\n\n"
+        "Comment which two animals I should combine next!\n\n"
         "#shorts #animals #whatif #speculativebiology"
     )
     tags = ["shorts", "animals", "what if", "hybrid animals", "speculative biology", a, b]
@@ -1280,39 +1297,203 @@ def clip_prompts(look, place_name, place_desc, prey="a small animal", move="it p
     ]
 
 
+
+# ---------------------------------------------------------------- series 2: dark folklore
+FOLK_ANIMALS = ["bull", "wolf", "bear", "fox", "snake", "owl", "lion", "cheetah", "crocodile", "bat"]
+FOLK_REGIONS = ["Kerala, India", "Scotland", "Japan", "Mexico", "Romania", "Nigeria", "the Philippines",
+                "Iceland", "Brazil", "Russia", "Ireland", "Turkey", "Indonesia", "Greece", "Korea"]
+FOLK_PLACE = ("a village at night", "a dark village path under a full moon", "night crickets ambience",
+              "cold blue moonlight with a warm lantern glow", "cool")
+
+
+def ask_folklore(history):
+    region = random.choice(FOLK_REGIONS)
+    used = [k.split(":", 2)[2] for k in history if k.startswith("folk:") and k.count(":") >= 2]
+    prompt = f"""You write narration for 40-second YouTube Shorts that retell DARK FOLKLORE: old legends about
+people who turn into animals or creatures that follow travellers at night.
+
+Pick one real, well-known legend of shapeshifting or a night creature from: {region}.
+Do not reuse these legends: {used or "none yet"}.
+
+Return ONLY valid JSON, no markdown, in exactly this shape:
+{{
+  "legend_name": "the name of the legend or creature, 1 to 3 words",
+  "region": "short place name, for example Kerala, India",
+  "animal": "ONE word from this list that best matches the creature: {", ".join(FOLK_ANIMALS)}",
+  "title": "catchy title under 70 characters, no hashtags",
+  "sentences": [{{"text": "one spoken sentence", "image": "the setting"}}]
+}}
+
+Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken English, no emojis):
+- Sentence 1: a gripping hook in the form "If <something> follows you at night in <place>... don't look back."
+- Retell the legend as "the old tales say". Never present it as true or as something that really happens.
+- Be respectful of the culture it comes from. Do not mock any people, religion or community.
+- Spooky, not gory. No violence against people described in detail.
+- The second to last sentence builds to the moment of danger.
+- Last sentence: end with a question for viewers, such as "Would you turn around?"
+"""
+    url = f"{API_BASE}/models/{GEMINI_MODEL}:generateContent"
+    body = {"contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 1.0, "responseMimeType": "application/json"}}
+    last = None
+    for attempt in range(3):
+        try:
+            r = requests.post(url, params={"key": GEMINI_API_KEY}, json=body, timeout=90)
+            r.raise_for_status()
+            text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+            text = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.M).strip()
+            data = json.loads(text)
+            sents = [s for s in data["sentences"] if isinstance(s, dict) and str(s.get("text", "")).strip()]
+            assert data["title"] and data["legend_name"] and len(sents) >= 5
+            for s in sents:
+                s["text"] = s["text"].strip()
+            data["sentences"] = sents[:9]
+            if data.get("animal") not in FOLK_ANIMALS:
+                data["animal"] = "wolf"
+            data["region"] = str(data.get("region") or region).strip()
+            return data
+        except Exception as e:
+            last = e
+            log(f"Gemini folklore attempt {attempt + 1} failed: {e}")
+    raise RuntimeError(f"Gemini failed 3 times: {last}")
+
+
+def folk_sound_events(durs, sounds):
+    ev = [{"file": sounds["eerie"], "at": 0.05, "vol": 0.9},
+          {"file": sounds["scream"], "at": 0.1, "vol": 0.6, "max": 1.2}]
+    at = 0.0
+    for i, d in enumerate(durs):
+        if i:
+            ev.append({"file": sounds["whoosh"], "at": at - 0.1, "vol": 0.3})
+        if i >= len(durs) - 3:
+            ev.append({"file": sounds["growl"], "at": at + 0.4, "vol": 0.35 + 0.15 * (i - (len(durs) - 3))})
+        at += d
+    ev.append({"file": sounds["boom"], "at": max(at - 1.6, 0), "vol": 0.8})
+    ev.append({"file": sounds["eerie"], "at": max(at - 1.6, 0), "vol": 0.8})
+    ev.append({"file": sounds["scream"], "at": max(at - 1.5, 0), "vol": 0.8, "max": 1.6})
+    return ev
+
+
+def build_folk_main(plan):
+    import toon
+    story = plan["story"]
+    sentences = story["sentences"]
+    animal = story["animal"]
+    region = story["region"]
+    episode = plan.get("episode", 1)
+    narration = " ".join(s["text"] for s in sentences)
+    place_name, place_desc, ambient_query, place_light, place_grade = FOLK_PLACE
+    LOOK["grade"] = GRADES.get(place_grade, "null")
+    WORK.mkdir(exist_ok=True)
+    OUT.mkdir(exist_ok=True)
+    log(f"Building folklore: {story['legend_name']} ({animal}) from {region}")
+    log(f"Title: {story['title']}")
+
+    words = None
+    audio_name = "voice.wav"
+    if not gemini_tts(narration, WORK / "voice.wav"):
+        log("Falling back to the basic free voice.")
+        audio_name = "voice.mp3"
+        words = asyncio.run(edge_voice(narration, str(WORK / "voice.mp3")))
+    total = audio_seconds(WORK / audio_name)
+    if not words:
+        words = even_words(narration, total)
+    has_caps = write_captions(words, total, WORK / "captions.ass",
+                              card=f"{region.upper()}  \u00b7  DARK FOLKLORE #{episode}")
+
+    creature = toon.folk_creature(animal)
+    chars = [max(len(s["text"]), 1) for s in sentences]
+    durs = [total * c / sum(chars) for c in chars]
+    durs[-1] += 0.3
+    n = len(durs)
+    scenes = []
+    for i, dur in enumerate(durs):
+        w = toon.World(place_name, 5 + (i % 3))
+        out = str(WORK / f"toon_s{i}.mp4")
+        g0 = 1100 - 1000 * i / n
+        g1 = 1100 - 1000 * (i + 1) / n
+        intro = (creature, min(1.4, dur * 0.5)) if i == 0 else None
+        outro = (creature, min(1.6, dur * 0.6)) if i == n - 1 else None
+        toon.folk_scene(out, dur, w, creature, g0, g1, intro=intro, outro=outro,
+                        roar_end=(i == n - 2), cwd=WORK)
+        scenes.append({"kind": "hold" if i == n - 1 else "scene", "dur": dur,
+                       "clip": f"toon_s{i}.mp4", "plate": None})
+    sounds = prepare_sounds(animal, animal, ambient_query)
+    build_audio(audio_name, total, folk_sound_events(durs, sounds), sounds["ambient"], "mix.wav")
+    out_path = OUT / "short.mp4"
+    build_video(scenes, {"h": {"plate": None, "sprite": None, "clip": None}}, "mix.wav",
+                "captions.ass" if has_caps else None, out_path)
+    log(f"Video ready: {out_path} ({total:.1f}s of speech)")
+
+    title = story["title"][:80].rstrip() + " #Shorts"
+    description = (
+        f"{story['legend_name']}: a dark folk legend from {region}, retold for fun.\n"
+        "The old tales say... this is folklore, not fact. The animation is drawn by software, "
+        "the narration uses a synthetic voice, and the sound effects are synthesized or CC0.\n\n"
+        "Would you turn around? Tell me in the comments, and tell me which legend I should tell next!\n\n"
+        "#shorts #folklore #darkfolklore #legend #scarystories"
+    )
+    tags = ["shorts", "folklore", "dark folklore", "legend", "scary stories", region, story["legend_name"]]
+    (OUT / "meta.json").write_text(json.dumps(
+        {"title": title, "description": description, "narration": narration, "series": "folklore"}, indent=2))
+    if DRY_RUN or not os.environ.get("YT_REFRESH_TOKEN"):
+        log("Not uploading (dry run, or YouTube is not set up yet). Download the video from the run's Artifacts.")
+        return
+    video_id = upload_to_youtube(out_path, title, description, tags)
+    log(f"Uploaded as '{PRIVACY}': https://youtube.com/shorts/{video_id}")
+
+
 def plan_main():
     if not GEMINI_API_KEY:
         sys.exit("Missing secret: GEMINI_API_KEY")
     OUT.mkdir(exist_ok=True)
     PLAN_DIR.mkdir(exist_ok=True)
     history = load_history()
-    key, a, b, place = pick_idea(history)
-    place_name, place_desc = place[0], place[1]
-    log(f"Idea: {a} + {b} in {place_name}")
-    story = ask_gemini(a, b, place_name)
-    plan = {"key": key, "a": a, "b": b, "place": list(place), "story": story,
-            "clips": [{"title": t, "prompt": p} for t, p in
-                      clip_prompts(story["hybrid_look"], place_name, place_desc,
-                         story.get("prey", "a small animal"), story.get("signature_move", "it pounces"))]}
+    # the two series take turns: hybrid animals, then dark folklore, and so on
+    series = "folklore" if len(history) % 2 == 1 else "hybrid"
+    episode = 1 + sum(1 for k in history if k.startswith("folk:") == (series == "folklore"))
+    plan, lines = None, []
+    if series == "folklore":
+        try:
+            story = ask_folklore(history)
+            key = f"folk:{story['animal']}:{story['legend_name']}"
+            plan = {"series": "folklore", "key": key, "episode": episode, "story": story}
+            log(f"Folklore #{episode}: {story['legend_name']} ({story['region']})")
+            lines = [f"# {story['title']}", "", f"**Dark Folklore #{episode}:** {story['legend_name']} ({story['region']})", "",
+                     "No clips are needed for this one. The Build step draws the whole animation.", "",
+                     "## The story that will be spoken", "", " ".join(x["text"] for x in story["sentences"]), ""]
+        except RuntimeError as e:
+            log(f"Folklore story failed ({e}); making a hybrid story instead.")
+            series = "hybrid"
+            episode = 1 + sum(1 for k in history if not k.startswith("folk:"))
+    if series == "hybrid":
+        key, a, b, place = pick_idea(history)
+        place_name, place_desc = place[0], place[1]
+        log(f"Hybrid #{episode}: {a} + {b} in {place_name}")
+        story = ask_gemini(a, b, place_name)
+        plan = {"series": "hybrid", "key": key, "a": a, "b": b, "place": list(place), "story": story,
+                "episode": episode,
+                "clips": [{"title": t, "prompt": p} for t, p in
+                          clip_prompts(story["hybrid_look"], place_name, place_desc,
+                                       story.get("prey", "a small animal"), story.get("signature_move", "it pounces"))]}
+        lines = [f"# {story['title']}", "",
+                 f"**Impossible Animals #{episode}:** {story['creature_name']} ({a} + {b}) in {place_name}", "",
+                 "## Optional: your own AI video clips (the video is made without them)", "",
+                 "Use PixVerse or Kling (text-to-video), **9:16**, **5 seconds**. Save the results as "
+                 "`clip1.mp4`, `clip2.mp4`, `clip3.mp4` and upload them to the `clips` folder.", ""]
+        for i, c in enumerate(plan["clips"], 1):
+            lines += [f"### {c['title']}", "", "```", c["prompt"], "```", ""]
+        lines += ["## The story that will be spoken", "", " ".join(x["text"] for x in story["sentences"]), ""]
     (PLAN_DIR / "plan.json").write_text(json.dumps(plan, indent=1))
-    history.append(key)
+    history.append(plan["key"])
     HISTORY_FILE.write_text(json.dumps(history, indent=1))
-
-    lines = [f"# {story['title']}", "",
-             f"**Hybrid:** {story['creature_name']} ({a} + {b}) in {place_name}", "",
-             "## Your job: make 3 short videos (5 seconds each), then upload them", "",
-             "Use PixVerse or Kling (text-to-video). Pick **9:16 vertical**, **5 seconds**, **720p or better**.",
-             "Paste each prompt below (2 to 5 seconds is plenty). Save the results as `clip1.mp4`, `clip2.mp4`, `clip3.mp4`.", ""]
-    for i, c in enumerate(plan["clips"], 1):
-        lines += [f"### {c['title']}", "", "```", c["prompt"], "```", ""]
-    lines += ["## The story that will be spoken", "", " ".join(x["text"] for x in story["sentences"]), ""]
     md = "\n".join(lines)
     (OUT / "PROMPTS.md").write_text(md)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a") as f:
             f.write(md)
-    log("Plan saved. Open the run page and read the prompts in the Summary.")
+    log("Plan saved. Open the run page and read the summary.")
 
 
 def find_clips():
@@ -1351,6 +1532,8 @@ def build_main():
     if not plan_file.exists():
         sys.exit("No plan found. Run the 'Plan' workflow first.")
     plan = json.loads(plan_file.read_text())
+    if plan.get("series") == "folklore":
+        return build_folk_main(plan)
     WORK.mkdir(exist_ok=True)
     OUT.mkdir(exist_ok=True)
     key, a, b = plan["key"], plan["a"], plan["b"]
@@ -1374,7 +1557,8 @@ def build_main():
     total = audio_seconds(WORK / audio_name)
     if not words:
         words = even_words(narration, total)
-    has_caps = write_captions(words, total, WORK / "captions.ass")
+    has_caps = write_captions(words, total, WORK / "captions.ass",
+                              card=f"{place_name.upper()}  \u00b7  IMPOSSIBLE ANIMALS #{plan.get('episode', 1)}")
 
     # --- the animation: every creature is drawn and animated by the bot (flat, stylized look)
     import toon
@@ -1385,7 +1569,7 @@ def build_main():
     t = open_times(first["hook"], first["morph"])
     world = toon.World(place_name, 1)
     log(f"Animating: {a} ({sa['kind']}), {b} ({sb['kind']}), hybrid ({sh['kind']}, traits: {', '.join(sorted(sh['traits']))})")
-    toon.walk_scene(str(WORK / "toon_a.mp4"), t["la"], world, sa, 1, (1.0, 1.1), cwd=WORK)
+    toon.walk_scene(str(WORK / "toon_a.mp4"), t["la"], world, sa, 1, (1.0, 1.1), cwd=WORK, intro=(sh, 1.3))
     toon.walk_scene(str(WORK / "toon_b.mp4"), t["lb"], world, sb, -1, (1.0, 1.1), cwd=WORK)
     toon.meet_scene(str(WORK / "toon_m.mp4"), t["lm"], world, sa, sb, cwd=WORK)
     toon.walk_scene(str(WORK / "toon_h.mp4"), t["lh"], world, sh, 1, (0.95, 1.15), hybrid_roar_end=True, cwd=WORK)
@@ -1398,6 +1582,7 @@ def build_main():
 
     middle = [i for i, sc in enumerate(scenes) if sc["kind"] == "scene"]
     hunt_at = middle[len(middle) // 2] if middle else None
+    hunt_info = None
     k = 0
     for i, sc in enumerate(scenes):
         if sc["kind"] == "open":
@@ -1405,13 +1590,18 @@ def build_main():
         w = toon.World(place_name, i + 2)
         out = str(WORK / f"toon_s{i}.mp4")
         if sc["kind"] == "hold":
-            toon.walk_scene(out, sc["dur"], w, sh, 1, (1.0, 1.25), hybrid_roar_end=True, cwd=WORK)
+            toon.walk_scene(out, sc["dur"], w, sh, 1, (1.0, 1.15), cwd=WORK, outro=(sh, min(1.5, sc["dur"] * 0.6)))
         elif i == hunt_at:
-            toon.hunt_scene(out, sc["dur"], w, sh, cwd=WORK)
+            hunt_info = toon.hunt_scene(out, sc["dur"], w, sh, story.get("prey", ""), cwd=WORK)
+            sc["hunt"] = True
         else:
-            face = 1 if k % 2 == 0 else -1
-            toon.walk_scene(out, sc["dur"], w, sh, face, (1.0, 1.2 if k % 2 == 0 else 0.9),
-                            hybrid_roar_end=(k % 2 == 1), cwd=WORK)
+            shot_type = k % 3
+            if shot_type == 0:
+                toon.walk_scene(out, sc["dur"], w, sh, 1, (1.0, 1.2), cwd=WORK)
+            elif shot_type == 1:
+                toon.walk_scene(out, sc["dur"], w, sh, -1, (0.62, 0.7), hybrid_roar_end=True, cwd=WORK)
+            else:
+                toon.face_scene(out, sc["dur"], w, sh, cwd=WORK)
             k += 1
         sc["clip"] = f"toon_s{i}.mp4"
         sc["plate"] = None
@@ -1422,7 +1612,7 @@ def build_main():
 
     # --- sound
     sounds = prepare_sounds(a, b, ambient_query)
-    events = sound_events(scenes, sounds)
+    events = sound_events(scenes, sounds, hunt_info)
     build_audio(audio_name, total, events, sounds["ambient"], "mix.wav")
 
     out_path = OUT / "short.mp4"
@@ -1434,8 +1624,9 @@ def build_main():
     description = (
         f"{story['creature_name']}: an imaginary animal hybrid ({a} + {b}) in {place_name}.\n"
         "This is a fictional story made for fun and the creature is not real. "
-        "The images and animation are AI-generated, the narration uses a synthetic voice, "
+        "The animation is drawn by software, the narration uses a synthetic voice, "
         "and the sound effects are synthesized or CC0.\n\n"
+        "Comment which two animals I should combine next!\n\n"
         "#shorts #animals #whatif #speculativebiology"
     )
     tags = ["shorts", "animals", "what if", "hybrid animals", "speculative biology", a, b]
