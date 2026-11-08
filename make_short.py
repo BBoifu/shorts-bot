@@ -1321,7 +1321,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
   "region": "short place name, for example Kerala, India",
   "animal": "ONE word from this list that best matches the creature: {", ".join(FOLK_ANIMALS)}",
   "title": "catchy title under 70 characters, no hashtags",
-  "sentences": [{{"text": "one spoken sentence", "beat": "walk or stalk or attack or aftermath"}}]
+  "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below"}}]
 }}
 
 Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken English, no emojis):
@@ -1331,8 +1331,15 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
 - Horror is welcome: dread, screams, attacks and their terrifying aftermath. Show harm through implication and
   aftermath (a scream cut off, a dropped lantern, blood on the path, a smear where someone was dragged away).
   Never describe injuries or body parts in explicit detail, and never name real people as victims.
-- Every sentence gets a "beat": "walk" (travelling, unease), "stalk" (the creature closes in), "attack" (the creature strikes),
-  "aftermath" (the horrible quiet after). Use at least one "attack" followed by an "aftermath".
+- Every sentence gets a "beat": the ONE scene word that best shows what that sentence says. Pick from:
+  "walk" (a person walks through the night), "footprints" (footsteps are mentioned: a person's prints appear and huge
+  clawed prints follow inside them), "home" (a person goes to or reaches their house), "village" (the sleeping village,
+  lights going out), "window" (something watches or scratches at a window), "door" (something pounds at a locked door),
+  "transform" (a person changes into the creature), "chase" (someone runs, the creature gives chase), "hide" (someone
+  hides while it passes), "mob" (villagers with torches hunt it), "stalk" (the creature closes in), "attack" (it strikes),
+  "aftermath" (the horrible quiet after).
+  Use at least 5 different scene words, never the same one twice in a row, and use "attack" once, followed by "aftermath".
+  The first sentence must be "walk"; the last should be "stalk" or "aftermath".
 - The second to last sentence builds to the moment of danger.
 - Last sentence: end with a question for viewers, such as "Would you turn around?"
 """
@@ -1366,33 +1373,57 @@ ATTACK_WORDS = ("attack", "lunge", "pounc", "tore", "torn", "bit ", "bite", "blo
                 "scream", "slash", "mauled", "ripped", "snatched", "never seen again", "claws")
 
 
+SCENE_FUNCS = ("footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob")
+SCENES = ("walk", "footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
+          "stalk", "attack", "aftermath")
+SCENE_WORDS = (("footprints", ("footstep", "footprint", "steps behind", "tracks")),
+               ("home", ("home", "house", "hut", "cottage", "doorstep")),
+               ("village", ("village", "townsfolk", "town ")),
+               ("window", ("window", "glass", "shutter")),
+               ("door", ("door", "knock", "locked")),
+               ("transform", ("turn into", "turns into", "transform", "shape", "becomes a", "changes into")),
+               ("chase", ("run", "ran ", "flee", "chase", "race")),
+               ("hide", ("hide", "hid ", "hiding", "silent", "holds his breath", "holds her breath")),
+               ("mob", ("torch", "villagers", "hunt")))
+
+
 def assign_beats(sentences):
-    """What happens in each scene: walk, stalk, attack or aftermath. Gemini suggests it; we make sure
-    there is always at least one attack and a quiet, bloody aftermath after it."""
     n = len(sentences)
-    valid = {"walk", "stalk", "attack", "aftermath"}
     beats = []
     for i, s in enumerate(sentences):
         b = s.get("beat")
-        if b not in valid:
-            low = s["text"].lower()
-            b = "attack" if any(w in low for w in ATTACK_WORDS) and i >= 2 else ("stalk" if i >= n - 4 else "walk")
+        low = s["text"].lower()
+        if b not in SCENES:
+            b = None
+            if any(w in low for w in ATTACK_WORDS) and i >= 2:
+                b = "attack"
+            else:
+                for name, words in SCENE_WORDS:
+                    if any(w in low for w in words):
+                        b = name
+                        break
+            if b is None:
+                b = "stalk" if i >= n - 4 else "walk"
         beats.append(b)
     beats[0] = "walk"
     if n >= 5 and "attack" not in beats[2:n - 1]:
         beats[n - 3] = "attack"
-    if beats[-1] == "attack":
-        beats[-1] = "aftermath"
+    if beats[-1] in ("attack",) or beats[-1] not in ("stalk", "aftermath", "walk"):
+        beats[-1] = "aftermath" if beats[-2] == "attack" else "stalk"
     for i in range(1, n):
         if beats[i] == "attack" and beats[i - 1] == "attack":
             beats[i] = "aftermath"  # one attack at a time
     for i in range(n - 1):
         if beats[i] == "attack" and beats[i + 1] != "aftermath":
             beats[i + 1] = "aftermath"
+    for i in range(1, n - 1):  # never the same scene twice in a row
+        if beats[i] == beats[i - 1] and beats[i] not in ("attack",):
+            beats[i] = "stalk" if beats[i] != "stalk" else "walk"
     return beats
 
 
-def folk_sound_events(durs, beats, impacts, sounds):
+def folk_sound_events(durs, beats, impacts, sounds, hits=None):
+    hits = hits or {}
     ev = [{"file": sounds["eerie"], "at": 0.05, "vol": 0.9},
           {"file": sounds["scream"], "at": 0.1, "vol": 0.6, "max": 1.2}]
     at = 0.0
@@ -1409,6 +1440,17 @@ def folk_sound_events(durs, beats, impacts, sounds):
             ev.append({"file": sounds["growl"], "at": at + 0.3, "vol": 0.4})
         elif beats[i] == "aftermath":
             ev.append({"file": sounds["growl"], "at": at + 0.5, "vol": 0.3})
+        elif beats[i] in ("footprints", "door", "village", "mob", "window", "hide"):
+            for h in hits.get(i, [])[:6]:
+                ev.append({"file": sounds["boom"], "at": at + h, "vol": 0.45})
+            if beats[i] in ("window", "door"):
+                ev.append({"file": sounds["growl"], "at": at + d * 0.3, "vol": 0.45})
+        elif beats[i] == "transform":
+            ev.append({"file": sounds["growl"], "at": at + d * 0.45, "vol": 0.8})
+            ev.append({"file": sounds["scream"], "at": at + d * 0.5, "vol": 0.6, "max": 1.4})
+        elif beats[i] == "chase":
+            ev.append({"file": sounds["growl"], "at": at + 0.2, "vol": 0.5})
+            ev.append({"file": sounds["whoosh"], "at": at + d * 0.5, "vol": 0.4})
         at += d
     ev.append({"file": sounds["eerie"], "at": max(at - 1.6, 0), "vol": 0.8})
     ev.append({"file": sounds["scream"], "at": max(at - 1.5, 0), "vol": 0.8, "max": 1.6})
@@ -1449,7 +1491,7 @@ def build_folk_main(plan):
     n = len(durs)
     beats = assign_beats(sentences)
     log("Beats: " + ", ".join(beats))
-    scenes, impacts, blooded = [], {}, False
+    scenes, impacts, blooded, hits = [], {}, False, {}
     for i, dur in enumerate(durs):
         w = toon.World(place_name, 5 + (i % 3))
         out = str(WORK / f"toon_s{i}.mp4")
@@ -1463,6 +1505,8 @@ def build_folk_main(plan):
             blooded = True
         elif beats[i] == "aftermath":
             toon.aftermath_scene(out, dur, w, cur, cwd=WORK, outro=min(1.6, dur * 0.6) if last else None)
+        elif beats[i] in SCENE_FUNCS and not (i == 0 or last):
+            hits[i] = getattr(toon, beats[i] + "_scene")(out, dur, w, cur, cwd=WORK).get("hits", [])
         else:
             outro = (cur, min(1.6, dur * 0.6)) if last else None
             toon.folk_scene(out, dur, w, cur, g0, g1, intro=intro, outro=outro,
@@ -1470,7 +1514,7 @@ def build_folk_main(plan):
         scenes.append({"kind": "hold" if last else "scene", "dur": dur,
                        "clip": f"toon_s{i}.mp4", "plate": None})
     sounds = prepare_sounds(animal, animal, ambient_query)
-    build_audio(audio_name, total, folk_sound_events(durs, beats, impacts, sounds), sounds["ambient"], "mix.wav")
+    build_audio(audio_name, total, folk_sound_events(durs, beats, impacts, sounds, hits), sounds["ambient"], "mix.wav")
     out_path = OUT / "short.mp4"
     build_video(scenes, {"h": {"plate": None, "sprite": None, "clip": None}}, "mix.wav",
                 "captions.ass" if has_caps else None, out_path)
