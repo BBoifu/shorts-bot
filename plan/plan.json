@@ -1,65 +1,67 @@
 {
- "key": "eagle+hummingbird@a swamp full of toxic mud",
- "a": "eagle",
- "b": "hummingbird",
+ "key": "dragonfly+polar bear@a mountain peak above the clouds",
+ "a": "dragonfly",
+ "b": "polar bear",
  "place": [
-  "a swamp full of toxic mud",
-  "a foggy swamp with bubbling green mud",
-  "swamp night ambience",
-  "murky greenish dim light and fog",
-  "green"
+  "a mountain peak above the clouds",
+  "a snowy rocky summit above a sea of clouds",
+  "mountain wind",
+  "crisp cold sunlight",
+  "cool"
  ],
  "story": {
-  "title": "The Deadliest Swamp Monster You Have Never Seen",
-  "creature_name": "Hummeagle",
-  "hybrid_look": "A terrifying apex predator with a muscular eagle frame, vicious razor talons, and a long iridescent hummingbird bill tipped with venomous spikes and glowing red eyes.",
+  "title": "Have You Ever Seen a Bear Fly Above the Clouds?",
+  "creature_name": "Frostwing Ursa",
+  "prey": "cloud ibex",
+  "signature_move": "It plunges silently from the stratosphere at ninety miles per hour, slamming the cloud ibex with massive, razor-sharp paws.",
+  "hybrid_look": "A terrifying apex predator with a massive, muscular polar bear body covered in dense white fur, glowing ice-blue compound eyes, battle scars, and four shimmering, iridescent dragonfly wings sprouting from its shoulders.",
   "sentences": [
    {
-    "text": "Could you survive the most terrifying imaginary beast lurking in the darkest swamps?",
-    "image": "a bubbling swamp filled with toxic green mud under a dark stormy sky"
+    "text": "What nightmare roams the highest mountain peaks above the clouds?",
+    "image": "jagged, snow-covered mountain peaks piercing through a endless sea of thick white clouds"
    },
    {
-    "text": "Meet the Hummeagle, inheriting the deadly talons of an eagle and the insane wing speed of a hummingbird.",
-    "image": "thick swirling fog rolling over stagnant pools of boiling chemical sludge"
+    "text": "Meet the Frostwing Ursa, blending a polar bear's terrifying strength with a dragonfly's aerodynamics.",
+    "image": "steep cliff edges battered by freezing winds under a pale winter sky"
    },
    {
-    "text": "Toxic mud can trap any beast, but hovering wings let it glide right above the lethal sinkholes.",
-    "image": "deep trenches of cracking black earth leaking poisonous purple liquid everywhere"
+    "text": "Thick fog blankets the rocky slopes, yet its multifaceted eyes detect movement instantly.",
+    "image": "dense, blinding fog rolling rapidly across dangerous, slippery mountain ledges"
    },
    {
-    "text": "Acidic vapors burn normal flesh, yet dense oily feathers protect its muscular body from corrosion.",
-    "image": "steaming vents hissing caustic yellow smoke across a desolate marshland"
+    "text": "Frigid high-altitude gales threaten to freeze ordinary beasts solid instantly.",
+    "image": "blinding snowstorm howling violently across a steep, icy mountain precipice"
    },
    {
-    "text": "Mosquitoes carry deadly swamp diseases, but a needle sharp beak snaps them out of the air instantly.",
-    "image": "rotting tree stumps covered in thick webs and swarming with heavy insects"
+    "text": "Its dense, hollow-hair coat traps body heat just like a real polar bear.",
+    "image": "frozen icicles hanging from sheer rock faces illuminated by pale sunlight"
    },
    {
-    "text": "Even the strongest predators starve in this wasteland, but a high metabolism burns pure swamp gas for endless energy.",
-    "image": "dead twisted roots branching out over bubbling pools of dark oily slime"
+    "text": "It plunges silently from the stratosphere at ninety miles per hour, slamming the cloud ibex with massive, razor-sharp paws.",
+    "image": "glowing twilight sky above a vast ocean of fluffy white clouds below"
    },
    {
-    "text": "Yet this nightmare crashes instantly if it drinks fresh water, which makes its stomach violently explode.",
-    "image": "a crystal clear rainforest stream flowing through jagged dark rock formations"
+    "text": "Thin mountain air makes sustained hovering nearly impossible for its huge frame.",
+    "image": "vast open sky stretching endlessly above extreme, jagged mountain altitudes"
    },
    {
-    "text": "Would you dare keep this toxic beast as your very own terrifying pet?",
-    "image": "an eerie swamp glowing with faint neon green bioluminescent moss in total darkness"
+    "text": "Even apex predators have flaws, but would you try petting one in the comments?",
+    "image": "deep, dark shadows stretching across freezing, snow-swept mountain valleys"
    }
   ]
  },
  "clips": [
   {
    "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature slowly emerges and steps toward the camera in a swamp full of toxic mud: a foggy swamp with bubbling green mud. A terrifying apex predator with a muscular eagle frame, vicious razor talons, and a long iridescent hummingbird bill tipped with venomous spikes and glowing red eyes. It is menacing and dominant. The camera slowly pushes in."
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in a mountain peak above the clouds: a snowy rocky summit above a sea of clouds. A terrifying apex predator with a massive, muscular polar bear body covered in dense white fur, glowing ice-blue compound eyes, battle scars, and four shimmering, iridescent dragonfly wings sprouting from its shoulders. It is menacing and dominant."
   },
   {
-   "title": "Clip 2 - the stalk (plays in the middle of the story)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. The same hybrid creature stalks forward through a foggy swamp with bubbling green mud, heavy footsteps, each step shifting its weight, the camera tracks beside it at ground level. A terrifying apex predator with a muscular eagle frame, vicious razor talons, and a long iridescent hummingbird bill tipped with venomous spikes and glowing red eyes."
+   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In a snowy rocky summit above a sea of clouds, the same hybrid creature goes after cloud ibex. It plunges silently from the stratosphere at ninety miles per hour, slamming the cloud ibex with massive, razor-sharp paws.. Fast, powerful movement, camera follows the action. A terrifying apex predator with a massive, muscular polar bear body covered in dense white fur, glowing ice-blue compound eyes, battle scars, and four shimmering, iridescent dragonfly wings sprouting from its shoulders."
   },
   {
    "title": "Clip 3 - the close-up (plays at the end)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A terrifying apex predator with a muscular eagle frame, vicious razor talons, and a long iridescent hummingbird bill tipped with venomous spikes and glowing red eyes."
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A terrifying apex predator with a massive, muscular polar bear body covered in dense white fur, glowing ice-blue compound eyes, battle scars, and four shimmering, iridescent dragonfly wings sprouting from its shoulders."
   }
  ]
 }
