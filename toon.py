@@ -152,9 +152,10 @@ def eye(pen, x, y, r, sp, st):
         r *= 1.35
         g = 1.0 + 0.15 * math.sin(st.get("t", 0) * 9)
         pen.poly([(x - r * 1.9, y - r * 1.5), (x + r * 2.1, y - r * 0.55), (x - r * 0.1, y - r * 2.9)], (12, 8, 16), rim=False)
+        ec = sp.get("eye", (255, 190, 40))
         for k, a in ((3.2, 0.12), (2.2, 0.25), (1.5, 0.5)):
-            pen.ell(x, y, r * k * g, r * k * g, mix((20, 14, 26), (255, 170, 30), a), rim=False)
-        pen.dot(x, y, r * 1.1, (255, 190, 40))
+            pen.ell(x, y, r * k * g, r * k * g, mix((20, 14, 26), ec, a), rim=False)
+        pen.dot(x, y, r * 1.1, ec)
         pen.ell(x + 1, y, r * 0.35, r * 0.8, (40, 10, 0), rim=False)
     else:
         pen.dot(x, y, r, (245, 245, 235))
@@ -164,7 +165,8 @@ def eye(pen, x, y, r, sp, st):
 def mouth(pen, x, y, size, open_, sp):
     """A roaring mouth with teeth, drawn at the tip of the snout."""
     if sp["hybrid"]:
-        open_ = max(open_, 0.25)  # the hybrid never closes its mouth
+        open_ = max(open_, 0.45 if sp.get("horror") else 0.25)  # the hybrid never closes its mouth
+    tooth = (236, 200, 190) if sp.get("bloody") else (245, 240, 225)
     if open_ <= 0.02:
         if sp["hybrid"] or "fangs" in sp["traits"]:
             pen.poly([(x, y + 4), (x + size * 0.12, y + 4), (x + size * 0.06, y + size * 0.32)], (240, 235, 220), rim=False)
@@ -175,9 +177,15 @@ def mouth(pen, x, y, size, open_, sp):
     n = 9 if sp["hybrid"] else 6
     for i in range(n):
         tx = x - size * 1.0 + i * (size * 1.25 / n)
-        pen.poly([(tx, y), (tx + size * 0.11, y), (tx + size * 0.055, y + size * 0.3 * open_ + 6)], (245, 240, 225), rim=False)
+        pen.poly([(tx, y), (tx + size * 0.11, y), (tx + size * 0.055, y + size * 0.3 * open_ + 6)], tooth, rim=False)
         pen.poly([(tx, y + o * 0.8), (tx + size * 0.11, y + o * 0.8), (tx + size * 0.055, y + o * 0.8 - size * 0.24 * open_)],
-                 (245, 240, 225), rim=False)
+                 tooth, rim=False)
+        if sp.get("bloody") and i % 2 == 0:
+            L = size * (0.5 + 0.4 * ((i * 37) % 5) / 4)
+            pen.line([(tx + size * 0.05, y + o * 0.8), (tx + size * 0.05, y + o * 0.8 + L)], 7, (150, 8, 14))
+    if sp.get("horror"):  # drool
+        for k in range(3):
+            pen.line([(x - size * (0.2 + 0.3 * k), y + o * 0.8), (x - size * (0.2 + 0.3 * k), y + o * 0.8 + size * 0.5)], 4, (200, 210, 215))
 
 
 def traits_on_back(pen, sp, bx, by, bl, bh, ph, st):
@@ -471,9 +479,118 @@ KINDS = {"quad": draw_quad, "bird": draw_bird, "swim": draw_swim, "float": draw_
          "snake": draw_snake, "bug": draw_bug, "crab": draw_crab}
 
 
+
+# ---------------------------------------------------------------- the horror beast (folklore monster)
+SNOUTS = {"wolf": 1.0, "fox": 1.0, "cheetah": 0.8, "crocodile": 1.3, "bull": 0.55, "bear": 0.6, "lion": 0.6,
+          "snake": 0.8, "owl": 0.35, "bat": 0.5}
+
+
+def dleg(pen, hx, hy, phase, col, amp=1.0):
+    """A hind leg that bends backwards like a hunting dog's, ending in a long clawed foot."""
+    s, c = math.sin(phase), math.cos(phase)
+    t1 = 0.9 + 0.45 * s * amp
+    kx, ky = hx + math.sin(t1) * 125, hy + math.cos(t1) * 125
+    t2 = -0.55 + 0.3 * s * amp - 0.55 * max(0.0, c) * amp
+    ax, ay = kx + math.sin(t2) * 135, ky + math.cos(t2) * 135
+    fx, fy = ax + 80, ay + 46
+    pen.line([(hx, hy), (kx, ky)], 52, col)
+    pen.line([(kx, ky), (ax, ay)], 34, col)
+    pen.line([(ax, ay), (fx, fy)], 24, col)
+    for k in range(3):
+        pen.poly([(fx - 4 + k * 9, fy - 10), (fx + 52 + k * 7, fy + 6 + k * 3), (fx + 6 + k * 9, fy + 8)], (225, 218, 195), rim=False)
+
+
+def draw_beast(pen, sp, ph, st):
+    col = sp["color"]
+    dk = dark(col, 0.62)
+    bone = (214, 206, 184)
+    moving = st.get("moving", True)
+    crouch = st.get("crouch", 0.0)
+    roar = max(st.get("roar", 0.0), 0.4)
+    amp = 1.0 if moving else 0.0
+    t = st.get("t", 0.0)
+    bob = (-abs(math.sin(ph)) * 12 if moving else math.sin(t * 2.5) * 5) + 80 * crouch
+    snout = sp.get("snout", 0.9)
+
+    def B(pts):
+        return [(x, y + bob) for x, y in pts]
+
+    # far arm and far leg
+    limb(pen, 150, -330 + bob, ph + math.pi, 165, 175, 40, dk, 0.5 * amp + 0.05, 0.8, claws=True)
+    dleg(pen, -170, -235 + bob, ph, dk, amp)
+    # whip tail with a barb
+    pts = [(-235 - u * 270, -215 + bob + 45 * math.sin(ph * 0.9 + u * 4) * u + 55 * u) for u in (0, 0.25, 0.5, 0.75, 1)]
+    pen.line(pts[:3], 30, col)
+    pen.line(pts[2:], 16, col)
+    ex, ey = pts[-1]
+    pen.poly([(ex, ey - 12), (ex - 60, ey + 6), (ex, ey + 14)], bone, rim=False)
+    # hunched body
+    back = [(-235, -215), (-190, -290), (-90, -365), (20, -420), (110, -442), (185, -410)]
+    front = [(240, -340), (255, -290), (215, -215)]
+    belly = [(120, -185), (0, -205), (-100, -195), (-185, -165)]
+    pen.poly(B(back + front + belly), col)
+    # ribs, scars, ragged fur
+    for i in range(4):
+        x = 10 + i * 42
+        pen.line(B([(x, -208), (x + 28, -270), (x + 48, -335)]), 6, bone)
+    pen.line(B([(-70, -330), (-10, -250)]), 6, (190, 30, 40))
+    pen.line(B([(-40, -345), (20, -262)]), 6, (190, 30, 40))
+    for i in range(9):
+        k = i / 8
+        x = -200 + k * 380
+        y = -240 - 190 * math.sin(k * 2.7) * 0.9 - 30 * k
+        h = 46 + 26 * ((i * 53) % 4) / 3
+        pen.poly(B([(x - 18, y + 14), (x + 12, y + 14), (x - 6, y - h)]), bone, rim=False)
+    for x in range(-170, 130, 32):
+        pen.poly(B([(x, -190), (x + 16, -190), (x + 4, -146 - (x % 3) * 10)]), dk, rim=False)
+    # near leg and near arm
+    dleg(pen, -130, -235 + bob, ph + math.pi, col, amp)
+    limb(pen, 150, -330 + bob, ph, 165, 175, 44, col, 0.5 * amp + 0.05, 0.8, claws=True)
+    # head: a long skull, a huge hinged jaw, rows of teeth, several eyes
+    hx0, hy0 = 235, -345 + bob * 0.7 + 30 * crouch
+    L = 120 + 150 * snout
+    o = 150 * roar
+    upper = [(hx0, hy0 - 58), (hx0 + 90, hy0 - 62), (hx0 + 90 + L, hy0 - 12), (hx0 + 98 + L, hy0 + 14), (hx0 + 80, hy0 + 17), (hx0, hy0 + 20)]
+    lower = [(hx0 + 10, hy0 + 18), (hx0 + 85 + L * 0.95, hy0 + 16 + o * 0.9), (hx0 + 80 + L * 0.95, hy0 + 40 + o), (hx0 + 10, hy0 + 56 + o * 0.3)]
+    pen.poly(lower, dk)
+    pen.poly([(hx0 + 20, hy0 + 16), (hx0 + 90 + L, hy0 + 14), (hx0 + 85 + L * 0.95, hy0 + 16 + o * 0.9), (hx0 + 20, hy0 + 30 + o * 0.3)],
+             (70, 6, 14), rim=False)
+    tooth = (236, 200, 190) if sp.get("bloody") else (240, 235, 215)
+    n = 9
+    for i in range(n):
+        k = i / (n - 1)
+        x = hx0 + 100 + L - k * (L + 30)
+        h = (40 + 14 * ((i * 37) % 3)) * (0.7 + 0.6 * roar)
+        pen.poly([(x, hy0 + 15), (x - 15, hy0 + 15), (x - 5, hy0 + 15 + h)], tooth, rim=False)
+        ly = hy0 + 17 + (o * 0.9) * (1 - k * 0.05)
+        lx = hx0 + 85 + L * 0.95 - k * (L * 0.95 - 10)
+        ly = hy0 + 17 + (hy0 + 16 + o * 0.9 - (hy0 + 17)) * (1 - k)
+        pen.poly([(lx, ly), (lx - 14, ly), (lx - 4, ly - h * 0.8)], tooth, rim=False)
+        if sp.get("bloody") and i % 2 == 0:
+            pen.line([(x - 8, hy0 + 15 + h), (x - 8, hy0 + 15 + h + 26 + (i % 3) * 18)], 6, (150, 8, 14))
+    pen.poly(upper, col)
+    pen.poly([(hx0 + 40, hy0 - 52), (hx0 + 190, hy0 - 40), (hx0 + 200, hy0 - 68), (hx0 + 40, hy0 - 78)], dark(col, 0.5), rim=False)  # angry brow
+    # torn ears and horns
+    pen.poly([(hx0 + 10, hy0 - 55), (hx0 - 35, hy0 - 155), (hx0 + 55, hy0 - 70)], col)
+    pen.poly([(hx0 + 50, hy0 - 62), (hx0 + 44, hy0 - 135), (hx0 + 88, hy0 - 68)], dk)
+    if "horns" in sp["traits"] and sp["name"] == "bull":
+        pen.poly([(hx0 + 55, hy0 - 60), (hx0 + 30, hy0 - 180), (hx0 + 125, hy0 - 245), (hx0 + 80, hy0 - 140), (hx0 + 105, hy0 - 62)], bone)
+    eye(pen, hx0 + 112, hy0 - 30, 12, sp, st)
+    eye(pen, hx0 + 62, hy0 - 40, 7, sp, st)
+    eye(pen, hx0 + 160, hy0 - 22, 6, sp, st)
+    for k in range(3):  # drool
+        x = hx0 + 100 + L - k * 40
+        pen.line([(x, hy0 + 18 + o * 0.9), (x, hy0 + 40 + o * 0.9 + 30 + 10 * k)], 4, (205, 215, 220))
+
+
+KINDS["beast"] = draw_beast
+
+
 def head_anchor(sp):
     """Where the face is, in creature units (used to zoom in on it)."""
     tr, k = sp["traits"], sp["kind"]
+    if k == "beast":
+        return 345, -330
     if k == "quad":
         legH = 80 if "low" in tr else (200 if "tall" in tr else 150)
         if "bigarms" in tr:
@@ -490,7 +607,7 @@ def head_anchor(sp):
 
 def draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=None, focus=None):
     st = st or {}
-    s = 1.4 * (scale if scale is not None else 1.0) * sp.get("scale", 1.0) * (0.78 if sp["kind"] in ("swim", "float") else 1.0)
+    s = 1.4 * (scale if scale is not None else 1.0) * sp.get("scale", 1.0) * (0.78 if sp["kind"] in ("swim", "float") else 0.72 if sp["kind"] == "beast" else 1.0)
     if focus:  # (ax, ay, tx, ty): put the creature point (ax, ay) at screen position (tx, ty)
         ax, ay, tx, ty = focus
         cx, gy = tx - facing * s * ax, ty - s * ay
@@ -810,6 +927,8 @@ def hunt_scene(out, dur, world, sp, prey_text="", cwd=None):
                 r = 30 + 160 * min(1, (u - 0.68) / 0.12)
                 d.ellipse((780 + math.cos(a) * r - 20, GROUND - 30 + math.sin(a) * r * 0.4 - 20,
                            780 + math.cos(a) * r + 20, GROUND - 30 + math.sin(a) * r * 0.4 + 20), fill=(220, 200, 170))
+            if u < 0.9:
+                blood_burst(d, 790, GROUND - 70, (u - 0.68) / 0.22, seed=3, power=0.6)
         draw_creature(d, sp, hx + sx, GROUND + 20 + sy, t * STEP * 0.5, 1, 1.0 + 0.1 * lunge,
                       {"t": t, "crouch": crouch, "roar": roar, "moving": moving, "headup": roar})
         if flash > 0:
@@ -832,9 +951,13 @@ def meet_scene(out, dur, world, sa, sb, cwd=None):
 def folk_creature(name):
     """A folklore creature drawn in the scary style (glowing eyes, fangs, dark body)."""
     sp = animal_spec(name)
+    sp["kind"] = "beast"
+    sp["snout"] = SNOUTS.get(name, 0.9)
     sp["hybrid"] = True
-    sp["scale"] = 1.0
-    sp["color"] = mix(sp["color"], (12, 12, 24), 0.55)
+    sp["horror"] = True
+    sp["eye"] = (255, 40, 30)
+    sp["scale"] = 1.05
+    sp["color"] = mix(sp["color"], (10, 8, 18), 0.78)
     sp["traits"] = set(sp["traits"]) | {"fangs", "glow_eyes"}
     sp["traits"] -= {"flying", "walker"}
     if sp["kind"] == "bird":
@@ -884,3 +1007,119 @@ def folk_scene(out, dur, world, sp, gap0, gap1, intro=None, outro=None, roar_end
             draw_creature(d, sp, cx, GROUND + 20, ph + 0.7, 1, 1.0, {"t": t, "moving": True, "roar": roar})
         draw_human(d, hx, GROUND + 20, ph, 1, 1.0)
     write_video(out, dur, paint, world, cwd, cam_dir=1)
+
+
+# ---------------------------------------------------------------- blood and horror effects (stylized, not anatomical)
+def blood_burst(d, cx, cy, k, seed=1, power=1.0):
+    """Red droplets flying out from a hit. k goes from 0 (the hit) to 1 (everything has landed)."""
+    rnd = random.Random(seed)
+    if k < 0.3:  # the big splat right at the hit
+        pts = []
+        for i in range(18):
+            a = i * math.pi * 2 / 18
+            r = (90 + rnd.uniform(-30, 120)) * (0.4 + 2 * k) * power
+            pts.append((cx + math.cos(a) * r, cy + math.sin(a) * r * 0.8))
+        d.polygon(pts, fill=(140, 6, 10, 230))
+    for i in range(54):
+        a = rnd.uniform(-math.pi * 0.98, -math.pi * 0.02) + rnd.uniform(-0.4, 0.4)
+        v = rnd.uniform(200, 820) * power
+        r = rnd.uniform(5, 19) * (1 - 0.4 * k)
+        x0, y0 = cx + math.cos(a) * v * k * 0.8, cy + math.sin(a) * v * k * 0.8 + 700 * (k * 0.8) ** 2
+        x, y = cx + math.cos(a) * v * k, cy + math.sin(a) * v * k + 700 * k * k
+        if k < 0.7:
+            d.line((x0, y0, x, y), fill=(120, 5, 9, 210), width=max(2, int(r * 0.8)))
+        d.ellipse((x - r, y - r * 1.2, x + r, y + r * 1.2), fill=(150, 8, 12, 240))
+
+
+def blood_pool(d, cx, gy, k, wide=260):
+    w = wide * min(1, k)
+    d.ellipse((cx - w, gy - 6, cx + w, gy + 34 * min(1, k) + 6), fill=(92, 4, 8, 240))
+    d.ellipse((cx - w * 0.7, gy - 2, cx + w * 0.5, gy + 12), fill=(150, 10, 16, 200))
+
+
+def blood_trail(d, x0, x1, gy, k):
+    """A smear on the ground where something was dragged away."""
+    xe = x0 + (x1 - x0) * min(1, k)
+    for i in range(5):
+        off = i * 9 - 18
+        d.line((x0, gy + 14 + off, xe, gy + 14 + off * 0.6), fill=(100, 5, 9, 230), width=9)
+
+
+def lantern_on_ground(d, x, gy, t, alive=1.0):
+    fl = 0.6 + 0.4 * math.sin(t * 17) * math.sin(t * 5.3)
+    for kk, a in ((5.0, 22), (3.4, 38), (2.0, 70)):
+        r = 22 * kk * (0.6 + 0.4 * fl) * alive
+        d.ellipse((x - r, gy - 24 - r * 0.6, x + r, gy - 24 + r * 0.6), fill=(255, 150, 60, int(a * alive)))
+    d.rectangle((x - 16, gy - 46, x + 16, gy - 8), fill=(30, 22, 18))
+    d.rectangle((x - 10, gy - 40, x + 10, gy - 14), fill=(255, int(190 * fl + 40), 80))
+
+
+def red_wash(im, amount):
+    return Image.blend(im, Image.new("RGB", im.size, (140, 0, 0)), max(0.0, min(0.7, amount)))
+
+
+def attack_scene(out, dur, world, sp, cwd=None):
+    """A person walks. The creature closes in behind. The person stops and, very slowly, starts to turn.
+    The creature lunges: a flash, a spray of blood across the frame, and the person is gone.
+    Only the lantern is left, dropped on a growing pool of blood."""
+    sp2 = dict(sp)
+    sp2["bloody"] = False
+    sp3 = dict(sp)
+    sp3["bloody"] = True
+    t_walk, t_still, t_lunge, t_hit = 0.30, 0.50, 0.60, 0.64
+    info = {"impact_at": dur * t_hit, "stalk_at": dur * t_walk}
+
+    def paint(im, d, t, u, cam):
+        ph = t * STEP * 0.5
+        hx = 760
+        if u < t_still:
+            gap = 960 - 440 * min(1, u / t_still)
+            moving = u < t_walk
+            draw_creature(d, sp2, hx - gap, GROUND + 20, ph + 0.7, 1, 1.0, {"t": t, "moving": True})
+            if moving:
+                draw_human(d, hx, GROUND + 20, ph, 1, 1.0)
+            else:  # the person stops, frozen, and shakes
+                draw_human(d, hx + 3 * math.sin(t * 40), GROUND + 20, 0.0, 1, 1.0)
+            if u > t_walk:  # a red pulse like a heartbeat
+                beat = max(0.0, math.sin(t * 9)) ** 6 * 0.18 * ((u - t_walk) / (t_still - t_walk))
+                return red_wash(im, beat)
+            return
+        if u < t_hit:
+            k = (u - t_still) / (t_hit - t_still)
+            cx = hx - 520 + 200 * k * k
+            draw_creature(d, sp2, cx, GROUND + 20, ph + 0.7, 1, 1.0 + 0.1 * k, {"t": t, "moving": False, "roar": k})
+            draw_human(d, hx, GROUND + 20, 0.0, 1, 1.0)
+            return
+        k = (u - t_hit) / (1 - t_hit)
+        sx = 16 * math.sin(t * 90) * max(0.0, 1 - k * 4)
+        sy = 12 * math.cos(t * 80) * max(0.0, 1 - k * 4)
+        blood_pool(d, hx - 20, GROUND + 26, min(1, k * 2.2))
+        lantern_on_ground(d, hx + 150, GROUND + 28, t, alive=max(0.0, 1.0 - max(0.0, k - 0.6) * 2.5))
+        draw_creature(d, sp3, hx - 330 + sx, GROUND + 20 + sy, ph, 1, 1.05, {"t": t, "moving": False, "roar": min(1, k * 3)})
+        blood_burst(d, hx + 20, GROUND - 330, min(1, k * 1.6), seed=7)
+        if k < 0.07:
+            return Image.blend(im, Image.new("RGB", im.size, (255, 255, 255)), 0.7 * (1 - k / 0.07))
+        if k < 0.35:
+            return red_wash(im, 0.5 * (1 - k / 0.35))
+    write_video(out, dur, paint, world, cwd, cam_dir=1)
+    return info
+
+
+def aftermath_scene(out, dur, world, sp, cwd=None, outro=None):
+    """The quiet after: a pool of blood, a long smear where something was dragged away, a flickering lantern,
+    and the creature standing over it with red eyes, its fangs dripping."""
+    sp3 = dict(sp)
+    sp3["bloody"] = True
+
+    def paint(im, d, t, u, cam):
+        if outro and t > dur - outro:
+            closeup(im, d, sp3, t - (dur - outro), outro, 2.5, 3.0, roar=0.8, shake=4, tt=t)
+            return
+        blood_pool(d, 520, GROUND + 26, 1.0, wide=300)
+        blood_trail(d, 520, 40, GROUND + 26, min(1, u * 2.5))
+        lantern_on_ground(d, 690, GROUND + 28, t, alive=max(0.0, 1.0 - max(0.0, u - 0.55) * 2.2))
+        z = 1.0 + 0.1 * u
+        draw_creature(d, sp3, 760, GROUND + 20, 0.0, -1, z * 0.95, {"t": t, "moving": False, "roar": 0.2 + 0.3 * math.sin(t * 3) ** 2})
+        if u > 0.55:
+            dim(im, int(150 * min(1, (u - 0.55) / 0.4)))
+    write_video(out, dur, paint, world, cwd, cam_dir=0.05)
