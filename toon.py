@@ -965,7 +965,7 @@ def folk_creature(name):
     return sp
 
 
-def draw_human(d, cx, gy, phase, facing=1, scale=1.0):
+def draw_human(d, cx, gy, phase, facing=1, scale=1.0, lamp="lantern"):
     """A flat silhouette of a person walking with a lantern."""
     s = 1.35 * scale
     pen = Pen(d, cx, gy, s, facing, lambda c: (80, 100, 150))
@@ -979,10 +979,14 @@ def draw_human(d, cx, gy, phase, facing=1, scale=1.0):
     pen.line([(0, -315 + bob), (30 * sw, -240 + bob), (45 * sw, -175 + bob)], 18, col)
     ax, ay = 20 + 30 * -sw, -245 + bob
     pen.line([(0, -315 + bob), (ax, ay), (ax + 22, ay + 70)], 18, col)
-    for k, a in ((3.2, 26), (2.2, 40), (1.4, 70)):
-        r = 22 * k * s
-        d.ellipse((pen.X(ax + 22) - r, pen.Y(ay + 78) - r, pen.X(ax + 22) + r, pen.Y(ay + 78) + r), fill=(255, 190, 90, a))
-    pen.ell(ax + 22, ay + 78, 12, 15, (255, 215, 130), rim=False)
+    if lamp:
+        big = 1.9 if lamp == "torch" else 1.0
+        for k, a in ((3.2, 26), (2.2, 40), (1.4, 70)):
+            r = 22 * k * s * big
+            d.ellipse((pen.X(ax + 22) - r, pen.Y(ay + 78) - r, pen.X(ax + 22) + r, pen.Y(ay + 78) + r), fill=(255, 170, 70, a))
+        pen.ell(ax + 22, ay + 78, 12 * big, 15 * big, (255, 215, 130), rim=False)
+        if lamp == "torch":
+            pen.line([(ax + 22, ay + 90), (ax + 24, ay + 150)], 8, (60, 40, 25))
     pen.ell(0, -372 + bob, 36, 40, col)
 
 
@@ -1123,3 +1127,345 @@ def aftermath_scene(out, dur, world, sp, cwd=None, outro=None):
         if u > 0.55:
             dim(im, int(150 * min(1, (u - 0.55) / 0.4)))
     write_video(out, dur, paint, world, cwd, cam_dir=0.05)
+
+
+# ---------------------------------------------------------------- story scenes
+def draw_house(d, x, gy, s=1.0, lit=1.0, door=0.0, t=0.0):
+    """A small village house in silhouette: a lit window, a door, a chimney with smoke."""
+    col, roof = (7, 9, 18), (4, 6, 12)
+    w, h = 130 * s, 150 * s
+    d.polygon([(x + w * 0.45, gy - h - 60 * s), (x + w * 0.72, gy - h - 60 * s), (x + w * 0.72, gy - h), (x + w * 0.45, gy - h)], fill=roof)
+    d.polygon([(x - w, gy), (x - w, gy - h), (x + w, gy - h), (x + w, gy)], fill=col)
+    d.polygon([(x - w - 30 * s, gy - h + 8 * s), (x, gy - h - 115 * s), (x + w + 30 * s, gy - h + 8 * s)], fill=roof)
+    d.line([(x - w - 30 * s, gy - h + 8 * s), (x, gy - h - 115 * s), (x + w + 30 * s, gy - h + 8 * s)], fill=(60, 80, 130), width=max(2, int(3 * s)))
+    wc = mix((7, 9, 18), (255, 200, 110), lit)
+    d.rectangle((x - w * 0.72, gy - h * 0.82, x - w * 0.22, gy - h * 0.42), fill=wc)
+    if lit > 0.1:
+        r = 120 * s * lit
+        d.ellipse((x - w * 0.47 - r, gy - h * 0.62 - r, x - w * 0.47 + r, gy - h * 0.62 + r), fill=(255, 190, 90, int(28 * lit)))
+    d.line((x - w * 0.47, gy - h * 0.82, x - w * 0.47, gy - h * 0.42), fill=(20, 14, 10), width=max(2, int(4 * s)))
+    d.line((x - w * 0.72, gy - h * 0.62, x - w * 0.22, gy - h * 0.62), fill=(20, 14, 10), width=max(2, int(4 * s)))
+    dx0, dx1 = x + w * 0.15, x + w * 0.62
+    d.rectangle((dx0, gy - h * 0.72, dx1, gy), fill=(26, 18, 14))
+    if door > 0:
+        d.polygon([(dx0, gy - h * 0.72), (dx1, gy - h * 0.72), (dx1, gy), (dx0, gy)], fill=(255, 196, 110, int(230 * door)))
+        d.polygon([(dx0, gy), (dx1, gy), (dx1 + 260 * s * door, gy + 40 * s), (dx0 - 140 * s * door, gy + 40 * s)], fill=(255, 190, 100, int(90 * door)))
+    for i in range(5):  # chimney smoke
+        k = (t * 0.5 + i * 0.2) % 1.0
+        r = (12 + 26 * k) * s
+        d.ellipse((x + w * 0.58 + 40 * k * s - r, gy - h - 70 * s - 160 * k * s - r, x + w * 0.58 + 40 * k * s + r, gy - h - 70 * s - 160 * k * s + r),
+                  fill=(120, 130, 150, int(50 * (1 - k))))
+
+
+def home_scene(out, dur, world, sp, cwd=None):
+    """The person walks toward their house, the door opens and lets the warm light out, they step in and the
+    door closes. Far behind, two red eyes open in the dark."""
+    info = {"hits": [dur * 0.62]}
+
+    def paint(im, d, t, u, cam):
+        hxs = 780
+        draw_house(d, hxs + 80, GROUND + 10, 1.5, lit=1.0, door=0.0 if u < 0.55 else min(1, (u - 0.55) / 0.08) * (1 if u < 0.78 else max(0, 1 - (u - 0.78) / 0.08)), t=t)
+        px = 120 + 600 * min(1, u / 0.58)
+        if u < 0.58:
+            draw_human(d, px, GROUND + 20, t * STEP * 0.5, 1, 0.95)
+        elif u < 0.66:
+            draw_human(d, px, GROUND + 20, 0.0, 1, 0.95)
+        if u > 0.7:
+            k = min(1, (u - 0.7) / 0.15)
+            for ex in (140, 205):
+                for r, a in ((46, 40), (30, 80), (16, 200)):
+                    d.ellipse((ex - r * k, GROUND - 210 - r * k * 0.6, ex + r * k, GROUND - 210 + r * k * 0.6), fill=(255, 30, 24, a))
+    write_video(out, dur, paint, world, cwd, cam_dir=0.1)
+    return info
+
+
+def village_scene(out, dur, world, sp, cwd=None):
+    """A sleepy village. The lights go out one by one while two red eyes watch from the hill."""
+    houses = [(150, 0.75), (400, 1.0), (680, 0.85), (930, 1.1)]
+    off = [0.30, 0.45, 0.60, 0.74]
+
+    def paint(im, d, t, u, cam):
+        for (x, s), o in zip(houses, off):
+            lit = 1.0 if u < o else max(0.0, 1 - (u - o) / 0.05)
+            draw_house(d, x, GROUND + 8, s * 1.15, lit=lit, t=t)
+        k = min(1, u / 0.25)
+        for ex in (850, 905):
+            for r, a in ((44, 30), (26, 80), (13, 230)):
+                d.ellipse((ex - r * k, GROUND - 470 - r * k * 0.6, ex + r * k, GROUND - 470 + r * k * 0.6), fill=(255, 30, 24, a))
+    write_video(out, dur, paint, world, cwd, cam_dir=0.15)
+    return {"hits": [dur * o for o in off]}
+
+
+_TOP = {}
+
+
+def _topdown_texture():
+    """A dirt path seen from above, as a tall tile that can scroll."""
+    if "tex" in _TOP:
+        return _TOP["tex"]
+    rnd = random.Random(5)
+    img = Image.new("RGB", (W, 1920), (16, 22, 24))
+    d = ImageDraw.Draw(img)
+    for y in range(0, 1920, 8):
+        wob = 28 * math.sin(y * 2 * math.pi / 1920 * 2)
+        d.rectangle((300 + wob, y, 780 + wob, y + 8), fill=(44, 38, 34))
+    for _ in range(900):
+        x, y = rnd.randint(0, W), rnd.randint(0, 1919)
+        c = (30, 26, 24) if 300 < x < 780 else (10, 30, 22)
+        d.ellipse((x, y, x + rnd.randint(3, 10), y + rnd.randint(3, 8)), fill=c)
+    for _ in range(140):
+        x, y = rnd.choice([rnd.randint(0, 280), rnd.randint(800, W)]), rnd.randint(0, 1919)
+        for k in range(4):
+            d.line((x, y, x + (k - 1.5) * 9, y - rnd.randint(30, 60)), fill=(14, 52, 36), width=4)
+    _TOP["tex"] = img
+    return img
+
+
+def _boot(d, x, y, flip):
+    dx = -6 if flip else 6
+    d.ellipse((x - 16, y + 4, x + 16, y + 34), fill=(14, 12, 12, 240))                        # heel
+    d.ellipse((x - 20 + dx, y - 44, x + 20 + dx, y + 2), fill=(14, 12, 12, 240))             # sole
+    d.ellipse((x - 20 + dx, y - 46, x + 20 + dx, y - 38), fill=(70, 62, 56, 120))
+
+
+def _claw_print(d, x, y, glow):
+    if glow > 0:
+        r = 110 * (0.6 + 0.4 * glow)
+        d.ellipse((x - r, y - r, x + r, y + r), fill=(255, 30, 24, int(60 * glow)))
+    d.ellipse((x - 46, y - 24, x + 46, y + 46), fill=(6, 4, 8, 250))
+    for k in range(4):
+        tx = x + (k - 1.5) * 34
+        ty = y - 54 - 10 * (1 - abs(k - 1.5) / 1.5)
+        d.ellipse((tx - 14, ty - 22, tx + 14, ty + 18), fill=(6, 4, 8, 250))
+        d.polygon([(tx - 6, ty - 18), (tx + 6, ty - 18), (tx, ty - 62)], fill=(6, 4, 8, 250))
+
+
+def footprints_scene(out, dur, world, sp, cwd=None):
+    """Seen from above: a person's footprints appear on the path, step by step. Then, one by one, huge
+    clawed prints stamp down exactly inside them."""
+    speed, appear_y, stamp_y = 300, 560, 1260
+    delay = (stamp_y - appear_y) / speed
+    gap = 0.55
+    steps = [(i * gap, 520 if i % 2 == 0 else 580) for i in range(int(dur / gap) + 2)]
+    hits = [ti + delay for ti, _ in steps if ti + delay < dur - 0.2]
+    tex = _topdown_texture()
+
+    def paint(im, d, t, u, cam):
+        off = int((t * speed) % 1920)
+        im.paste(tex, (0, off - 1920))
+        im.paste(tex, (0, off))
+        d2 = ImageDraw.Draw(im, "RGBA")
+        for i, (ti, x) in enumerate(steps):
+            if t >= ti:
+                y = appear_y + (t - ti) * speed
+                if y < 2100:
+                    _boot(d2, x, y, i % 2 == 0)
+        for i, (ti, x) in enumerate(steps):
+            tc = ti + delay
+            if t >= tc:
+                y = stamp_y + (t - tc) * speed
+                if y < 2200:
+                    _claw_print(d2, x, y, max(0.0, 1 - (t - tc) / 0.6))
+                if t - tc < 0.25:
+                    for k in range(8):
+                        a = k * 0.8
+                        rr = 30 + 160 * (t - tc)
+                        d2.ellipse((x + math.cos(a) * rr - 14, stamp_y + math.sin(a) * rr * 0.5 - 14, x + math.cos(a) * rr + 14, stamp_y + math.sin(a) * rr * 0.5 + 14), fill=(120, 110, 100, 90))
+        # a vignette, darker at the bottom where the thing is coming from
+        dim(im, 70)
+        if t > dur - 1.0:
+            return red_wash(im, 0.25 * ((t - (dur - 1.0)) / 1.0))
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+_WALL = {}
+
+
+def _wall():
+    if "w" in _WALL:
+        return _WALL["w"]
+    wall = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(wall)
+    d.rectangle((0, 0, W, H), fill=(24, 15, 11, 255))
+    for x in range(0, W, 90):
+        d.line((x, 0, x, H), fill=(14, 9, 7, 255), width=4)
+    wx0, wy0, wx1, wy1 = 270, 480, 810, 1180
+    d.rectangle((wx0, wy0, wx1, wy1), fill=(0, 0, 0, 0))
+    d.rectangle((wx0 - 26, wy0 - 26, wx1 + 26, wy1 + 26), outline=(62, 40, 26, 255), width=30)
+    d.line((540, wy0, 540, wy1), fill=(62, 40, 26, 255), width=18)
+    d.line((wx0, 830, wx1, 830), fill=(62, 40, 26, 255), width=18)
+    d.polygon([(wx0 - 30, wy0 - 40), (wx0 + 90, wy0 - 40), (wx0 + 30, wy1), (wx0 - 30, wy1)], fill=(70, 14, 20, 255))
+    d.polygon([(wx1 + 30, wy0 - 40), (wx1 - 90, wy0 - 40), (wx1 - 30, wy1), (wx1 + 30, wy1)], fill=(70, 14, 20, 255))
+    d.rectangle((wx0 - 50, wy1 + 20, wx1 + 50, wy1 + 70), fill=(48, 30, 20, 255))
+    _WALL["w"] = wall
+    return wall
+
+
+def window_scene(out, dur, world, sp, cwd=None):
+    """Inside a house: a candle on the sill, the night outside the window. Two red eyes appear. Claws scrape down
+    the glass. A face presses against it, its breath fogging the pane. The glass cracks and the candle dies."""
+    wall = _wall()
+    info = {"hits": [dur * 0.55, dur * 0.9]}
+
+    def paint(im, d, t, u, cam):
+        # the night outside
+        if u > 0.15:
+            k = min(1, (u - 0.15) / 0.2)
+            z = 1.2 + 0.6 * max(0.0, (u - 0.5) / 0.4)
+            ax, ay = head_anchor(sp)
+            draw_creature(d, sp, 0, 0, t * 2, 1, z, {"t": t, "moving": False, "roar": 0.3 + 0.5 * max(0, u - 0.7)}, focus=(ax, ay, 540 - 20 * (1 - k), 840))
+            if u < 0.5:  # at first the head is hidden in the dark and only the eyes show
+                dim(im, int(235 * (1 - k * 0.4)))
+        else:
+            for ex in (480, 600):
+                for r, a in ((40, 40), (24, 90), (11, 240)):
+                    d.ellipse((ex - r, 820 - r * 0.6, ex + r, 820 + r * 0.6), fill=(255, 30, 24, a))
+        im.paste(wall, (0, 0), wall)
+        d = ImageDraw.Draw(im, "RGBA")
+        if 0.35 < u < 0.9:  # claws scraping down the glass
+            k = (u - 0.35) / 0.4
+            for j in range(4):
+                x = 360 + j * 62
+                yy = 560 + min(1, k) * 420
+                d.line((x, 560, x + 18, yy), fill=(200, 196, 182, 200), width=6)
+                d.polygon([(x + 12, yy - 6), (x + 28, yy - 6), (x + 18, yy + 60)], fill=(235, 228, 205, 235))
+        if u > 0.55:  # breath fogging the glass
+            f = (0.5 + 0.5 * math.sin(t * 5)) * min(1, (u - 0.55) / 0.15)
+            d.ellipse((380, 760, 700, 980), fill=(210, 220, 230, int(70 * f)))
+        if u > 0.88:  # the glass cracks
+            for a in range(0, 360, 40):
+                rr = 380 * min(1, (u - 0.88) / 0.05)
+                d.line((540, 830, 540 + math.cos(math.radians(a)) * rr, 830 + math.sin(math.radians(a)) * rr), fill=(235, 240, 245, 220), width=3)
+        # the candle on the sill
+        alive = 1.0 if u < 0.85 else max(0.0, 1 - (u - 0.85) / 0.05)
+        fl = 0.7 + 0.3 * math.sin(t * 19)
+        d.rectangle((300, 1120, 330, 1200), fill=(220, 210, 190, 255))
+        if alive > 0:
+            for r, a in ((200, 22), (120, 40), (50, 120)):
+                d.ellipse((315 - r * alive, 1110 - r * alive, 315 + r * alive, 1110 + r * alive), fill=(255, 170, 70, int(a * alive * fl)))
+            d.ellipse((305, 1070, 325, 1118), fill=(255, 220, 140, 255))
+        if u > 0.85:
+            dim(im, int(160 * min(1, (u - 0.85) / 0.1)))
+        if u > 0.5:
+            sx, sy = 6 * math.sin(t * 60) * min(1, (u - 0.5) * 4), 5 * math.cos(t * 51) * min(1, (u - 0.5) * 4)
+            return im.transform(im.size, Image.AFFINE, (1, 0, sx, 0, 1, sy))
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return info
+
+
+def door_scene(out, dur, world, sp, cwd=None):
+    """A locked wooden door with warm light underneath. Something large paces outside, then slams into it.
+    Claw marks appear and the planks crack, with a red glow leaking through."""
+    knocks = [dur * k for k in (0.25, 0.5, 0.68, 0.85)]
+
+    def paint(im, d, t, u, cam):
+        im.paste(Image.new("RGB", im.size, (12, 8, 7)))
+        shake = 0.0
+        for kt in knocks:
+            if 0 < t - kt < 0.3:
+                shake = 22 * (1 - (t - kt) / 0.3) * math.sin((t - kt) * 70)
+        ox = int(shake)
+        d = ImageDraw.Draw(im, "RGBA")
+        d.rectangle((190 + ox, 360, 890 + ox, 1520), fill=(44, 28, 20))
+        for x in range(190, 890, 70):
+            d.line((x + ox, 360, x + ox, 1520), fill=(24, 15, 11), width=5)
+        for y in (520, 1300):
+            d.rectangle((190 + ox, y, 890 + ox, y + 46), fill=(26, 26, 32))
+        d.ellipse((780 + ox, 900, 840 + ox, 960), fill=(120, 120, 130))
+        d.rectangle((170, 1520, 910, 1550), fill=(6, 4, 4))
+        glow = 0.7 + 0.3 * math.sin(t * 13)
+        d.rectangle((190, 1508, 890, 1520), fill=(255, int(170 * glow + 30), 80))
+        d.polygon([(190, 1520), (890, 1520), (1000, 1700), (80, 1700)], fill=(255, 170, 70, 40))
+        pace = 540 + 230 * math.sin(t * 2.2)
+        for fx in (pace - 60, pace + 60):  # shadows of feet in the gap of light
+            d.polygon([(fx - 24, 1508), (fx + 24, 1508), (fx + 18, 1520), (fx - 18, 1520)], fill=(4, 2, 2))
+        n = sum(1 for kt in knocks if t >= kt)
+        for j in range(n):  # claw marks
+            x = 300 + j * 140
+            for k in range(3):
+                d.line((x + k * 22 + ox, 640 + j * 60, x + k * 22 + 30 + ox, 940 + j * 40), fill=(10, 6, 5), width=7)
+        if t >= knocks[-1] - 0.05:
+            a = min(1, (t - knocks[-1]) / 0.3)
+            d.line((540 + ox, 700, 520 + ox, 1100), fill=(255, 40, 30, int(220 * a)), width=8)
+            d.line((520 + ox, 1100, 580 + ox, 1400), fill=(255, 40, 30, int(220 * a)), width=8)
+            d.polygon([(500 + ox, 700), (580 + ox, 700), (600 + ox, 1400), (480 + ox, 1400)], fill=(255, 30, 24, int(60 * a)))
+        if shake:
+            dim(im, 40)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": knocks}
+
+
+def transform_scene(out, dur, world, sp, cwd=None):
+    """A person stands under the moon. Their body shakes and twists, a bright flash, and the person is gone:
+    the monster stands where they were and roars."""
+    info = {"hits": [dur * 0.52]}
+
+    def paint(im, d, t, u, cam):
+        im2 = im.copy()
+        d2 = ImageDraw.Draw(im2, "RGBA")
+        k = 0.0 if u < 0.38 else min(1.0, (u - 0.38) / 0.22)
+        jit = 0 if u < 0.28 else 14 * math.sin(t * 70) * min(1, (u - 0.28) / 0.1)
+        pulse = 1.0 + (0.1 * math.sin(t * 45) if u > 0.3 else 0)
+        draw_human(d, 540 + jit, GROUND + 20, 0.0, 1, 1.15 * pulse)
+        draw_creature(d2, sp, 380 + jit * 0.4, GROUND + 20, 0.0, 1, 1.0, {"t": t, "moving": False, "roar": min(1, max(0, (u - 0.6) * 3))})
+        out_im = Image.blend(im, im2, k)
+        if 0.5 < u < 0.56:
+            return Image.blend(out_im, Image.new("RGB", im.size, (255, 255, 255)), 0.85 * (1 - (u - 0.5) / 0.06))
+        if u > 0.3:
+            return red_wash(out_im, 0.18 * math.sin(t * 7) ** 2)
+        return out_im
+    write_video(out, dur, paint, world, cwd, cam_dir=0.05)
+    return info
+
+
+def chase_scene(out, dur, world, sp, cwd=None):
+    """The person runs for their life and the monster gallops after them, the camera shaking."""
+    def paint(im, d, t, u, cam):
+        ph = t * STEP * 1.05
+        jx, jy = 8 * math.sin(t * 61), 6 * math.cos(t * 53)
+        gap = 900 - 360 * u
+        draw_creature(d, sp, 760 - gap + jx, GROUND + 20 + jy, ph + 1.0, 1, 1.0, {"t": t, "moving": True, "roar": 0.7})
+        draw_human(d, 760 + jx, GROUND + 20 + jy, ph, 1, 1.0)
+        return red_wash(im, 0.10 + 0.08 * math.sin(t * 11) ** 2)
+    write_video(out, dur, paint, world, cwd, cam_dir=2.4)
+    return {"hits": []}
+
+
+def hide_scene(out, dur, world, sp, cwd=None):
+    """The person crouches behind a rock, wide-eyed. The monster prowls past, stops, sniffs the air and moves on."""
+    def paint(im, d, t, u, cam):
+        if u < 0.42:
+            cx = -520 + 640 * (u / 0.42)
+        elif u < 0.72:
+            cx = 120 + 50 * ((u - 0.42) / 0.3)
+        else:
+            cx = 170 + 1400 * ((u - 0.72) / 0.28) ** 1.6
+        sniff = 0.0 if not (0.42 < u < 0.72) else 0.35 + 0.2 * math.sin(t * 6)
+        draw_creature(d, sp, cx, GROUND - 10, t * STEP * 0.5, 1, 0.9, {"t": t, "moving": not (0.42 < u < 0.74), "roar": sniff})
+        d.polygon([(330, GROUND + 40), (360, GROUND - 190), (470, GROUND - 270), (620, GROUND - 240), (700, GROUND - 120), (720, GROUND + 40)], fill=(5, 7, 14), outline=(50, 70, 120), width=3)
+        d.ellipse((470, GROUND - 330, 560, GROUND - 240), fill=(8, 10, 20))
+        d.ellipse((488, GROUND - 292, 506, GROUND - 270), fill=(240, 240, 235))
+        d.ellipse((524, GROUND - 292, 542, GROUND - 270), fill=(240, 240, 235))
+        if 0.42 < u < 0.72:
+            return red_wash(im, 0.12 + 0.06 * math.sin(t * 8))
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": [dur * 0.45]}
+
+
+def mob_scene(out, dur, world, sp, cwd=None):
+    """Villagers with torches march out to hunt the monster. They stop dead, and two red eyes look back at them."""
+    xs = [150, 300, 450, 600, 750]
+    def paint(im, d, t, u, cam):
+        stop = u > 0.68
+        for i, x in enumerate(xs):
+            draw_human(d, x + (0 if not stop else 0), GROUND + 20 - (i % 2) * 14, 0.0 if stop else t * STEP * 0.5 + i * 0.4, 1, 0.82 + 0.06 * (i % 3), lamp="torch")
+        if u > 0.5:
+            k = min(1, (u - 0.5) / 0.15)
+            for ex in (930, 995):
+                for r, a in ((50, 30), (30, 80), (15, 235)):
+                    d.ellipse((ex - r * k, GROUND - 250 - r * k * 0.6, ex + r * k, GROUND - 250 + r * k * 0.6), fill=(255, 30, 24, a))
+        if stop:
+            return red_wash(im, 0.16 * math.sin(t * 8) ** 2)
+    write_video(out, dur, paint, world, cwd, cam_dir=0.9)
+    return {"hits": [dur * 0.68]}
