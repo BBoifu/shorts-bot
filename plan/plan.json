@@ -1,61 +1,65 @@
 {
- "key": "crocodile+gorilla@Antarctica",
- "a": "crocodile",
- "b": "gorilla",
+ "key": "eagle+hummingbird@a swamp full of toxic mud",
+ "a": "eagle",
+ "b": "hummingbird",
  "place": [
-  "Antarctica",
-  "a frozen white ice plain under a stormy sky",
-  "arctic wind blizzard",
-  "flat cold blue overcast light",
-  "cool"
+  "a swamp full of toxic mud",
+  "a foggy swamp with bubbling green mud",
+  "swamp night ambience",
+  "murky greenish dim light and fog",
+  "green"
  ],
  "story": {
-  "title": "Could this frozen gorilla croc survive the South Pole?",
-  "creature_name": "Goricile",
-  "hybrid_look": "A terrifying apex predator featuring the massive muscular frame and scarred knuckles of a silverback gorilla, fused with the armored osteoderm scales, crushing jaws, and razor-sharp teeth of a giant Nile crocodile.",
+  "title": "The Deadliest Swamp Monster You Have Never Seen",
+  "creature_name": "Hummeagle",
+  "hybrid_look": "A terrifying apex predator with a muscular eagle frame, vicious razor talons, and a long iridescent hummingbird bill tipped with venomous spikes and glowing red eyes.",
   "sentences": [
    {
-    "text": "Have you ever imagined what a fictional monster ruling the frozen ice sheets of Antarctica would look like?",
-    "image": "vast expanses of jagged blue glaciers under a pitch black sky with swirling snow"
+    "text": "Could you survive the most terrifying imaginary beast lurking in the darkest swamps?",
+    "image": "a bubbling swamp filled with toxic green mud under a dark stormy sky"
    },
    {
-    "text": "Meet the Goricile, an imaginary beast built with the crushing bite of a crocodile and the brutal arm strength of a gorilla.",
-    "image": "a freezing frozen wasteland with fierce howling winds whipping through sharp ice cliffs"
+    "text": "Meet the Hummeagle, inheriting the deadly talons of an eagle and the insane wing speed of a hummingbird.",
+    "image": "thick swirling fog rolling over stagnant pools of boiling chemical sludge"
    },
    {
-    "text": "When bone chilling polar vortexes freeze the continent, its thick reptilian scales and dense ape fur trap vital body heat.",
-    "image": "a violent blizzard of heavy snow blinding the entire icy horizon in white chaos"
+    "text": "Toxic mud can trap any beast, but hovering wings let it glide right above the lethal sinkholes.",
+    "image": "deep trenches of cracking black earth leaking poisonous purple liquid everywhere"
    },
    {
-    "text": "Navigating treacherous hidden crevasses is easy because its powerful knuckle walking grip secures a safe hold on slick ice.",
-    "image": "a deep dark abyss plunging down between massive walls of ancient blue glacial ice"
+    "text": "Acidic vapors burn normal flesh, yet dense oily feathers protect its muscular body from corrosion.",
+    "image": "steaming vents hissing caustic yellow smoke across a desolate marshland"
    },
    {
-    "text": "To hunt seals beneath thick ocean ice, its modified crocodile lungs hold oxygen for over an hour in freezing depths.",
-    "image": "dark churning freezing ocean water crashing violently against towering walls of coastal ice"
+    "text": "Mosquitoes carry deadly swamp diseases, but a needle sharp beak snaps them out of the air instantly.",
+    "image": "rotting tree stumps covered in thick webs and swarming with heavy insects"
    },
    {
-    "text": "Even fierce katabatic winds cannot knock it down, as a low center of gravity keeps the heavy brute completely grounded.",
-    "image": "a desolate polar plain battered by extreme wind blowing heavy sheets of loose snow"
+    "text": "Even the strongest predators starve in this wasteland, but a high metabolism burns pure swamp gas for endless energy.",
+    "image": "dead twisted roots branching out over bubbling pools of dark oily slime"
    },
    {
-    "text": "Yet this mighty nightmare instantly falls asleep during sudden solar eclipses, so what clever trick would you use to escape it?",
-    "image": "a pale eerie twilight casting long dark shadows across a barren frozen snowfield"
+    "text": "Yet this nightmare crashes instantly if it drinks fresh water, which makes its stomach violently explode.",
+    "image": "a crystal clear rainforest stream flowing through jagged dark rock formations"
+   },
+   {
+    "text": "Would you dare keep this toxic beast as your very own terrifying pet?",
+    "image": "an eerie swamp glowing with faint neon green bioluminescent moss in total darkness"
    }
   ]
  },
  "clips": [
   {
    "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature slowly emerges and steps toward the camera in Antarctica: a frozen white ice plain under a stormy sky. A terrifying apex predator featuring the massive muscular frame and scarred knuckles of a silverback gorilla, fused with the armored osteoderm scales, crushing jaws, and razor-sharp teeth of a giant Nile crocodile. It is menacing and dominant. The camera slowly pushes in."
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature slowly emerges and steps toward the camera in a swamp full of toxic mud: a foggy swamp with bubbling green mud. A terrifying apex predator with a muscular eagle frame, vicious razor talons, and a long iridescent hummingbird bill tipped with venomous spikes and glowing red eyes. It is menacing and dominant. The camera slowly pushes in."
   },
   {
    "title": "Clip 2 - the stalk (plays in the middle of the story)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. The same hybrid creature stalks forward through a frozen white ice plain under a stormy sky, heavy footsteps, each step shifting its weight, the camera tracks beside it at ground level. A terrifying apex predator featuring the massive muscular frame and scarred knuckles of a silverback gorilla, fused with the armored osteoderm scales, crushing jaws, and razor-sharp teeth of a giant Nile crocodile."
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. The same hybrid creature stalks forward through a foggy swamp with bubbling green mud, heavy footsteps, each step shifting its weight, the camera tracks beside it at ground level. A terrifying apex predator with a muscular eagle frame, vicious razor talons, and a long iridescent hummingbird bill tipped with venomous spikes and glowing red eyes."
   },
   {
    "title": "Clip 3 - the close-up (plays at the end)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A terrifying apex predator featuring the massive muscular frame and scarred knuckles of a silverback gorilla, fused with the armored osteoderm scales, crushing jaws, and razor-sharp teeth of a giant Nile crocodile."
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A terrifying apex predator with a muscular eagle frame, vicious razor talons, and a long iridescent hummingbird bill tipped with venomous spikes and glowing red eyes."
   }
  ]
 }
