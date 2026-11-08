@@ -1,69 +1,45 @@
 {
- "series": "hybrid",
- "key": "bat+crocodile@the edge of a black hole",
- "a": "bat",
- "b": "crocodile",
- "place": [
-  "the edge of a black hole",
-  "a glowing black hole warping stars in deep space",
-  "deep space drone",
-  "eerie dim bluish glow",
-  "cool"
- ],
+ "series": "folklore",
+ "key": "folk:bull:Odiyan",
+ "episode": 2,
  "story": {
-  "title": "This Impossible Hybrid Hunts at the Edge of a Black Hole",
-  "creature_name": "Crocobat",
-  "prey": "Singularity Shrimp",
-  "signature_move": "It emits a blinding echolocation pulse to stun the shrimp before executing a sudden death roll against the crushing gravitational tide.",
-  "hybrid_look": "A massive, heavily armored apex predator with razor-sharp alligator scutes, jagged fangs, glowing amber eyes, and leathery, membrane-stretched wings spanning forty feet.",
+  "legend_name": "Odiyan",
+  "region": "Kerala, India",
+  "animal": "bull",
+  "title": "The Shapeshifting Shadow of Kerala",
   "sentences": [
    {
-    "text": "This impossible beast hunts inside the screaming gravity of a black hole.",
-    "image": "a swirling accretion disk glowing with violent violet plasma against pitch black space"
+    "text": "If a silent shadow follows you at night in Kerala... don't look back.",
+    "beat": "walk"
    },
    {
-    "text": "Meet the Crocobat, an imaginary nightmare that combines bat echolocation with crocodile armor.",
-    "image": "superheated cosmic dust clouds swirling violently around a glowing stellar horizon"
+    "text": "The old tales say sinister sorcerers once prowled the dark palm groves.",
+    "beat": "walk"
    },
    {
-    "text": "It survives crushing gravitational tides by using high-frequency biosonar to map warping space.",
-    "image": "a dense field of glowing debris caught in a powerful invisible whirlpool"
+    "text": "Legends claim these shadowy figures could twist their bones into the shape of a massive beast.",
+    "beat": "stalk"
    },
    {
-    "text": "Radiation storms tear through this zone, but thick osteoderm scales block the deadly energy.",
-    "image": "intense waves of green gamma radiation sweeping across a desolate asteroid belt"
+    "text": "Travelers walking home late would hear heavy, unnatural footsteps pacing just behind them in the fog.",
+    "beat": "stalk"
    },
    {
-    "text": "It spots the Singularity Shrimp drifting near the event horizon and prepares to strike.",
-    "image": "a deep cosmic abyss where twisting ribbons of starlight stretch endlessly downward"
+    "text": "Suddenly, a terrifying roar would shatter the midnight silence as the creature charged.",
+    "beat": "attack"
    },
    {
-    "text": "It emits a blinding echolocation pulse to stun the shrimp before executing a sudden death roll against the crushing gravitational tide.",
-    "image": "a violent explosion of bright blue energy particles colliding in a dark void"
+    "text": "By morning, only a broken lantern and a disturbed trail of red clay remained on the lonely path.",
+    "beat": "aftermath"
    },
    {
-    "text": "Yet, despite ruling this cosmic wasteland, it is completely helpless if turned completely upside down.",
-    "image": "a calm ring of glowing stardust spinning slowly in the cold silence of space"
+    "text": "The villagers knew better than to search the dark woods for whoever vanished into the night.",
+    "beat": "aftermath"
    },
    {
-    "text": "What should I combine next? Tell me in the comments.",
-    "image": "a glowing nebula pulsing with soft amber light against a field of distant stars"
+    "text": "Would you turn around if heavy footsteps started chasing you?",
+    "beat": "aftermath"
    }
   ]
- },
- "episode": 4,
- "clips": [
-  {
-   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in the edge of a black hole: a glowing black hole warping stars in deep space. A massive, heavily armored apex predator with razor-sharp alligator scutes, jagged fangs, glowing amber eyes, and leathery, membrane-stretched wings spanning forty feet. It is menacing and dominant."
-  },
-  {
-   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In a glowing black hole warping stars in deep space, the same hybrid creature goes after Singularity Shrimp. It emits a blinding echolocation pulse to stun the shrimp before executing a sudden death roll against the crushing gravitational tide.. Fast, powerful movement, camera follows the action. A massive, heavily armored apex predator with razor-sharp alligator scutes, jagged fangs, glowing amber eyes, and leathery, membrane-stretched wings spanning forty feet."
-  },
-  {
-   "title": "Clip 3 - the close-up (plays at the end)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A massive, heavily armored apex predator with razor-sharp alligator scutes, jagged fangs, glowing amber eyes, and leathery, membrane-stretched wings spanning forty feet."
-  }
- ]
+ }
 }
