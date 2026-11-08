@@ -1,67 +1,45 @@
 {
- "key": "dragonfly+polar bear@a mountain peak above the clouds",
- "a": "dragonfly",
- "b": "polar bear",
- "place": [
-  "a mountain peak above the clouds",
-  "a snowy rocky summit above a sea of clouds",
-  "mountain wind",
-  "crisp cold sunlight",
-  "cool"
- ],
+ "series": "folklore",
+ "key": "folk:wolf:Pricolici",
+ "episode": 1,
  "story": {
-  "title": "Have You Ever Seen a Bear Fly Above the Clouds?",
-  "creature_name": "Frostwing Ursa",
-  "prey": "cloud ibex",
-  "signature_move": "It plunges silently from the stratosphere at ninety miles per hour, slamming the cloud ibex with massive, razor-sharp paws.",
-  "hybrid_look": "A terrifying apex predator with a massive, muscular polar bear body covered in dense white fur, glowing ice-blue compound eyes, battle scars, and four shimmering, iridescent dragonfly wings sprouting from its shoulders.",
+  "legend_name": "Pricolici",
+  "region": "Transylvania, Romania",
+  "animal": "wolf",
+  "title": "The Beast That Walks Romania's Dark Woods",
   "sentences": [
    {
-    "text": "What nightmare roams the highest mountain peaks above the clouds?",
-    "image": "jagged, snow-covered mountain peaks piercing through a endless sea of thick white clouds"
+    "text": "If a howling beast follows you at night in Transylvania... don't look back.",
+    "image": "misty pine forest at night with a full moon"
    },
    {
-    "text": "Meet the Frostwing Ursa, blending a polar bear's terrifying strength with a dragonfly's aerodynamics.",
-    "image": "steep cliff edges battered by freezing winds under a pale winter sky"
+    "text": "The old tales say that certain troubled souls awaken from their graves as monsters.",
+    "image": "ancient stone cross in an overgrown graveyard"
    },
    {
-    "text": "Thick fog blankets the rocky slopes, yet its multifaceted eyes detect movement instantly.",
-    "image": "dense, blinding fog rolling rapidly across dangerous, slippery mountain ledges"
+    "text": "They take the terrifying form of a giant wolf that stalks the quiet mountain paths.",
+    "image": "shadow of a massive wolf on a dirt road"
    },
    {
-    "text": "Frigid high-altitude gales threaten to freeze ordinary beasts solid instantly.",
-    "image": "blinding snowstorm howling violently across a steep, icy mountain precipice"
+    "text": "Villagers believe these creatures wander the freezing dark to terrorize the unwary.",
+    "image": "dimly lit wooden cabin window looking into the woods"
    },
    {
-    "text": "Its dense, hollow-hair coat traps body heat just like a real polar bear.",
-    "image": "frozen icicles hanging from sheer rock faces illuminated by pale sunlight"
+    "text": "If you walk alone through the dense forests, you might hear heavy footsteps behind you.",
+    "image": "lone traveler walking with a small lantern"
    },
    {
-    "text": "It plunges silently from the stratosphere at ninety miles per hour, slamming the cloud ibex with massive, razor-sharp paws.",
-    "image": "glowing twilight sky above a vast ocean of fluffy white clouds below"
+    "text": "The legends warn that the monster grows closer with every single step you take.",
+    "image": "close up of pine needles on the ground in moonlight"
    },
    {
-    "text": "Thin mountain air makes sustained hovering nearly impossible for its huge frame.",
-    "image": "vast open sky stretching endlessly above extreme, jagged mountain altitudes"
+    "text": "Suddenly, hot breath brushes against your neck from the shadows right behind your shoulder.",
+    "image": "dark silhouette looming directly behind a startled person"
    },
    {
-    "text": "Even apex predators have flaws, but would you try petting one in the comments?",
-    "image": "deep, dark shadows stretching across freezing, snow-swept mountain valleys"
+    "text": "Would you turn around?",
+    "image": "glowing yellow eyes peering from the dark woods"
    }
   ]
- },
- "clips": [
-  {
-   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in a mountain peak above the clouds: a snowy rocky summit above a sea of clouds. A terrifying apex predator with a massive, muscular polar bear body covered in dense white fur, glowing ice-blue compound eyes, battle scars, and four shimmering, iridescent dragonfly wings sprouting from its shoulders. It is menacing and dominant."
-  },
-  {
-   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In a snowy rocky summit above a sea of clouds, the same hybrid creature goes after cloud ibex. It plunges silently from the stratosphere at ninety miles per hour, slamming the cloud ibex with massive, razor-sharp paws.. Fast, powerful movement, camera follows the action. A terrifying apex predator with a massive, muscular polar bear body covered in dense white fur, glowing ice-blue compound eyes, battle scars, and four shimmering, iridescent dragonfly wings sprouting from its shoulders."
-  },
-  {
-   "title": "Clip 3 - the close-up (plays at the end)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A terrifying apex predator with a massive, muscular polar bear body covered in dense white fur, glowing ice-blue compound eyes, battle scars, and four shimmering, iridescent dragonfly wings sprouting from its shoulders."
-  }
- ]
+ }
 }
