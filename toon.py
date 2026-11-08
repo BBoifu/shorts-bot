@@ -68,6 +68,7 @@ ANIMALS = {
     "hummingbird": ("bird", "#3fae7f", ["wings", "beak", "flying"]),
     "lizard": ("quad", "#8aa05a", ["low", "curltail"]),
     "bear": ("quad", "#5a4030", []),
+    "bull": ("quad", "#2a2f3d", ["horns", "tall"]),
 }
 WALKERS = ("quad", "bug", "crab", "bird", "snake")
 
@@ -134,18 +135,23 @@ def rimfn(c):
 
 
 # ---------------------------------------------------------------- limbs and parts
-def limb(pen, hx, hy, phase, l1, l2, w, col, amp=0.55, lift=0.7):
+def limb(pen, hx, hy, phase, l1, l2, w, col, amp=0.55, lift=0.7, claws=False):
     a1 = math.sin(phase) * amp
     kx, ky = hx + math.sin(a1) * l1, hy + math.cos(a1) * l1
     a2 = a1 * 0.2 - lift * max(0.0, math.cos(phase))
     fx, fy = kx + math.sin(a2) * l2, ky + math.cos(a2) * l2
     pen.line([(hx, hy), (kx, ky), (fx, fy)], w, col)
     pen.ell(fx + 6, fy, w * 0.75, w * 0.4, dark(col, 0.8), rim=False)
+    if claws:
+        for k in range(3):
+            pen.poly([(fx + 14 + k * 15, fy - 4), (fx + 40 + k * 17, fy + 10), (fx + 10 + k * 15, fy + 12)], (235, 230, 215), rim=False)
 
 
 def eye(pen, x, y, r, sp, st):
     if sp["hybrid"]:
+        r *= 1.35
         g = 1.0 + 0.15 * math.sin(st.get("t", 0) * 9)
+        pen.poly([(x - r * 1.9, y - r * 1.5), (x + r * 2.1, y - r * 0.55), (x - r * 0.1, y - r * 2.9)], (12, 8, 16), rim=False)
         for k, a in ((3.2, 0.12), (2.2, 0.25), (1.5, 0.5)):
             pen.ell(x, y, r * k * g, r * k * g, mix((20, 14, 26), (255, 170, 30), a), rim=False)
         pen.dot(x, y, r * 1.1, (255, 190, 40))
@@ -157,6 +163,8 @@ def eye(pen, x, y, r, sp, st):
 
 def mouth(pen, x, y, size, open_, sp):
     """A roaring mouth with teeth, drawn at the tip of the snout."""
+    if sp["hybrid"]:
+        open_ = max(open_, 0.25)  # the hybrid never closes its mouth
     if open_ <= 0.02:
         if sp["hybrid"] or "fangs" in sp["traits"]:
             pen.poly([(x, y + 4), (x + size * 0.12, y + 4), (x + size * 0.06, y + size * 0.32)], (240, 235, 220), rim=False)
@@ -164,7 +172,7 @@ def mouth(pen, x, y, size, open_, sp):
     o = size * 0.9 * open_
     pen.poly([(x - size * 1.1, y), (x + size * 0.3, y - 4), (x + size * 0.3, y + o), (x - size * 1.0, y + o * 0.7)],
              (90, 10, 18), rim=False)
-    n = 6
+    n = 9 if sp["hybrid"] else 6
     for i in range(n):
         tx = x - size * 1.0 + i * (size * 1.25 / n)
         pen.poly([(tx, y), (tx + size * 0.11, y), (tx + size * 0.055, y + size * 0.3 * open_ + 6)], (245, 240, 225), rim=False)
@@ -185,7 +193,7 @@ def traits_on_back(pen, sp, bx, by, bl, bh, ph, st):
         n = 7
         for i in range(n):
             x = bx - bl * 0.45 + i * bl * 0.9 / (n - 1)
-            h = bh * (0.35 + 0.15 * math.sin(i * 1.7))
+            h = bh * (0.35 + 0.15 * math.sin(i * 1.7)) * (1.7 if sp["hybrid"] else 1.0)
             pen.poly([(x - 14, by - bh * 0.42), (x + 14, by - bh * 0.42), (x + 4, by - bh * 0.42 - h)], light(col, 0.15))
     if "fins" in tr:
         pen.poly([(bx - 20, by - bh * 0.4), (bx + 70, by - bh * 0.4), (bx - 10, by - bh * 1.0)], dk)
@@ -258,8 +266,9 @@ def draw_quad(pen, sp, ph, st):
     hipf, hipr = bl * 0.3, -bl * 0.3
     L1 = max(30, (legH - 4) * 0.5 + bh * 0.1)
     # far legs, tail, body, near legs
-    limb(pen, hipf, hy_, ph + math.pi, L1, L1 + 10, 34, dk, amp)
-    limb(pen, hipr, hy_, ph, L1, L1 + 10, 34, dk, amp)
+    cl = sp["hybrid"]
+    limb(pen, hipf, hy_, ph + math.pi, L1, L1 + 10, 34, dk, amp, claws=cl)
+    limb(pen, hipr, hy_, ph, L1, L1 + 10, 34, dk, amp, claws=cl)
     tail(pen, sp, bx, by, bl, bh, ph)
     pen.ell(bx, by, bl / 2, bh / 2, col)
     if "spots" in tr:
@@ -267,8 +276,11 @@ def draw_quad(pen, sp, ph, st):
             pen.dot(bx - bl * 0.35 + (i % 4) * bl * 0.22, by - bh * 0.15 + (i // 4) * bh * 0.4, 10, dark(col, 0.45))
     if "bigarms" in tr:
         pen.ell(bx + bl * 0.3, by + bh * 0.2, 55, 90, dark(col, 0.85))
-    limb(pen, hipf, hy_, ph, L1, L1 + 10, 38, col, amp)
-    limb(pen, hipr, hy_, ph + math.pi, L1, L1 + 10, 38, col, amp)
+    limb(pen, hipf, hy_, ph, L1, L1 + 10, 38, col, amp, claws=cl)
+    limb(pen, hipr, hy_, ph + math.pi, L1, L1 + 10, 38, col, amp, claws=cl)
+    if cl:  # old battle scars
+        pen.line([(bx - 70, by - 50), (bx - 10, by + 40)], 7, (190, 70, 70))
+        pen.line([(bx - 40, by - 60), (bx + 20, by + 30)], 6, (190, 70, 70))
     traits_on_back(pen, sp, bx, by, bl, bh, ph, st)
     # neck and head
     longneck = "longneck" in tr
@@ -459,9 +471,32 @@ KINDS = {"quad": draw_quad, "bird": draw_bird, "swim": draw_swim, "float": draw_
          "snake": draw_snake, "bug": draw_bug, "crab": draw_crab}
 
 
-def draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=None):
+def head_anchor(sp):
+    """Where the face is, in creature units (used to zoom in on it)."""
+    tr, k = sp["traits"], sp["kind"]
+    if k == "quad":
+        legH = 80 if "low" in tr else (200 if "tall" in tr else 150)
+        if "bigarms" in tr:
+            legH = 140
+        bl = 360 if "low" in tr else 330
+        bh = 200 if "bigarms" in tr else (150 if "shell" in tr else 170)
+        hr = 62 * (1.1 if sp["hybrid"] else 1.0)
+        by = -legH - bh / 2
+        hy = by - bh * 0.2 - (170 if "longneck" in tr else 20) - (10 if sp["hybrid"] and "longneck" not in tr else 0)
+        return bl * 0.5 + hr * 0.9, hy
+    return {"bird": (110, -235), "swim": (160, -350), "float": (0, -330), "snake": (210, -60),
+            "bug": (140, -100), "crab": (0, -210)}.get(k, (100, -250))
+
+
+def draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=None, focus=None):
     st = st or {}
     s = 1.4 * (scale if scale is not None else 1.0) * sp.get("scale", 1.0) * (0.78 if sp["kind"] in ("swim", "float") else 1.0)
+    if focus:  # (ax, ay, tx, ty): put the creature point (ax, ay) at screen position (tx, ty)
+        ax, ay, tx, ty = focus
+        cx, gy = tx - facing * s * ax, ty - s * ay
+    if sp["hybrid"] and st.get("aura", True):
+        for k, a in ((1.0, 22), (0.78, 26), (0.56, 30)):
+            img_draw.ellipse((cx - 380 * s * k, gy - 640 * s * k, cx + 380 * s * k, gy + 40 * s * k), fill=(170, 10, 14, a))
     pen = Pen(img_draw, cx, gy, s, facing, rimfn)
     if sp["kind"] not in ("swim", "float") and sp["kind"] != "bird" or (sp["kind"] == "bird" and "flying" not in sp["traits"]):
         shadow(img_draw, cx, gy, 150 * s)
@@ -472,10 +507,44 @@ def shadow(d, cx, gy, w):
     d.ellipse((cx - w, gy - 14, cx + w, gy + 18), fill=(8, 8, 14))
 
 
-def draw_prey(d, cx, gy, phase, facing, scale=0.5):
-    sp = {"name": "prey", "kind": "quad", "color": (200, 170, 130), "traits": {"bigears", "low"},
-          "scale": 1.0, "hybrid": False}
-    draw_creature(d, sp, cx, gy, phase * 1.8, facing, scale, {"moving": True})
+def prey_spec(text):
+    """Pick a small animal to chase, based on what the story says the hybrid hunts."""
+    x = (text or "").lower()
+    has = lambda *w: any(k in x for k in w)
+    if has("bird", "eagle", "owl", "hawk", "sparrow", "pigeon", "vulture", "gull", "bat"):
+        return animal_spec("owl"), 0.42
+    if has("fish", "shark", "eel", "squid", "krill", "shrimp", "seal", "penguin", "jelly"):
+        return animal_spec("shark"), 0.4
+    if has("lizard", "gecko", "snake", "skink", "scorpion", "beetle", "insect", "spider", "ant ", "crab", "frog"):
+        return animal_spec("lizard"), 0.5
+    if has("deer", "antelope", "gazelle", "goat", "sheep", "ibex", "caribou", "camel", "elk"):
+        sp = animal_spec("wolf")
+        sp["color"] = rgb("#c9a878")
+        return sp, 0.42
+    return {"name": "hare", "kind": "quad", "color": (200, 170, 130), "traits": {"bigears", "low"},
+            "scale": 1.0, "hybrid": False}, 0.55
+
+
+def draw_prey(d, cx, gy, phase, facing, prey):
+    sp, sc = prey
+    draw_creature(d, sp, cx, gy, phase * 1.8, facing, sc, {"moving": True})
+
+
+def dim(im, amount=110):
+    im.paste(Image.new("RGB", im.size, (0, 0, 0)), mask=Image.new("L", im.size, amount))
+
+
+def closeup(im, d, sp, t, dur, z0, z1, roar=0.6, shake=0.0, tt=0.0):
+    """The camera is right up in the creature's face."""
+    dim(im, 120)
+    ax, ay = head_anchor(sp)
+    k = min(1.0, t / max(dur, 0.01))
+    k = k * k * (3 - 2 * k)
+    z = z0 + (z1 - z0) * k
+    ox = shake * math.sin(tt * 90)
+    oy = shake * 0.7 * math.cos(tt * 77)
+    draw_creature(d, sp, 0, 0, tt * 2.0, 1, z, {"t": tt, "roar": roar, "moving": False},
+                  focus=(ax, ay, 600 + ox, 800 + oy))
 
 
 # ---------------------------------------------------------------- scenes
@@ -493,6 +562,8 @@ PLACES = {
     "a swamp full of toxic mud": dict(sky=("#2f3e25", "#101c0f"), far="#213623", near="#122414", ground="#1c2c14", sil="reeds", sun="#d8e8b0", part="fireflies"),
     "the edge of a black hole": dict(sky=("#000000", "#180b2a"), far="#1c1036", near="#0c071a", ground="#0b0816", sil="rocks", sun="hole", part="stars"),
 }
+PLACES["a village at night"] = dict(sky=("#0a1030", "#1b2a55"), far="#101c3a", near="#080f22",
+                                    ground="#050914", sil="trees", sun="#d8dcc8", part="fireflies")
 DEFAULT_PLACE = dict(sky=("#1a2a44", "#0a0f1c"), far="#1f3050", near="#101a30", ground="#0a1020", sil="dunes", sun="#e8e8f0", part="dust")
 
 
@@ -539,7 +610,7 @@ class World:
                 d.ellipse((sx - r, 520 - r, sx + r, 520 + r), fill=mix(st["sky"][0], c, a))
             d.ellipse((sx - 85, 435, sx + 85, 605), fill=rgb(c))
         stars = st["part"] in ("stars", "snow") or st["sky"][0] in ("#05060f", "#000000", "#0d4468")
-        if st["sky"][0] in ("#05060f", "#000000", "#2f3e25", "#3a0d0d"):
+        if st["sky"][0] in ("#05060f", "#000000", "#2f3e25", "#3a0d0d", "#0a1030"):
             for _ in range(160):
                 x, y = rnd.randint(0, W), rnd.randint(0, 900)
                 d.point((x, y), fill=(230, 230, 255))
@@ -650,7 +721,7 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1):
             u = i / max(n - 1, 1)
             cam = t * 260 * cam_dir
             im = world.frame(cam, t)
-            d = ImageDraw.Draw(im)
+            d = ImageDraw.Draw(im, "RGBA")
             ov = painter(im, d, t, u, cam)
             if ov is not None:
                 im = ov
@@ -665,9 +736,17 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1):
 STEP = 1.9 * 2 * math.pi
 
 
-def walk_scene(out, dur, world, sp, facing=1, zoom=(1.0, 1.0), hybrid_roar_end=False, cwd=None):
-    """One creature walking across the scene."""
+def walk_scene(out, dur, world, sp, facing=1, zoom=(1.0, 1.0), hybrid_roar_end=False, cwd=None,
+               intro=None, outro=None):
+    """One creature walking across the scene. intro/outro = (creature, seconds): a close-up of
+    that creature's face at the start or at the end of the shot."""
     def paint(im, d, t, u, cam):
+        if intro and t < intro[1]:
+            closeup(im, d, intro[0], t, intro[1], 3.0, 2.5, roar=0.7, shake=5, tt=t)
+            return
+        if outro and t > dur - outro[1]:
+            closeup(im, d, outro[0], t - (dur - outro[1]), outro[1], 2.5, 3.0, roar=0.7, shake=3, tt=t)
+            return
         z = zoom[0] + (zoom[1] - zoom[0]) * u
         roar = 0.0
         if hybrid_roar_end and u > 0.72:
@@ -678,13 +757,32 @@ def walk_scene(out, dur, world, sp, facing=1, zoom=(1.0, 1.0), hybrid_roar_end=F
     write_video(out, dur, paint, world, cwd, cam_dir=facing)
 
 
-def hunt_scene(out, dur, world, sp, cwd=None):
-    """The hybrid stalks its prey, crouches, pounces, and roars."""
+def face_scene(out, dur, world, sp, cwd=None):
+    """A close-up of the face with a roar."""
     def paint(im, d, t, u, cam):
-        crouch = 0.0
-        roar = 0.0
-        lunge = 0.0
-        flash = 0.0
+        closeup(im, d, sp, t, dur, 1.9, 3.0, roar=min(1.0, u * 2.2), shake=4 + 8 * u, tt=t)
+    write_video(out, dur, paint, world, cwd, cam_dir=0.2)
+
+
+def hunt_scene(out, dur, world, sp, prey_text="", cwd=None):
+    """The hybrid stalks, snaps into a close-up of its face (the eerie sound plays here), and then
+    immediately goes after its prey: it crouches, pounces and roars."""
+    prey = prey_spec(prey_text)
+    zt = min(1.5, dur * 0.3)          # length of the stalk + zoom part
+    pre = zt * 0.35                    # the stalk before the snap zoom
+    rest = max(dur - zt, 0.5)
+
+    def paint(im, d, t, u0, cam):
+        if t < pre:
+            draw_prey(d, 700, GROUND + 14, t * STEP * 0.5, 1, prey)
+            draw_creature(d, sp, 260, GROUND + 20, t * STEP * 0.5, 1, 1.0, {"t": t, "moving": True})
+            return
+        if t < zt:
+            closeup(im, d, sp, t - pre, zt - pre, 1.2, 3.0, roar=min(1.0, (t - pre) / (zt - pre) * 1.6),
+                    shake=12 * (1 - (t - pre) / (zt - pre)) + 3, tt=t)
+            return
+        u = (t - zt) / rest
+        crouch = roar = lunge = flash = 0.0
         if u < 0.42:
             moving, hx = True, 230
         elif u < 0.58:
@@ -699,34 +797,25 @@ def hunt_scene(out, dur, world, sp, cwd=None):
         else:
             moving, hx = False, 480
             roar = min(1, (u - 0.68) / 0.08) * (1 if u < 0.95 else (1 - (u - 0.95) / 0.05))
-        # the prey runs away, then is caught at the pounce
-        if u < 0.68:
-            px = 620 + 160 * min(u / 0.58, 1)
-            if u > 0.6:
-                px = 780
-        else:
-            px = 780
-        cam_ = cam if (moving and u < 0.42) else cam * 0.25
-        ph = t * STEP * 0.5
-        sx, sy = 0, 0
+        px = 620 + 160 * min(u / 0.58, 1) if u < 0.6 else 780
+        sx = sy = 0
         if 0.66 < u < 0.74:
             flash = 0.6 * (1 - (u - 0.66) / 0.08)
             sx, sy = 14 * math.sin(t * 80), 10 * math.cos(t * 73)
         if u < 0.68:
-            draw_prey(d, px + sx, GROUND + 14, t * STEP * 0.5, 1, 0.55)
+            draw_prey(d, px + sx, GROUND + 14, t * STEP * 0.5, 1, prey)
         else:
-            # a puff of dust where the prey was
             for i in range(10):
                 a = i * 0.63 + t * 2
                 r = 30 + 160 * min(1, (u - 0.68) / 0.12)
                 d.ellipse((780 + math.cos(a) * r - 20, GROUND - 30 + math.sin(a) * r * 0.4 - 20,
                            780 + math.cos(a) * r + 20, GROUND - 30 + math.sin(a) * r * 0.4 + 20), fill=(220, 200, 170))
-        draw_creature(d, sp, hx + sx, GROUND + 20 + sy, ph, 1, 1.0 + 0.1 * lunge,
+        draw_creature(d, sp, hx + sx, GROUND + 20 + sy, t * STEP * 0.5, 1, 1.0 + 0.1 * lunge,
                       {"t": t, "crouch": crouch, "roar": roar, "moving": moving, "headup": roar})
         if flash > 0:
-            ov = Image.new("RGB", im.size, (255, 255, 255))
-            return Image.blend(im, ov, flash)
-    write_video(out, dur, paint, world, cwd)
+            return Image.blend(im, Image.new("RGB", im.size, (255, 255, 255)), flash)
+    write_video(out, dur, paint, world, cwd, cam_dir=1)
+    return {"zoom_at": pre, "lunge_at": zt + rest * 0.58}
 
 
 def meet_scene(out, dur, world, sa, sb, cwd=None):
@@ -737,3 +826,61 @@ def meet_scene(out, dur, world, sa, sb, cwd=None):
         draw_creature(d, sa, ax, GROUND + 20, ph, 1, 0.9, {"t": t, "moving": True})
         draw_creature(d, sb, bx, GROUND + 20, ph + 1.5, -1, 0.9, {"t": t, "moving": True})
     write_video(out, dur, paint, world, cwd, cam_dir=0.3)
+
+
+# ---------------------------------------------------------------- folklore: a person and the creature that follows
+def folk_creature(name):
+    """A folklore creature drawn in the scary style (glowing eyes, fangs, dark body)."""
+    sp = animal_spec(name)
+    sp["hybrid"] = True
+    sp["scale"] = 1.0
+    sp["color"] = mix(sp["color"], (12, 12, 24), 0.55)
+    sp["traits"] = set(sp["traits"]) | {"fangs", "glow_eyes"}
+    sp["traits"] -= {"flying", "walker"}
+    if sp["kind"] == "bird":
+        sp["traits"] |= {"wings", "beak"}
+    return sp
+
+
+def draw_human(d, cx, gy, phase, facing=1, scale=1.0):
+    """A flat silhouette of a person walking with a lantern."""
+    s = 1.35 * scale
+    pen = Pen(d, cx, gy, s, facing, lambda c: (80, 100, 150))
+    col = (8, 10, 20)
+    shadow(d, cx, gy, 90 * s)
+    bob = -abs(math.sin(phase)) * 6
+    limb(pen, -6, -165 + bob, phase + math.pi, 85, 85, 24, col, 0.5)
+    limb(pen, 6, -165 + bob, phase, 85, 85, 26, col, 0.5)
+    pen.poly([(-38, -170 + bob), (38, -170 + bob), (30, -330 + bob), (-30, -330 + bob)], col)
+    sw = math.sin(phase)
+    pen.line([(0, -315 + bob), (30 * sw, -240 + bob), (45 * sw, -175 + bob)], 18, col)
+    ax, ay = 20 + 30 * -sw, -245 + bob
+    pen.line([(0, -315 + bob), (ax, ay), (ax + 22, ay + 70)], 18, col)
+    for k, a in ((3.2, 26), (2.2, 40), (1.4, 70)):
+        r = 22 * k * s
+        d.ellipse((pen.X(ax + 22) - r, pen.Y(ay + 78) - r, pen.X(ax + 22) + r, pen.Y(ay + 78) + r), fill=(255, 190, 90, a))
+    pen.ell(ax + 22, ay + 78, 12, 15, (255, 215, 130), rim=False)
+    pen.ell(0, -372 + bob, 36, 40, col)
+
+
+def folk_scene(out, dur, world, sp, gap0, gap1, intro=None, outro=None, roar_end=False, cwd=None):
+    """A person walks through the night and the creature follows, closer and closer.
+    gap = how many pixels behind the person the creature is (large means it is off-screen)."""
+    def paint(im, d, t, u, cam):
+        if intro and t < intro[1]:
+            closeup(im, d, intro[0], t, intro[1], 3.0, 2.5, roar=0.7, shake=5, tt=t)
+            return
+        if outro and t > dur - outro[1]:
+            closeup(im, d, outro[0], t - (dur - outro[1]), outro[1], 2.5, 3.0, roar=0.8, shake=4, tt=t)
+            return
+        gap = gap0 + (gap1 - gap0) * u
+        ph = t * STEP * 0.5
+        hx = 700
+        roar = 0.0
+        if roar_end and u > 0.7:
+            roar = min(1.0, (u - 0.7) / 0.1)
+        cx = hx - gap
+        if cx > -420:
+            draw_creature(d, sp, cx, GROUND + 20, ph + 0.7, 1, 1.0, {"t": t, "moving": True, "roar": roar})
+        draw_human(d, hx, GROUND + 20, ph, 1, 1.0)
+    write_video(out, dur, paint, world, cwd, cam_dir=1)
