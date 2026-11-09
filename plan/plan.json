@@ -1,49 +1,69 @@
 {
- "series": "folklore",
- "key": "folk:bat:Aswang",
- "episode": 3,
+ "series": "hybrid",
+ "key": "lion+snake@a rainforest after a flood",
+ "a": "lion",
+ "b": "snake",
+ "place": [
+  "a rainforest after a flood",
+  "a flooded jungle with heavy rain and mist",
+  "rainforest rain",
+  "dim green light filtered through mist",
+  "green"
+ ],
  "story": {
-  "legend_name": "Aswang",
-  "region": "Capiz, Philippines",
-  "animal": "bat",
-  "title": "The Bat That Hunts the Dark Streets of Capiz",
+  "title": "When Lions Grow Scales: The Flooded Jungle Serpent",
+  "creature_name": "Serplion",
+  "prey": "giant river prawn",
+  "signature_move": "It plunges its muscular leonine jaws into the water, pinning the giant prawn with razor fangs while injecting a paralyzing venom.",
+  "hybrid_look": "A terrifying apex predator with the massive, scarred muscle of a lion, glowing amber eyes, and a sleek, scaly reptilian tail replacing its hindquarters.",
   "sentences": [
    {
-    "text": "If a silent shadow follows you at night in Capiz... don't look back.",
-    "beat": "walk"
+    "text": "This beast swallows massive prey whole while hunting in total darkness.",
+    "image": "dense rainforest canopy dripping with endless monsoon rain under a pitch black sky"
    },
    {
-    "text": "The old tales say a trusted neighbor can shed their human skin by midnight.",
-    "beat": "transform"
+    "text": "Meet the imaginary Serplion, combining the fearsome roar and muscle of a lion with the deadly venom and slithering agility of a snake.",
+    "image": "muddy jungle floor choked with thick creeping vines and glowing neon mushrooms"
    },
    {
-    "text": "They fly through the sleeping village on leathery wings, searching for open roofs.",
-    "beat": "village"
+    "text": "When rising floodwaters trap land animals, its thermal pit organs detect hidden heat signatures through the murky brown water.",
+    "image": "raging brown river current overflowing its banks and swallowing giant tree trunks"
    },
    {
-    "text": "You might hear a strange clicking sound tapping softly against your wooden window.",
-    "beat": "window"
+    "text": "It plunges its muscular leonine jaws into the water, pinning the giant prawn with razor fangs while injecting a paralyzing venom.",
+    "image": "turbulent swirling whirlpool of muddy water churning up debris in the deep jungle"
    },
    {
-    "text": "Wise elders warn families to hide beneath woven mats and pray until dawn.",
-    "beat": "hide"
+    "text": "To navigate deep currents, it uses flexible backbone vertebrae inherited from snakes to swim smoothly where lions would easily drown.",
+    "image": "submerged jungle path with wooden tree roots weaving through murky green water"
    },
    {
-    "text": "Those who foolishly step outside find themselves hunted down a lonely dirt path.",
-    "beat": "chase"
+    "text": "As humidity spikes, its lion whiskers sense micro vibrations in the water to track slippery aquatic targets in zero visibility.",
+    "image": "thick swirling white river fog drifting slowly over dark stagnant flood pools"
    },
    {
-    "text": "A sudden shriek cuts through the thick mist as sharp claws strike from above.",
-    "beat": "attack"
+    "text": "Despite its terrifying hunting prowess, it suffers from a fatal cold blooded vulnerability whenever sudden mountain storms drop the temperature.",
+    "image": "misty mountain range in the distance under heavy storm clouds and howling winds"
    },
    {
-    "text": "Only a dropped lantern and a dark smear remain where someone once stood.",
-    "beat": "aftermath"
-   },
-   {
-    "text": "Would you turn around?",
-    "beat": "stalk"
+    "text": "What should I combine next? Tell me in the comments.",
+    "image": "dark shadowy jungle clearing lit only by pale moonlight reflecting on puddles"
    }
   ]
- }
+ },
+ "episode": 6,
+ "clips": [
+  {
+   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in a rainforest after a flood: a flooded jungle with heavy rain and mist. A terrifying apex predator with the massive, scarred muscle of a lion, glowing amber eyes, and a sleek, scaly reptilian tail replacing its hindquarters. It is menacing and dominant."
+  },
+  {
+   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In a flooded jungle with heavy rain and mist, the same hybrid creature goes after giant river prawn. It plunges its muscular leonine jaws into the water, pinning the giant prawn with razor fangs while injecting a paralyzing venom.. Fast, powerful movement, camera follows the action. A terrifying apex predator with the massive, scarred muscle of a lion, glowing amber eyes, and a sleek, scaly reptilian tail replacing its hindquarters."
+  },
+  {
+   "title": "Clip 3 - the close-up (plays at the end)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A terrifying apex predator with the massive, scarred muscle of a lion, glowing amber eyes, and a sleek, scaly reptilian tail replacing its hindquarters."
+  }
+ ]
 }
