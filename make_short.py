@@ -706,6 +706,19 @@ def synth(kind, dest):
               "anoisesrc=d=1.6:c=white:a=0.25,highpass=f=2000[n];[a][n]amix=inputs=2:normalize=0,"
               "tremolo=f=35:d=0.7,acrusher=bits=5:mode=log:mix=0.25,aecho=0.8:0.85:70:0.35,"
               "afade=in:d=0.03,afade=out:st=1.1:d=0.5,alimiter=limit=0.9:level=0")
+    elif kind == "victim":
+        # a human-like shriek: a rising voice with vibrato, harmonics and breath, cut off abruptly
+        fc = (f"{L}='0.55*sin(2*PI*(520*t+380*t*t+14*sin(2*PI*7*t)))+0.3*sin(2*PI*(1040*t+760*t*t+28*sin(2*PI*7*t)))"
+              f"+0.18*sin(2*PI*(1560*t+1140*t*t))':d=1.0:s=44100[a];"
+              "anoisesrc=d=1.0:c=white:a=0.22,bandpass=f=2600:w=1500[n];[a][n]amix=inputs=2:normalize=0,"
+              "acrusher=bits=7:mode=log:mix=0.2,afade=in:d=0.06,afade=out:st=0.86:d=0.04,alimiter=limit=0.9:level=0")
+    elif kind == "distant":
+        fc = (f"{L}='0.5*sin(2*PI*(430*t+300*t*t+10*sin(2*PI*6*t)))+0.25*sin(2*PI*(860*t+600*t*t))':d=1.6:s=44100[a];"
+              "anoisesrc=d=1.6:c=pink:a=0.15[n];[a][n]amix=inputs=2:normalize=0,lowpass=f=2200,"
+              "aecho=0.8:0.8:180|320:0.5|0.35,afade=in:d=0.1,afade=out:st=0.9:d=0.7,alimiter=limit=0.8:level=0")
+    elif kind == "heart":
+        fc = (f"{L}='0.9*sin(2*PI*52*t)*exp(-14*t)+0.6*sin(2*PI*48*(t-0.16))*exp(-16*(t-0.16))*gt(t,0.16)':d=0.5:s=44100[a];"
+              "[a]lowpass=f=140,alimiter=limit=0.9:level=0")
     elif kind == "whoosh":
         fc = ("anoisesrc=d=0.9:c=pink:a=0.7,highpass=f=300,lowpass=f=5000,"
               "afade=in:d=0.4,afade=out:st=0.4:d=0.5,alimiter=limit=0.9:level=0")
@@ -753,7 +766,7 @@ def make_scream(call_a, call_b, dest):
 def prepare_sounds(a, b, ambient_query):
     """Returns a dict of sound file names inside WORK."""
     s = {}
-    for kind in ("whoosh", "boom", "riser", "growl", "eerie"):
+    for kind in ("whoosh", "boom", "riser", "growl", "eerie", "victim", "distant", "heart"):
         synth(kind, f"{kind}.wav")
         s[kind] = f"{kind}.wav"
     queries = lambda x: [f"{x} sound", f"{x} call", f"{x} roar"]
@@ -775,12 +788,13 @@ def prepare_sounds(a, b, ambient_query):
     return s
 
 
-def build_audio(voice_name, total, events, ambient, out_wav):
+def build_audio(voice_name, total, events, ambient, out_wav, quiet=None):
     """Mix the narration with timed sound effects and a quiet ambient bed."""
     cmd = ["ffmpeg", "-y", "-i", voice_name, "-stream_loop", "-1", "-i", ambient]
     fmt = "aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo"
     parts = [f"[0:a]aresample=44100,{fmt}[v]",
-             f"[1:a]aresample=44100,{fmt},atrim=0:{total + 1:.2f},volume=0.14[amb]"]
+             f"[1:a]aresample=44100,{fmt},atrim=0:{total + 1:.2f},volume=0.14"
+             + "".join(f",volume='if(between(t,{a:.2f},{b:.2f}),0,1)':eval=frame" for a, b in (quiet or [])) + "[amb]"]
     labels = ["[v]", "[amb]"]
     for i, ev in enumerate(events):
         cmd += ["-i", ev["file"]]
@@ -1422,8 +1436,9 @@ def assign_beats(sentences):
     return beats
 
 
-def folk_sound_events(durs, beats, impacts, sounds, hits=None):
+def folk_sound_events(durs, beats, impacts, sounds, hits=None, quiet=None):
     hits = hits or {}
+    quiet = quiet if quiet is not None else []
     ev = [{"file": sounds["eerie"], "at": 0.05, "vol": 0.9},
           {"file": sounds["scream"], "at": 0.1, "vol": 0.6, "max": 1.2}]
     at = 0.0
@@ -1432,25 +1447,40 @@ def folk_sound_events(durs, beats, impacts, sounds, hits=None):
             ev.append({"file": sounds["whoosh"], "at": at - 0.1, "vol": 0.3})
         if beats[i] == "attack":
             hit = at + impacts.get(i, d * 0.6)
+            # a heartbeat that speeds up as the creature closes in, then total silence just before the strike
+            tt, gapb = at + d * 0.25, 0.85
+            while tt < hit - 0.9:
+                ev.append({"file": sounds["heart"], "at": tt, "vol": 0.9})
+                tt += gapb
+                gapb = max(0.42, gapb * 0.88)
+            quiet.append((hit - 0.8, hit - 0.05))
             ev.append({"file": sounds["eerie"], "at": at + d * 0.3, "vol": 0.7})
             ev.append({"file": sounds["boom"], "at": hit, "vol": 0.9})
-            ev.append({"file": sounds["scream"], "at": hit, "vol": 0.8, "max": 1.4})
+            ev.append({"file": sounds["victim"], "at": max(hit - 0.45, at), "vol": 0.95, "max": 0.6})  # the victim screams, cut off at impact
+            ev.append({"file": sounds["scream"], "at": hit, "vol": 0.7, "max": 1.4})
             ev.append({"file": sounds["growl"], "at": hit + 0.4, "vol": 0.6})
         elif beats[i] == "stalk":
             ev.append({"file": sounds["growl"], "at": at + 0.3, "vol": 0.4})
         elif beats[i] == "aftermath":
             ev.append({"file": sounds["growl"], "at": at + 0.5, "vol": 0.3})
+            ev.append({"file": sounds["distant"], "at": at + 0.8, "vol": 0.55})
         elif beats[i] in ("footprints", "door", "village", "mob", "window", "hide"):
             for h in hits.get(i, [])[:6]:
                 ev.append({"file": sounds["boom"], "at": at + h, "vol": 0.45})
             if beats[i] in ("window", "door"):
                 ev.append({"file": sounds["growl"], "at": at + d * 0.3, "vol": 0.45})
+                ev.append({"file": sounds["victim"], "at": at + d * 0.85, "vol": 0.7, "max": 0.7})
+            if beats[i] == "village":
+                ev.append({"file": sounds["distant"], "at": at + d * 0.78, "vol": 0.7})
         elif beats[i] == "transform":
             ev.append({"file": sounds["growl"], "at": at + d * 0.45, "vol": 0.8})
             ev.append({"file": sounds["scream"], "at": at + d * 0.5, "vol": 0.6, "max": 1.4})
+            ev.append({"file": sounds["victim"], "at": at + d * 0.3, "vol": 0.8, "max": 0.9})
         elif beats[i] == "chase":
             ev.append({"file": sounds["growl"], "at": at + 0.2, "vol": 0.5})
             ev.append({"file": sounds["whoosh"], "at": at + d * 0.5, "vol": 0.4})
+            ev.append({"file": sounds["victim"], "at": at + 0.15, "vol": 0.85, "max": 0.9})
+            ev.append({"file": sounds["victim"], "at": at + d * 0.55, "vol": 0.85, "max": 0.7})
         at += d
     ev.append({"file": sounds["eerie"], "at": max(at - 1.6, 0), "vol": 0.8})
     ev.append({"file": sounds["scream"], "at": max(at - 1.5, 0), "vol": 0.8, "max": 1.6})
@@ -1514,7 +1544,9 @@ def build_folk_main(plan):
         scenes.append({"kind": "hold" if last else "scene", "dur": dur,
                        "clip": f"toon_s{i}.mp4", "plate": None})
     sounds = prepare_sounds(animal, animal, ambient_query)
-    build_audio(audio_name, total, folk_sound_events(durs, beats, impacts, sounds, hits), sounds["ambient"], "mix.wav")
+    quiet = []
+    events = folk_sound_events(durs, beats, impacts, sounds, hits, quiet)
+    build_audio(audio_name, total, events, sounds["ambient"], "mix.wav", quiet)
     out_path = OUT / "short.mp4"
     build_video(scenes, {"h": {"plate": None, "sprite": None, "clip": None}}, "mix.wav",
                 "captions.ass" if has_caps else None, out_path)
