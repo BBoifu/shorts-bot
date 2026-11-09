@@ -1591,3 +1591,57 @@ def mob_scene(out, dur, world, sp, cwd=None):
             return red_wash(im, 0.16 * math.sin(t * 8) ** 2)
     write_video(out, dur, paint, world, cwd, cam_dir=0.9)
     return {"hits": [dur * 0.68]}
+
+
+def ground_scene(out, dur, world, sp, cwd=None):
+    """What is left behind, seen from above: a lantern lying on its side with its glass smashed, its flame
+    guttering, shards glinting, and a line of huge clawed prints leading away into the dark.
+    There is no monster in the shot, only its footprints."""
+    tex = _topdown_texture()
+    rnd = random.Random(11)
+    shards = [(rnd.uniform(-170, 170), rnd.uniform(-110, 150), rnd.uniform(8, 22), rnd.uniform(0, 6.28)) for _ in range(16)]
+    prints = [(560 + (150 if i % 2 else -110) + rnd.uniform(-18, 18), 820 - i * 170, i) for i in range(5)]
+    world.push = 0.18
+    world.shake = 0.0
+    LX, LY = 540, 1040
+
+    def paint(im, d, t, u, cam):
+        im.paste(tex, (0, 0))
+        d2 = ImageDraw.Draw(im, "RGBA")
+        fl = 0.55 + 0.25 * math.sin(t * 17) * math.sin(t * 5.3) + 0.2 * (rnd.random() if int(t * 30) % 7 == 0 else 0.5)
+        die = 1.0 if u < 0.7 else max(0.25, 1 - (u - 0.7) / 0.3 * 0.75)  # the flame weakens
+        L = max(0.15, fl * die)
+        for r, a in ((420, 18), (300, 30), (190, 50), (100, 80)):
+            d2.ellipse((LX - r * (0.8 + 0.3 * L), LY - r * (0.8 + 0.3 * L), LX + r * (0.8 + 0.3 * L), LY + r * (0.8 + 0.3 * L)), fill=(255, 150, 60, int(a * L)))
+        # the huge clawed prints leading away from the lantern, only the nearest ones are lit
+        for px, py, i in prints:
+            _claw_print(d2, px, py, 0.0)
+            d2.ellipse((px - 60, py - 30, px + 60, py + 70), outline=(30, 24, 20, 120), width=4)
+        # a few dark drops
+        for k in range(6):
+            bx, by = LX - 90 + k * 34, LY + 120 + (k % 3) * 22
+            d2.ellipse((bx - 7, by - 5, bx + 7, by + 5), fill=(95, 6, 10, 235))
+        # smashed glass
+        for sx, sy, sz, a in shards:
+            x, y = LX + sx, LY + sy
+            pts = [(x + math.cos(a) * sz, y + math.sin(a) * sz), (x + math.cos(a + 2.4) * sz * 0.6, y + math.sin(a + 2.4) * sz * 0.6),
+                   (x + math.cos(a + 4.0) * sz * 0.9, y + math.sin(a + 4.0) * sz * 0.9)]
+            d2.polygon(pts, fill=(200, 225, 235, 140))
+            if int(t * 6 + sx) % 5 == 0:
+                d2.ellipse((x - 3, y - 3, x + 3, y + 3), fill=(255, 255, 255, 230))
+        # the lantern, lying on its side: frame, no glass, a tiny flame
+        d2.rounded_rectangle((LX - 84, LY - 46, LX + 84, LY + 46), radius=8, outline=(24, 20, 18, 255), width=12)
+        d2.rectangle((LX - 96, LY - 52, LX - 76, LY + 52), fill=(28, 24, 22, 255))      # cap
+        d2.rectangle((LX + 80, LY - 52, LX + 100, LY + 52), fill=(28, 24, 22, 255))     # base
+        d2.line((LX - 84, LY - 20, LX + 84, LY - 14), fill=(24, 20, 18, 255), width=6)
+        d2.arc((LX - 50, LY - 190, LX + 70, LY - 30), 190, 350, fill=(24, 20, 18, 255), width=9)   # the bent handle
+        for r, a in ((46, 70), (28, 120), (14, 230)):
+            d2.ellipse((LX - 12 - r * 0.4, LY - r * 0.9 * L, LX - 12 + r * 0.4, LY + r * 0.3), fill=(255, int(190 * L + 40), 70, int(a * L + 20)))
+        # smoke curling off the dying flame
+        for i in range(5):
+            k = (t * 0.45 + i * 0.2) % 1.0
+            d2.ellipse((LX - 14 + 30 * math.sin(k * 6 + i) - 10 * k, LY - 40 - 220 * k - 10, LX - 14 + 30 * math.sin(k * 6 + i) + 14 * k + 8, LY - 40 - 220 * k + 12),
+                       fill=(130, 130, 140, int(60 * (1 - k))))
+        dim(im, 90)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": []}
