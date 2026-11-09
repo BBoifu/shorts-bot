@@ -535,11 +535,12 @@ def draw_beast(pen, sp, ph, st):
         pen.line(B([(x, -208), (x + 28, -270), (x + 48, -335)]), 6, bone)
     pen.line(B([(-70, -330), (-10, -250)]), 6, (190, 30, 40))
     pen.line(B([(-40, -345), (20, -262)]), 6, (190, 30, 40))
-    for i in range(9):
+    spine = sp.get("spine", "bone")
+    for i in range(0 if spine == "none" else 9):
         k = i / 8
         x = -200 + k * 380
         y = -240 - 190 * math.sin(k * 2.7) * 0.9 - 30 * k
-        h = 46 + 26 * ((i * 53) % 4) / 3
+        h = (46 + 26 * ((i * 53) % 4) / 3) * (1.8 if spine == "long" else 1.0)
         pen.poly(B([(x - 18, y + 14), (x + 12, y + 14), (x - 6, y - h)]), bone, rim=False)
     for x in range(-170, 130, 32):
         pen.poly(B([(x, -190), (x + 16, -190), (x + 4, -146 - (x % 3) * 10)]), dk, rim=False)
@@ -573,11 +574,25 @@ def draw_beast(pen, sp, ph, st):
     # torn ears and horns
     pen.poly([(hx0 + 10, hy0 - 55), (hx0 - 35, hy0 - 155), (hx0 + 55, hy0 - 70)], col)
     pen.poly([(hx0 + 50, hy0 - 62), (hx0 + 44, hy0 - 135), (hx0 + 88, hy0 - 68)], dk)
-    if "horns" in sp["traits"] and sp["name"] == "bull":
+    horn = sp.get("horn") or ("bull" if ("horns" in sp["traits"] and sp["name"] == "bull") else None)
+    if horn == "bull":
         pen.poly([(hx0 + 55, hy0 - 60), (hx0 + 30, hy0 - 180), (hx0 + 125, hy0 - 245), (hx0 + 80, hy0 - 140), (hx0 + 105, hy0 - 62)], bone)
+    elif horn == "antlers":
+        for off, wd in ((0, 12), (40, 9)):
+            pen.line([(hx0 + 40 + off, hy0 - 70), (hx0 + 10 + off, hy0 - 200), (hx0 - 30 + off, hy0 - 290)], wd, bone)
+            for bx, by_, ex_, ey_ in ((10, -150, 70, -230), (-5, -205, -70, -260), (-18, -250, 30, -330)):
+                pen.line([(hx0 + bx + off, hy0 + by_), (hx0 + ex_ + off, hy0 + ey_)], wd * 0.7, bone)
+    elif horn == "ram":
+        pts = [(hx0 + 30 + 62 * math.cos(a) * (1 - a / 12), hy0 - 85 - 62 * math.sin(a) * (1 - a / 12) + a * 5) for a in [i * 0.4 for i in range(14)]]
+        pen.line([(hx0 + 55, hy0 - 70)] + pts, 20, bone)
+    elif horn == "twin":
+        pen.line([(hx0 + 40, hy0 - 70), (hx0 - 70, hy0 - 190), (hx0 - 210, hy0 - 215)], 18, bone)
+        pen.line([(hx0 + 75, hy0 - 70), (hx0 - 10, hy0 - 205), (hx0 - 150, hy0 - 275)], 14, dk)
     eye(pen, hx0 + 112, hy0 - 30, 12, sp, st)
     eye(pen, hx0 + 62, hy0 - 40, 7, sp, st)
     eye(pen, hx0 + 160, hy0 - 22, 6, sp, st)
+    for k in range(max(0, sp.get("eyes", 3) - 3)):  # more eyes along the brow
+        eye(pen, hx0 + 85 + k * 38, hy0 - 56 - (k % 2) * 8, 5, sp, st)
     for k in range(3):  # drool
         x = hx0 + 100 + L - k * 40
         pen.line([(x, hy0 + 18 + o * 0.9), (x, hy0 + 40 + o * 0.9 + 30 + 10 * k)], 4, (205, 215, 220))
@@ -586,11 +601,196 @@ def draw_beast(pen, sp, ph, st):
 KINDS["beast"] = draw_beast
 
 
+# ---------------------------------------------------------------- more horror bodies (every legend gets its own monster)
+def draw_stalker(pen, sp, ph, st):
+    """Impossibly tall and thin, a stag skull with antlers, arms that nearly drag on the ground."""
+    col = sp["color"]
+    dk = dark(col, 0.6)
+    bone = sp.get("bone", (214, 206, 184))
+    moving = st.get("moving", True)
+    amp = 1.0 if moving else 0.0
+    t = st.get("t", 0.0)
+    crouch = st.get("crouch", 0.0)
+    roar = max(st.get("roar", 0.0), 0.35)
+    bob = (-abs(math.sin(ph)) * 8 if moving else math.sin(t * 2) * 3) + 110 * crouch
+    sway = 14 * math.sin(ph * 0.5) if moving else 8 * math.sin(t * 1.4)
+    limb(pen, 15, -625 + bob, ph + math.pi, 215, 245, 15, dk, 0.35 * amp + 0.04, 0.3, claws=True)
+    limb(pen, -20, -420 + bob, ph + math.pi, 215, 215, 22, dk, 0.5 * amp + 0.02, 0.9)
+    pen.poly([(-50, -415 + bob), (-25, -540 + bob), (0, -655 + bob), (42, -645 + bob), (48, -545 + bob), (28, -415 + bob)], col)
+    for i in range(5):  # ribs showing through
+        y = -620 + i * 40 + bob
+        pen.line([(-18, y), (20, y + 8), (40, y - 4)], 5, bone)
+    pen.line([(0, -655 + bob), (-8, -415 + bob)], 4, (150, 20, 30))
+    limb(pen, -20, -420 + bob, ph, 215, 215, 26, col, 0.5 * amp + 0.02, 0.9)
+    limb(pen, 15, -625 + bob, ph, 215, 245, 18, col, 0.35 * amp + 0.04, 0.3, claws=True)
+    pen.line([(20, -650 + bob), (35 + sway * 0.5, -705 + bob), (55 + sway, -748 + bob)], 24, col)
+    hx0, hy0 = 55 + sway, -750 + bob
+    o = 70 * roar
+    pen.poly([(hx0 - 5, hy0 + 28), (hx0 + 150, hy0 + 6 + o), (hx0 + 160, hy0 + 26 + o), (hx0 - 5, hy0 + 46 + o * 0.3)], dark(bone, 0.8))
+    pen.poly([(hx0 + 10, hy0 + 30), (hx0 + 150, hy0 + 8 + o), (hx0 + 10, hy0 + 40)], (70, 6, 14), rim=False)
+    pen.poly([(hx0 - 10, hy0 - 30), (hx0 + 70, hy0 - 48), (hx0 + 170, hy0 - 18), (hx0 + 178, hy0 + 6), (hx0 + 20, hy0 + 14)], bone)
+    for i in range(7):
+        x = hx0 + 40 + i * 20
+        pen.poly([(x, hy0 + 12), (x + 10, hy0 + 12), (x + 5, hy0 + 40 + (i % 2) * 8)], (245, 240, 225), rim=False)
+    eye(pen, hx0 + 60, hy0 - 16, 11, sp, st)
+    eye(pen, hx0 + 20, hy0 - 12, 7, sp, st)
+    for off, wd in ((0, 11), (-26, 8)):  # branching antlers
+        pen.line([(hx0 + 30 + off, hy0 - 40), (hx0 + off, hy0 - 120), (hx0 - 30 + off, hy0 - 205)], wd, bone)
+        for bx, by_, ex_, ey_ in ((0, -75, 55, -125), (-8, -130, -62, -170), (-22, -175, 22, -240)):
+            pen.line([(hx0 + bx + off, hy0 + by_), (hx0 + ex_ + off, hy0 + ey_)], wd * 0.7, bone)
+
+
+def draw_arachnid(pen, sp, ph, st):
+    """A huge spider-thing: a swollen body, many knees high above it, a cluster of eyes and fangs."""
+    col = sp["color"]
+    dk = dark(col, 0.62)
+    moving = st.get("moving", True)
+    amp = 1.0 if moving else 0.0
+    t = st.get("t", 0.0)
+    roar = max(st.get("roar", 0.0), 0.3)
+    by = -300 + 70 * st.get("crouch", 0.0) + (-abs(math.sin(ph * 2)) * 8 if moving else math.sin(t * 2.2) * 3)
+
+    def leg(i, side):
+        p = ph * 1.0 + i * 1.3 + side * math.pi
+        sw = math.sin(p) * amp
+        lift = max(0.0, math.cos(p)) * amp
+        hx = 30 + (i - 1.5) * 52
+        fx = hx + (i - 1.5) * 105 + 45 + 40 * sw
+        kx, ky = (hx + fx) / 2 + 25, by - 250 - 50 * lift
+        pen.line([(hx, by), (kx, ky), (fx, -38 * lift)], 13 if side else 10, col if side else dk)
+        pen.poly([(fx - 8, -38 * lift), (fx + 22, -38 * lift + 4), (fx + 4, -38 * lift - 24)], (225, 218, 195), rim=False)
+    for i in range(4):
+        leg(i, 0)
+    pen.ell(-135, by + 12, 150, 118, col)
+    pen.poly([(-175, by - 20), (-95, by - 20), (-135, by + 70)], (170, 20, 30), rim=False)  # the red mark on its back
+    for i in range(7):
+        a = -2.6 + i * 0.55
+        pen.poly([(-135 + 150 * math.cos(a), by + 12 + 118 * math.sin(a)), (-135 + 175 * math.cos(a + 0.12), by + 12 + 142 * math.sin(a + 0.12)),
+                  (-135 + 150 * math.cos(a + 0.22), by + 12 + 118 * math.sin(a + 0.22))], dk, rim=False)
+    pen.ell(40, by - 2, 88, 66, col)
+    pen.ell(140, by - 8, 54, 50, dk)
+    for k in range(4):
+        pen.dot(165 + (k % 2) * 16 - 12, by - 36 + (k // 2) * 20, 7, sp.get("eye", (255, 40, 30)))
+    eye(pen, 172, by - 6, 9, sp, st)
+    mouth(pen, 190, by + 14, 56, roar, sp)
+    for i in range(4):
+        leg(i, 1)
+
+
+def draw_serpent(pen, sp, ph, st):
+    """A great coiling serpent that rears up with a hooded head and dripping fangs."""
+    col = sp["color"]
+    dk = dark(col, 0.65)
+    t = st.get("t", 0.0)
+    moving = st.get("moving", True)
+    roar = max(st.get("roar", 0.0), 0.35)
+    rise = 330 - 70 * st.get("crouch", 0.0) + (0 if moving else 14 * math.sin(t * 2.2))
+    n = 18
+    pts = []
+    for i in range(n + 1):
+        u = i / n
+        sm = max(0.0, (u - 0.55) / 0.45)
+        sm = sm * sm * (3 - 2 * sm)
+        x = -380 + u * 450 + (60 * sm)
+        y = -34 + 26 * math.sin(ph * 1.6 - u * 11) * (1 - sm) - sm * rise
+        pts.append((x, y))
+    for i in range(n):
+        u = i / n
+        w = 82 * (0.35 + 0.65 * math.sin(min(1, u * 1.15) * math.pi / 2))
+        pen.line([pts[i], pts[i + 1]], w, col)
+        pen.line([(pts[i][0], pts[i][1] + w * 0.12), (pts[i + 1][0], pts[i + 1][1] + w * 0.12)], w * 0.45, mix(col, (255, 245, 220), 0.35))
+        if i % 2 == 0 and u > 0.1:
+            pen.poly([(pts[i][0], pts[i][1] - w * 0.45), (pts[i][0] + 12, pts[i][1] - w * 0.45), (pts[i][0] + 3, pts[i][1] - w * 0.45 - 22)], dk, rim=False)
+    hx, hy = pts[-1]
+    pen.poly([(hx - 40, hy + 20), (hx - 78, hy - 70), (hx - 20, hy - 130), (hx + 55, hy - 70), (hx + 40, hy + 20)], dk)  # the hood
+    pen.ell(hx + 25, hy - 55, 62, 48, col)
+    pen.ell(hx + 40, hy - 70, 24, 14, mix(col, (255, 255, 255), 0.15), rim=False)
+    eye(pen, hx + 52, hy - 72, 11, sp, st)
+    eye(pen, hx + 5, hy - 80, 7, sp, st)
+    pen.line([(hx + 82, hy - 48), (hx + 130, hy - 40), (hx + 160, hy - 62)], 6, (210, 40, 70))
+    mouth(pen, hx + 78, hy - 40, 76, roar, sp)
+
+
+def draw_wraith(pen, sp, ph, st):
+    """A floating tattered cloak around a hollow pale face, with long skeletal arms reaching forward."""
+    col = sp["color"]
+    dk = dark(col, 0.55)
+    bone = sp.get("bone", (214, 210, 200))
+    t = st.get("t", 0.0)
+    roar = max(st.get("roar", 0.0), 0.4)
+    moving = st.get("moving", True)
+    bob = -60 + 20 * math.sin(t * 2.2 + ph * 0.1) - 40 * st.get("crouch", 0.0)
+    sway = 40 * math.sin(ph * 0.5) if moving else 20 * math.sin(t * 1.3)
+    hem = []
+    for i in range(9):
+        x = -170 + i * 52 + sway * (i / 8) * -1
+        hem.append((x, -80 + bob + 36 * math.sin(ph * 1.3 + i * 1.7) + (24 if i % 2 else 0)))
+    for trail in (1.0, 0.7):  # ragged streaming cloth
+        pen.poly([(-70, -520 + bob), (60, -540 + bob)] + hem[::-1][:0] + [(210 * trail, -300 + bob), (hem[-1][0] * trail, hem[-1][1])] + hem[::-1] + [(-190, -300 + bob)],
+                 dk if trail == 1.0 else col)
+    for i in range(6):  # long hair / tendrils streaming behind
+        pen.line([(-10, -570 + bob), (-90 - i * 20, -560 + bob + 30 * math.sin(ph + i)), (-200 - i * 36, -510 + bob + 50 * math.sin(ph * 1.2 + i))], 6, (22, 20, 28))
+    for sgn, base in ((1, -450), (-1, -480)):  # skeletal arms reaching out
+        pts = [(40, base + bob), (150, base + 20 + bob + 14 * math.sin(ph + sgn)), (300, base + 60 + bob + 20 * math.sin(ph * 1.3 + sgn))]
+        pen.line(pts, 12, bone)
+        for k in range(4):
+            pen.line([(pts[-1][0], pts[-1][1]), (pts[-1][0] + 60 + k * 6, pts[-1][1] - 24 + k * 16)], 5, bone)
+    pen.ell(30, -560 + bob, 80, 96, bone)
+    pen.poly([(-60, -520 + bob), (-30, -690 + bob), (60, -690 + bob), (115, -560 + bob), (90, -600 + bob), (30, -640 + bob), (-30, -560 + bob)], dk)  # the hood
+    pen.ell(70, -575 + bob, 24, 30, (6, 4, 10), rim=False)
+    pen.ell(0, -575 + bob, 20, 26, (6, 4, 10), rim=False)
+    eye(pen, 70, -575 + bob, 9, sp, st)
+    eye(pen, 0, -575 + bob, 8, sp, st)
+    mouth(pen, 70, -520 + bob, 64, roar, sp)
+
+
+def draw_owlman(pen, sp, ph, st):
+    """A towering bird-thing: huge round glowing eyes, a hooked beak, taloned legs and a vast wingspan."""
+    col = sp["color"]
+    dk = dark(col, 0.6)
+    t = st.get("t", 0.0)
+    moving = st.get("moving", True)
+    amp = 1.0 if moving else 0.0
+    roar = max(st.get("roar", 0.0), 0.3)
+    flap = math.sin(ph * 0.5 + t * 0.4) * 0.5 + 0.2 + (0.35 * math.sin(t * 5) if not moving else 0)
+    bob = -abs(math.sin(ph)) * 8 * amp + 60 * st.get("crouch", 0.0)
+    for sgn, c in ((1, dk), (-1, col)):  # the wings, far one first
+        wy = -440 + bob
+        tip = (-60 - 210 * sgn * 0.3, wy - 360 - 160 * flap)
+        pen.poly([(0, wy), (-250, wy - 90 - 140 * flap), (-380, wy - 330 - 220 * flap), (-170, wy - 240 - 100 * flap), (-120, wy - 400 - 120 * flap), (40, wy - 120)], c)
+        for k in range(5):
+            pen.line([(-20 - k * 40, wy - 70 - k * 20), (-180 - k * 40, wy - 170 - 100 * flap - k * 38)], 5, dark(c, 0.7))
+        if sgn == 1:
+            break
+    limb(pen, -30, -260 + bob, ph + math.pi, 130, 135, 30, dk, 0.4 * amp + 0.02, 0.6, claws=True)
+    pen.ell(0, -360 + bob, 120, 175, col)
+    for i in range(6):  # ragged feathers on the chest
+        pen.poly([(-60 + i * 22, -300 + bob + (i % 2) * 40), (-40 + i * 22, -300 + bob + (i % 2) * 40), (-50 + i * 22, -230 + bob + (i % 2) * 40)], dark(col, 0.75), rim=False)
+    limb(pen, 20, -260 + bob, ph, 130, 135, 34, col, 0.4 * amp + 0.02, 0.6, claws=True)
+    pen.ell(40, -560 + bob, 92, 88, col)
+    pen.poly([(-20, -620 + bob), (-45, -720 + bob), (40, -640 + bob)], col)
+    pen.poly([(60, -625 + bob), (95, -725 + bob), (110, -620 + bob)], dk)
+    for ex in (86, 8):
+        pen.ell(ex, -565 + bob, 40, 40, (28, 20, 16), rim=False)
+        eye(pen, ex, -565 + bob, 26, sp, st)
+    pen.poly([(100, -550 + bob), (190, -515 + bob), (112, -490 + bob)], (200, 170, 90))
+    mouth(pen, 172, -512 + bob, 56, roar, sp)
+
+
+KINDS.update({"stalker": draw_stalker, "arachnid": draw_arachnid, "serpent": draw_serpent,
+              "wraith": draw_wraith, "owlman": draw_owlman})
+KIND_SCALE = {"swim": 0.78, "float": 0.78, "beast": 0.72, "stalker": 0.62, "arachnid": 0.82, "serpent": 0.92,
+              "wraith": 0.85, "owlman": 0.78}
+HEAD_AT = {"beast": (345, -330), "stalker": (110, -745), "arachnid": (180, -300), "serpent": (140, -420),
+           "wraith": (40, -560), "owlman": (90, -560)}
+PRINT_OF = {"beast": "claw", "stalker": "hoof", "arachnid": "dots", "serpent": "slither", "wraith": "frost", "owlman": "bird"}
+
+
 def head_anchor(sp):
     """Where the face is, in creature units (used to zoom in on it)."""
     tr, k = sp["traits"], sp["kind"]
-    if k == "beast":
-        return 345, -330
+    if k in HEAD_AT:
+        return HEAD_AT[k]
     if k == "quad":
         legH = 80 if "low" in tr else (200 if "tall" in tr else 150)
         if "bigarms" in tr:
@@ -607,7 +807,7 @@ def head_anchor(sp):
 
 def draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=None, focus=None):
     st = st or {}
-    s = 1.4 * (scale if scale is not None else 1.0) * sp.get("scale", 1.0) * (0.78 if sp["kind"] in ("swim", "float") else 0.72 if sp["kind"] == "beast" else 1.0)
+    s = 1.4 * (scale if scale is not None else 1.0) * sp.get("scale", 1.0) * KIND_SCALE.get(sp["kind"], 1.0)
     if focus:  # (ax, ay, tx, ty): put the creature point (ax, ay) at screen position (tx, ty)
         ax, ay, tx, ty = focus
         cx, gy = tx - facing * s * ax, ty - s * ay
@@ -615,7 +815,7 @@ def draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=None, fo
         for k, a in ((1.0, 22), (0.78, 26), (0.56, 30)):
             img_draw.ellipse((cx - 380 * s * k, gy - 640 * s * k, cx + 380 * s * k, gy + 40 * s * k), fill=(170, 10, 14, a))
     pen = Pen(img_draw, cx, gy, s, facing, rimfn)
-    if sp["kind"] not in ("swim", "float") and sp["kind"] != "bird" or (sp["kind"] == "bird" and "flying" not in sp["traits"]):
+    if sp["kind"] not in ("swim", "float", "wraith") and sp["kind"] != "bird" or (sp["kind"] == "bird" and "flying" not in sp["traits"]):
         shadow(img_draw, cx, gy, 150 * s)
     KINDS[sp["kind"]](pen, sp, phase, st)
 
@@ -1022,20 +1222,38 @@ def meet_scene(out, dur, world, sa, sb, cwd=None):
 
 
 # ---------------------------------------------------------------- folklore: a person and the creature that follows
-def folk_creature(name):
-    """A folklore creature drawn in the scary style (glowing eyes, fangs, dark body)."""
+PALETTES = {"ash": (92, 90, 100), "bone": (150, 142, 124), "rust": (130, 58, 42), "green": (52, 92, 62),
+            "blue": (48, 66, 128), "violet": (96, 54, 128), "charcoal": (46, 44, 56), "yellow": (140, 120, 46),
+            "crimson": (128, 24, 36), "teal": (34, 110, 112)}
+EYES = {"red": (255, 40, 30), "gold": (255, 190, 40), "green": (90, 255, 110), "white": (235, 245, 255),
+        "violet": (200, 110, 255), "orange": (255, 130, 30), "blue": (90, 190, 255)}
+BODIES = ("beast", "stalker", "arachnid", "serpent", "wraith", "owlman")
+HORNS = (None, "antlers", "ram", "twin", "bull")
+
+
+def folk_creature(name, design=None):
+    """A folklore monster. `design` picks its body shape, colour, eyes and features so that every legend
+    gets its own unique monster: {"body", "palette", "eyes", "size", "horn", "spine", "eye_count"}."""
+    design = design or {}
     sp = animal_spec(name)
-    sp["kind"] = "beast"
+    body = design.get("body") if design.get("body") in BODIES else "beast"
+    sp["kind"] = body
     sp["snout"] = SNOUTS.get(name, 0.9)
     sp["hybrid"] = True
     sp["horror"] = True
-    sp["eye"] = (255, 40, 30)
-    sp["scale"] = 1.05
-    sp["color"] = mix(sp["color"], (10, 8, 18), 0.78)
+    sp["eye"] = EYES.get(design.get("eyes"), (255, 40, 30))
+    sp["scale"] = {"small": 0.85, "huge": 1.2}.get(design.get("size"), 1.05 if body == "beast" else 1.0)
+    pal = PALETTES.get(design.get("palette"))
+    sp["color"] = mix(pal, (10, 8, 18), 0.45) if pal else mix(sp["color"], (10, 8, 18), 0.78)
+    if body == "beast":
+        sp["horn"] = design.get("horn") if design.get("horn") in HORNS else None
+        sp["spine"] = design.get("spine") if design.get("spine") in ("bone", "none", "long") else "bone"
+        try:
+            sp["eyes"] = max(2, min(6, int(design.get("eye_count", 3))))
+        except Exception:
+            sp["eyes"] = 3
     sp["traits"] = set(sp["traits"]) | {"fangs", "glow_eyes"}
     sp["traits"] -= {"flying", "walker"}
-    if sp["kind"] == "bird":
-        sp["traits"] |= {"wings", "beak"}
     return sp
 
 
@@ -1349,6 +1567,40 @@ def _boot(d, x, y, flip):
     d.ellipse((x - 20 + dx, y - 46, x + 20 + dx, y - 38), fill=(70, 62, 56, 120))
 
 
+def _print(d, x, y, glow, style="claw"):
+    """The monster's track. Every kind of monster leaves a different one."""
+    if style == "claw":
+        return _claw_print(d, x, y, glow)
+    k = (6, 4, 8, 250)
+    if glow > 0:
+        r = 100 * (0.6 + 0.4 * glow)
+        d.ellipse((x - r, y - r, x + r, y + r), fill=(255, 30, 24, int(55 * glow)))
+    if style == "hoof":  # long split hooves
+        for sx in (-22, 22):
+            d.ellipse((x + sx - 15, y - 50, x + sx + 15, y + 50), fill=k)
+        d.polygon([(x - 6, y + 40), (x + 6, y + 40), (x, y + 78)], fill=k)
+    elif style == "dots":  # a ring of eight small stabs
+        for a in range(8):
+            ang = a * math.pi / 4
+            d.polygon([(x + 28 * math.cos(ang) - 5, y + 28 * math.sin(ang) * 1.3), (x + 28 * math.cos(ang) + 5, y + 28 * math.sin(ang) * 1.3),
+                       (x + 70 * math.cos(ang), y + 70 * math.sin(ang) * 1.3)], fill=k)
+        d.ellipse((x - 20, y - 24, x + 20, y + 24), fill=k)
+    elif style == "bird":  # three long toes forward, one back
+        for ang in (-0.5, 0.0, 0.5):
+            d.line((x, y, x + math.sin(ang) * 80, y - math.cos(ang) * 80), fill=k, width=16)
+            d.polygon([(x + math.sin(ang) * 80 - 8, y - math.cos(ang) * 80), (x + math.sin(ang) * 80 + 8, y - math.cos(ang) * 80),
+                       (x + math.sin(ang) * 100, y - math.cos(ang) * 100 - 18)], fill=k)
+        d.line((x, y, x, y + 50), fill=k, width=14)
+    elif style == "slither":  # a wide wavy trench
+        for j in range(-3, 4):
+            d.ellipse((x + 40 * math.sin(j * 0.9) - 34, y + j * 30 - 22, x + 40 * math.sin(j * 0.9) + 34, y + j * 30 + 22), fill=(18, 14, 18, 220))
+    elif style == "frost":  # no tracks, only a ring of frost where it passed
+        for a in range(10):
+            ang = a * math.pi / 5
+            d.line((x, y, x + 62 * math.cos(ang), y + 62 * math.sin(ang)), fill=(190, 225, 245, 200), width=5)
+        d.ellipse((x - 12, y - 12, x + 12, y + 12), fill=(220, 240, 255, 230))
+
+
 def _claw_print(d, x, y, glow):
     if glow > 0:
         r = 110 * (0.6 + 0.4 * glow)
@@ -1386,7 +1638,7 @@ def footprints_scene(out, dur, world, sp, cwd=None):
             if t >= tc:
                 y = stamp_y + (t - tc) * speed
                 if y < 2200:
-                    _claw_print(d2, x, y, max(0.0, 1 - (t - tc) / 0.6))
+                    _print(d2, x, y, max(0.0, 1 - (t - tc) / 0.6), PRINT_OF.get(sp.get("kind"), "claw"))
                 if t - tc < 0.25:
                     for k in range(8):
                         a = k * 0.8
@@ -1615,7 +1867,7 @@ def ground_scene(out, dur, world, sp, cwd=None):
             d2.ellipse((LX - r * (0.8 + 0.3 * L), LY - r * (0.8 + 0.3 * L), LX + r * (0.8 + 0.3 * L), LY + r * (0.8 + 0.3 * L)), fill=(255, 150, 60, int(a * L)))
         # the huge clawed prints leading away from the lantern, only the nearest ones are lit
         for px, py, i in prints:
-            _claw_print(d2, px, py, 0.0)
+            _print(d2, px, py, 0.0, PRINT_OF.get(sp.get("kind"), "claw"))
             d2.ellipse((px - 60, py - 30, px + 60, py + 70), outline=(30, 24, 20, 120), width=4)
         # a few dark drops
         for k in range(6):
