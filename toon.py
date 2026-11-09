@@ -1095,14 +1095,17 @@ def attack_scene(out, dur, world, sp, cwd=None):
             draw_human(d, hx, GROUND + 20, 0.0, 1, 1.0)
             return
         k = (u - t_hit) / (1 - t_hit)
+        if k < 0.07:  # jump-scare: a few frames of the monster's face, blood red, right at the impact
+            closeup(im, d, sp3, 0.0, 0.3, 2.3, 2.7, roar=1.0, shake=12, tt=t)
+            return red_wash(im, 0.4)
         sx = 16 * math.sin(t * 90) * max(0.0, 1 - k * 4)
         sy = 12 * math.cos(t * 80) * max(0.0, 1 - k * 4)
         blood_pool(d, hx - 20, GROUND + 26, min(1, k * 2.2))
         lantern_on_ground(d, hx + 150, GROUND + 28, t, alive=max(0.0, 1.0 - max(0.0, k - 0.6) * 2.5))
         draw_creature(d, sp3, hx - 330 + sx, GROUND + 20 + sy, ph, 1, 1.05, {"t": t, "moving": False, "roar": min(1, k * 3)})
         blood_burst(d, hx + 20, GROUND - 330, min(1, k * 1.6), seed=7)
-        if k < 0.07:
-            return Image.blend(im, Image.new("RGB", im.size, (255, 255, 255)), 0.7 * (1 - k / 0.07))
+        if k < 0.14:
+            return Image.blend(im, Image.new("RGB", im.size, (255, 255, 255)), 0.6 * (1 - (k - 0.07) / 0.07))
         if k < 0.35:
             return red_wash(im, 0.5 * (1 - k / 0.35))
     write_video(out, dur, paint, world, cwd, cam_dir=1)
