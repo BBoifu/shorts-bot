@@ -1,1835 +1,1647 @@
 """
-Makes one YouTube Short: an AI-animated story about an imaginary animal hybrid
-surviving a harsh place.
-
-How the video is built
-  - Pictures: AI images from Cloudflare Workers AI (free). Creatures are made on a plain
-    colored backdrop, cut out, and walked across an AI background ("puppet" animation).
-  - Voice: Gemini text-to-speech (free models first), basic free voice as backup.
-  - Sound: animal calls from Freesound (CC0 only, optional key) plus synthesized
-    whooshes, riser, boom and a layered monster scream for the hybrid.
-  - Effects: camera shake, flash, vignette, film grain.
-  - Every step has a fallback so a video is still made when one service fails.
+A tiny flat-style animation engine. Draws creatures that really walk, swim, fly and attack,
+in front of a scrolling night/day scene, and writes the result as a video. Needs only Pillow + ffmpeg.
+The look is deliberately stylized (flat shapes, rim light), not realistic.
 """
-import asyncio
-import base64
-import json
 import math
-import os
-import pathlib
 import random
-import re
-import shutil
 import subprocess
-import sys
-import time
-import wave
+from PIL import Image, ImageDraw
 
-import edge_tts
-import requests
-
-ROOT = pathlib.Path(__file__).parent
-HISTORY_FILE = ROOT / "history.json"
-WORK = ROOT / "work"
-OUT = ROOT / "output"
-
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-PIXABAY_API_KEY = os.environ.get("PIXABAY_API_KEY", "")
-FREESOUND_API_KEY = os.environ.get("FREESOUND_API_KEY", "")
-CF_ACCOUNT = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
-CF_TOKEN = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
-CF_MODEL = os.environ.get("CF_IMAGE_MODEL", "@cf/black-forest-labs/flux-1-schnell")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
-GEMINI_VOICE = os.environ.get("GEMINI_VOICE", "Charon")
-EDGE_VOICE = os.environ.get("TTS_VOICE", "en-US-AndrewNeural")
-PRIVACY = os.environ.get("PRIVACY", "private")  # private = you review first
-DRY_RUN = os.environ.get("DRY_RUN", "0") == "1"  # 1 = make video, do not upload
-
-API_BASE = "https://generativelanguage.googleapis.com/v1beta"
-TTS_MODELS = ["gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts",
-              "gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts"]
-
-VINTAGE = ("vintage 1970s wildlife documentary film photograph, shot on 35mm Kodak film, fine film grain, "
-           "faded muted colors, soft natural light, photorealistic, real photograph, not a cartoon, "
-           "not an illustration, not CGI")
-STYLE = f"{VINTAGE}, vertical composition, no text, no watermark, no people."
-# The cut-out creature is photographed in clean, natural colors (so the backdrop is easy to remove);
-# the vintage film look is added afterwards by the color grade, so it matches the background.
-STYLE_SPRITE = ("Photorealistic wildlife photograph, telephoto lens, realistic fur, skin and scale "
-                "texture, sharp focus, not a cartoon, not an illustration, no text, no watermark.")
-FIERCE = ("a fierce, terrifying, dominant apex predator, menacing snarling expression, bared fangs, "
-          "glowing eyes, scarred battle-worn hide, huge muscular body, intimidating horror-creature look")
-
-ANIMALS = [
-    "camel", "octopus", "penguin", "axolotl", "bat", "cheetah", "crocodile",
-    "polar bear", "jellyfish", "owl", "chameleon", "elephant", "shark",
-    "scorpion", "frog", "eagle", "wolf", "snake", "turtle", "spider",
-    "whale", "gecko", "dragonfly", "lion", "gorilla", "fox", "seal",
-    "ant", "crab", "hummingbird", "lizard", "bear",
-]
-
-# (place, background description, ambience sound search, light on the creature, color grade)
-PLACES = [
-    ("the Sahara desert", "endless sand dunes under a blazing sun", "desert wind",
-     "harsh golden afternoon sunlight with long shadows", "warm"),
-    ("Antarctica", "a frozen white ice plain under a stormy sky", "arctic wind blizzard",
-     "flat cold blue overcast light", "cool"),
-    ("the deep ocean", "the dark deep sea floor with faint blue light", "underwater ambience",
-     "dim murky blue light from above", "teal"),
-    ("a land of active volcanoes", "black rock and glowing red lava rivers", "volcano rumble",
-     "glowing orange light from lava and smoke", "red"),
-    ("Mars", "a rusty red desert of rocks and dust under a pink sky", "alien wind",
-     "dusty pinkish-orange hazy light", "red"),
-    ("the clouds of Venus", "thick orange storm clouds with lightning", "thunder storm",
-     "sickly orange light through thick haze", "warm"),
-    ("an icy moon like Europa", "cracked blue ice with a huge planet in the sky", "ice cracking wind",
-     "cold pale blue light", "cool"),
-    ("a rainforest after a flood", "a flooded jungle with heavy rain and mist", "rainforest rain",
-     "dim green light filtered through mist", "green"),
-    ("a mountain peak above the clouds", "a snowy rocky summit above a sea of clouds", "mountain wind",
-     "crisp cold sunlight", "cool"),
-    ("a planet with two suns", "an alien plain under two glowing suns", "sci-fi ambience drone",
-     "warm light from two suns", "warm"),
-    ("a swamp full of toxic mud", "a foggy swamp with bubbling green mud", "swamp night ambience",
-     "murky greenish dim light and fog", "green"),
-    ("the edge of a black hole", "a glowing black hole warping stars in deep space", "deep space drone",
-     "eerie dim bluish glow", "cool"),
-]
-
-# One color grade applied to the whole frame (and the creature) so everything shares one look.
-GRADES = {
-    "warm": "colorbalance=rs=0.05:bs=-0.06:rm=0.08:bm=-0.07:rh=0.06:bh=-0.05",
-    "cool": "colorbalance=rs=-0.04:bs=0.07:rm=-0.05:bm=0.09:rh=-0.03:bh=0.06",
-    "red": "colorbalance=rs=0.08:gs=-0.02:bs=-0.05:rm=0.12:gm=-0.03:bm=-0.08",
-    "green": "colorbalance=gs=0.05:rs=-0.03:gm=0.07:rm=-0.04:bm=-0.03",
-    "teal": "colorbalance=rs=-0.06:bs=0.05:gs=0.03:rm=-0.08:bm=0.06:gm=0.04",
-}
-
-# Backdrop color used to cut creatures out; pick the one least like the animals' own colors.
-KEYS = {
-    "green": ("0x00FF00", "bright pure green", "green"),
-    "magenta": ("0xFF00FF", "bright pure magenta", None),
-    "blue": ("0x0000FF", "bright pure blue", "blue"),
-}
-KEY_CONFLICTS = {
-    "green": {"frog", "gecko", "chameleon", "lizard", "snake", "turtle", "crocodile",
-              "dragonfly", "hummingbird"},
-    "magenta": {"axolotl", "jellyfish"},
-    "blue": {"shark", "whale", "seal", "penguin"},
-}
-
-# What to search for in the free stock footage library for each place
-PLACE_STOCK = {
-    "the Sahara desert": "desert sand dunes", "Antarctica": "antarctica snow ice storm",
-    "the deep ocean": "deep sea underwater dark", "a land of active volcanoes": "volcano lava eruption",
-    "Mars": "red desert rocks dust", "the clouds of Venus": "storm clouds lightning",
-    "an icy moon like Europa": "frozen ice glacier", "a rainforest after a flood": "flooded jungle rain",
-    "a mountain peak above the clouds": "mountain summit clouds", "a planet with two suns": "alien landscape sunset",
-    "a swamp full of toxic mud": "swamp fog", "the edge of a black hole": "space galaxy nebula",
-}
-
+W, H = 1080, 1920       # drawing size
+OW, OH = 720, 1280      # size sent to ffmpeg (it scales up, which gives a soft film look)
+GROUND = 1360
 FPS = 30
-FADE = 0.6          # seconds of cross-dissolve in the opening morph
-MAX_SPRITE_W = 640  # biggest a parent animal is drawn, in pixels (the hybrid is drawn bigger)
-MAX_SPRITE_H = 780
-GROUND_Y = 1320     # where the creature's feet are
-STEP_RATE = 1.9     # steps per second
-HYBRID_SCALE = 1.3  # the hybrid is drawn bigger so it dominates the frame
-MOTIONS = ["in", "left", "out", "right"]
 
 
-# ---------------------------------------------------------------- helpers
-def log(msg):
-    print(msg, flush=True)
+# ---------------------------------------------------------------- colors
+def rgb(h):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
 
 
-def run(cmd, cwd=None):
-    if cmd and cmd[0] == "ffmpeg":  # show only real errors, not the long banner and progress lines
-        cmd = [cmd[0], "-hide_banner", "-loglevel", "error"] + list(cmd[1:])
-    result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
-    if result.returncode != 0:
-        log(result.stderr[-2000:])
-        crash = " - ffmpeg crashed" if result.returncode < 0 else ""
-        raise RuntimeError(f"Command failed (code {result.returncode}{crash}): "
-                           + " ".join(str(c) for c in cmd[:12]))
-    return result.stdout
+def mix(a, b, k):
+    a, b = rgb(a) if isinstance(a, str) else a, rgb(b) if isinstance(b, str) else b
+    return tuple(int(a[i] * (1 - k) + b[i] * k) for i in range(3))
 
 
-def run_capture(cmd, cwd=None):
-    """Run ffmpeg and return everything it printed (used to read measurements)."""
-    result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
-    return result.stdout + result.stderr
+def dark(c, k=0.7):
+    return mix(c, (0, 0, 0), 1 - k)
 
 
-def load_history():
-    if HISTORY_FILE.exists():
-        return json.loads(HISTORY_FILE.read_text())
-    return []
+def light(c, k=0.45):
+    return mix(c, (255, 255, 255), k)
 
 
-def pick_idea(history):
-    for _ in range(500):
-        a, b = sorted(random.sample(ANIMALS, 2))
-        place = random.choice(PLACES)
-        key = f"{a}+{b}@{place[0]}"
-        if key not in history:
-            return key, a, b, place
-    raise RuntimeError("Ran out of unused ideas. Add more animals/places.")
+# ---------------------------------------------------------------- animals
+# kind, color, traits.  kinds: quad, bird, swim, float, snake, bug, crab
+ANIMALS = {
+    "camel": ("quad", "#c8a165", ["hump", "longneck"]),
+    "octopus": ("float", "#b0455f", ["tentacles"]),
+    "penguin": ("bird", "#2b3340", ["flipper", "walker"]),
+    "axolotl": ("quad", "#e8a5b8", ["gills", "low"]),
+    "bat": ("bird", "#3a3045", ["wings", "flying"]),
+    "cheetah": ("quad", "#d9a441", ["spots", "tall"]),
+    "crocodile": ("quad", "#5f7a4a", ["spikes", "longsnout", "low"]),
+    "polar bear": ("quad", "#e8eef2", []),
+    "jellyfish": ("float", "#9fd8ff", ["tentacles", "glow"]),
+    "owl": ("bird", "#8b6b4a", ["wings", "beak", "walker"]),
+    "chameleon": ("quad", "#6fb04e", ["curltail", "crest", "low"]),
+    "elephant": ("quad", "#8d8d99", ["trunk", "bigears", "tusks"]),
+    "shark": ("swim", "#6d8296", ["fins"]),
+    "scorpion": ("bug", "#9a6b3c", ["stinger", "pincers"]),
+    "frog": ("quad", "#5fae4e", ["bigeyes", "low"]),
+    "eagle": ("bird", "#6b4a2e", ["wings", "beak", "flying"]),
+    "wolf": ("quad", "#8a8f98", ["tall"]),
+    "snake": ("snake", "#6f9f4a", []),
+    "turtle": ("quad", "#6a8f52", ["shell", "low"]),
+    "spider": ("bug", "#2e2733", ["eight"]),
+    "whale": ("swim", "#4c6a86", ["fluke", "big"]),
+    "gecko": ("quad", "#a3b56a", ["curltail", "low"]),
+    "dragonfly": ("bird", "#4cc3c9", ["wings", "flying"]),
+    "lion": ("quad", "#d1a050", ["mane"]),
+    "gorilla": ("quad", "#3b3a40", ["bigarms"]),
+    "fox": ("quad", "#d9743a", ["bushtail", "bigears", "tall"]),
+    "seal": ("quad", "#7d8a94", ["low"]),
+    "ant": ("bug", "#6b3b25", []),
+    "crab": ("crab", "#d9553d", ["pincers", "shell"]),
+    "hummingbird": ("bird", "#3fae7f", ["wings", "beak", "flying"]),
+    "lizard": ("quad", "#8aa05a", ["low", "curltail"]),
+    "bear": ("quad", "#5a4030", []),
+    "bull": ("quad", "#2a2f3d", ["horns", "tall"]),
+}
+WALKERS = ("quad", "bug", "crab", "bird", "snake")
 
 
-def pick_key(animals):
-    best, best_score = "green", 99
-    for name in ("green", "magenta", "blue"):
-        score = sum(1 for a in animals if a in KEY_CONFLICTS[name])
-        if score < best_score:
-            best, best_score = name, score
-    return best
+def animal_spec(name):
+    kind, col, traits = ANIMALS.get(name, ("quad", "#a08060", []))
+    return {"name": name, "kind": kind, "color": rgb(col), "traits": set(traits), "scale": 1.0,
+            "hybrid": False}
 
 
-def find_media(obj, kind):
-    """Find the dict holding base64 data of the given kind ('audio'/'image') in a JSON reply."""
-    if isinstance(obj, dict):
-        data = obj.get("data")
-        if isinstance(data, str) and len(data) > 100:
-            mime = str(obj.get("mime_type") or obj.get("mimeType") or "")
-            if obj.get("type") == kind or mime.startswith(kind + "/"):
-                return {"data": data, "mime": mime}
-        for v in obj.values():
-            found = find_media(v, kind)
-            if found:
-                return found
-    elif isinstance(obj, list):
-        for v in obj:
-            found = find_media(v, kind)
-            if found:
-                return found
-    return None
+def hybrid_spec(a, b, seed=0):
+    """An invented creature: the body of one parent with the signature features of the other."""
+    A, B = animal_spec(a), animal_spec(b)
+    base, other = (A, B) if (A["kind"] in WALKERS or B["kind"] not in WALKERS) else (B, A)
+    if base["kind"] == "bird" and "flying" in base["traits"] and other["kind"] in WALKERS and other["kind"] != "bird":
+        base, other = other, base  # a flying bird as a base makes a poor walker
+    tr = set(base["traits"]) | set(other["traits"])
+    if other["kind"] != base["kind"]:
+        tr |= {"extra_" + other["kind"]}
+    tr -= {"flying", "walker"}
+    tr |= {"spikes", "fangs", "glow_eyes", "horns"}
+    if base["kind"] == "quad":
+        tr.discard("low")
+        tr.add("tall")
+    col = mix(mix(base["color"], other["color"], 0.45), (18, 16, 30), 0.55)
+    return {"name": f"{a}-{b}", "kind": base["kind"], "color": col, "traits": tr,
+            "scale": 1.0, "hybrid": True, "accent": other["color"]}
 
 
-def longest_b64(obj):
-    best = ""
-    if isinstance(obj, dict):
-        for v in obj.values():
-            c = longest_b64(v)
-            if len(c) > len(best):
-                best = c
-    elif isinstance(obj, list):
-        for v in obj:
-            c = longest_b64(v)
-            if len(c) > len(best):
-                best = c
-    elif isinstance(obj, str) and len(obj) > 2000:
-        best = obj
-    return best
+# ---------------------------------------------------------------- pen: draws in creature space
+class Pen:
+    def __init__(self, draw, cx, gy, scale, facing, rim):
+        self.d, self.cx, self.gy, self.s, self.f, self.rim = draw, cx, gy, scale, facing, rim
+
+    def X(self, x):
+        return self.cx + self.f * self.s * x
+
+    def Y(self, y):
+        return self.gy + self.s * y
+
+    def ell(self, x, y, rx, ry, fill, rim=True):
+        x0, x1 = sorted((self.X(x - rx), self.X(x + rx)))
+        self.d.ellipse((x0, self.Y(y - ry), x1, self.Y(y + ry)), fill=tuple(fill),
+                       outline=self.rim(fill) if rim else None, width=max(2, int(4 * self.s)))
+
+    def poly(self, pts, fill, rim=True):
+        self.d.polygon([(self.X(x), self.Y(y)) for x, y in pts], fill=tuple(fill),
+                       outline=self.rim(fill) if rim else None, width=max(2, int(3 * self.s)))
+
+    def line(self, pts, w, fill):
+        p = [(self.X(x), self.Y(y)) for x, y in pts]
+        ww = max(2, int(w * self.s))
+        self.d.line(p, fill=tuple(fill), width=ww, joint="curve")
+        for q in (p[0], p[-1]):
+            r = ww / 2
+            self.d.ellipse((q[0] - r, q[1] - r, q[0] + r, q[1] + r), fill=tuple(fill))
+
+    def dot(self, x, y, r, fill):
+        self.ell(x, y, r, r, fill, rim=False)
 
 
-# ---------------------------------------------------------------- writing
-def ask_gemini(a, b, place_name):
-    prompt = f"""You write narration for 40-second YouTube Shorts about IMAGINARY animal hybrids.
-
-Idea: a hybrid of a {a} and a {b}, living in {place_name}.
-
-Return ONLY valid JSON, no markdown, in exactly this shape:
-{{
-  "title": "catchy title under 70 characters, no hashtags",
-  "creature_name": "a fun invented name for the hybrid",
-  "prey": "a specific animal that lives in {place_name} and that the hybrid hunts",
-  "signature_move": "one sentence: the hybrid's signature move on that prey, using abilities taken from the {a} and the {b} (an action, not gore)",
-  "hybrid_look": "one detailed sentence describing how the creature LOOKS: a fierce, scary, dominant apex predator (menacing face, glowing eyes, scars, fangs or claws or spikes, huge muscular body), clearly showing specific features taken from the {a} and from the {b}",
-  "sentences": [
-    {{"text": "one spoken sentence", "image": "the SETTING shown while this sentence is spoken"}}
-  ]
-}}
-
-Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken English, no emojis):
-- Sentence 1: a short, shocking hook (under 14 words) about the most terrifying thing this creature does.
-- Sentence 2: names the creature, says it is imaginary, and says what it inherits from the {a} and from the {b}.
-- One middle sentence describes the signature move on its prey.
-- Middle sentences: each one a specific danger of {place_name} and the clever trait that solves it.
-- Last sentence: a surprising weakness as a twist, then end with exactly these words: What should I combine next? Tell me in the comments.
-- Use real science about the parent animals where possible. Do not present false facts as real.
-- "image" is a vivid 10 to 20 word description of the BACKGROUND ONLY for that sentence: the place
-  and the danger (for example "a howling sandstorm swallowing red dunes"). Never mention any animal
-  or creature in "image", the creature is added separately. No text or words inside pictures.
-"""
-    url = f"{API_BASE}/models/{GEMINI_MODEL}:generateContent"
-    body = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 1.0, "responseMimeType": "application/json"},
-    }
-    last_err = None
-    for attempt in range(3):
-        try:
-            r = requests.post(url, params={"key": GEMINI_API_KEY}, json=body, timeout=90)
-            r.raise_for_status()
-            text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-            text = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.M).strip()
-            data = json.loads(text)
-            sents = [s for s in data["sentences"]
-                     if isinstance(s, dict) and str(s.get("text", "")).strip()]
-            assert data["title"] and data["hybrid_look"] and len(sents) >= 5
-            for s in sents:
-                s["text"] = s["text"].strip()
-                s["image"] = str(s.get("image") or f"a dramatic view of {place_name}").strip()
-            data["sentences"] = sents[:9]
-            data["prey"] = str(data.get("prey") or "a small desert animal").strip()
-            data["signature_move"] = str(data.get("signature_move") or "it pounces with lightning speed").strip()
-            return data
-        except Exception as e:
-            last_err = e
-            log(f"Gemini attempt {attempt + 1} failed: {e}")
-    raise RuntimeError(f"Gemini failed 3 times: {last_err}")
+def rimfn(c):
+    return light(c, 0.35)
 
 
-def facing_direction(img_name):
-    """Ask Gemini which way the creature faces. Returns 1 (right) or -1 (left)."""
-    try:
-        path = WORK / img_name
-        mime = "image/png" if img_name.endswith("png") else (
-            "image/webp" if img_name.endswith("webp") else "image/jpeg")
-        body = {"contents": [{"parts": [
-            {"inline_data": {"mime_type": mime, "data": base64.b64encode(path.read_bytes()).decode()}},
-            {"text": "Which way is the animal's head pointing in this picture, toward the LEFT "
-                     "or the RIGHT side of the picture? Answer with exactly one word: LEFT or RIGHT."},
-        ]}]}
-        r = requests.post(f"{API_BASE}/models/{GEMINI_MODEL}:generateContent",
-                          params={"key": GEMINI_API_KEY}, json=body, timeout=60)
-        r.raise_for_status()
-        text = r.json()["candidates"][0]["content"]["parts"][0]["text"].upper()
-        if "LEFT" in text and "RIGHT" not in text:
-            return -1
-    except Exception as e:
-        log(f"Could not check which way the creature faces ({e}); assuming right.")
-    return 1
+# ---------------------------------------------------------------- limbs and parts
+def limb(pen, hx, hy, phase, l1, l2, w, col, amp=0.55, lift=0.7, claws=False):
+    a1 = math.sin(phase) * amp
+    kx, ky = hx + math.sin(a1) * l1, hy + math.cos(a1) * l1
+    a2 = a1 * 0.2 - lift * max(0.0, math.cos(phase))
+    fx, fy = kx + math.sin(a2) * l2, ky + math.cos(a2) * l2
+    pen.line([(hx, hy), (kx, ky), (fx, fy)], w, col)
+    pen.ell(fx + 6, fy, w * 0.75, w * 0.4, dark(col, 0.8), rim=False)
+    if claws:
+        for k in range(3):
+            pen.poly([(fx + 14 + k * 15, fy - 4), (fx + 40 + k * 17, fy + 10), (fx + 10 + k * 15, fy + 12)], (235, 230, 215), rim=False)
 
 
-# ---------------------------------------------------------------- AI pictures
-def cloudflare_image(prompt, dest, steps=6):
-    """One AI picture from Cloudflare Workers AI (FLUX). Returns True on success.
-    This model accepts only a prompt and a step count, and always makes a 1024x1024 square."""
-    if not (CF_ACCOUNT and CF_TOKEN):
-        return False
-    url = f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT}/ai/run/{CF_MODEL}"
-    headers = {"Authorization": f"Bearer {CF_TOKEN}"}
-    for attempt in range(3):
-        body = {"prompt": prompt[:1800], "steps": steps}
-        try:
-            r = requests.post(url, headers=headers, json=body, timeout=180)
-        except Exception as e:
-            log(f"Cloudflare image request failed: {e}")
-            time.sleep(5)
-            continue
-        if r.status_code == 200:
-            ctype = r.headers.get("content-type", "")
-            if ctype.startswith("image/"):
-                pathlib.Path(dest).write_bytes(r.content)
-                return True
-            try:
-                b64 = longest_b64(r.json())
-                if b64:
-                    pathlib.Path(dest).write_bytes(base64.b64decode(b64))
-                    return True
-            except Exception as e:
-                log(f"Could not read Cloudflare reply: {e}")
-            log(f"Cloudflare reply had no picture: {r.text[:200]}")
-            time.sleep(3)
-            continue
-        log(f"Cloudflare image -> {r.status_code}: {r.text[:300]}")
-        if r.status_code in (401, 403):
-            return False  # wrong token or account, retrying will not help
-        time.sleep(15 if r.status_code == 429 else 3)
-    return False
-
-
-def fetch_ai_image(name, prompt, steps=6):
-    """Download an AI picture into WORK with the right file ending. Returns the file name or None."""
-    tmp = WORK / f"{name}.download"
-    if not cloudflare_image(prompt, str(tmp), steps):
-        return None
-    head = tmp.read_bytes()[:16]
-    if head[:4] == b"\x89PNG":
-        ext = "png"
-    elif head[:4] == b"RIFF" and head[8:12] == b"WEBP":
-        ext = "webp"
+def eye(pen, x, y, r, sp, st):
+    if sp["hybrid"]:
+        r *= 1.35
+        g = 1.0 + 0.15 * math.sin(st.get("t", 0) * 9)
+        pen.poly([(x - r * 1.9, y - r * 1.5), (x + r * 2.1, y - r * 0.55), (x - r * 0.1, y - r * 2.9)], (12, 8, 16), rim=False)
+        ec = sp.get("eye", (255, 190, 40))
+        for k, a in ((3.2, 0.12), (2.2, 0.25), (1.5, 0.5)):
+            pen.ell(x, y, r * k * g, r * k * g, mix((20, 14, 26), ec, a), rim=False)
+        pen.dot(x, y, r * 1.1, ec)
+        pen.ell(x + 1, y, r * 0.35, r * 0.8, (40, 10, 0), rim=False)
     else:
-        ext = "jpg"
-    raw = f"{name}_raw.{ext}"
-    tmp.replace(WORK / raw)  # ffmpeg needs the right file ending to read it
-    return raw
+        pen.dot(x, y, r, (245, 245, 235))
+        pen.dot(x + r * 0.25, y, r * 0.5, (20, 20, 25))
 
 
-def compose_vertical(raw, out_png, cover=True):
-    """Put a picture on a 1080x1920 canvas. cover=True fills the frame (crops the sides);
-    cover=False keeps the whole picture on top of a blurred copy of itself."""
-    if cover:
-        fc = "[0:v]scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,setsar=1"
+def mouth(pen, x, y, size, open_, sp):
+    """A roaring mouth with teeth, drawn at the tip of the snout."""
+    if sp["hybrid"]:
+        open_ = max(open_, 0.45 if sp.get("horror") else 0.25)  # the hybrid never closes its mouth
+    tooth = (236, 200, 190) if sp.get("bloody") else (245, 240, 225)
+    if open_ <= 0.02:
+        if sp["hybrid"] or "fangs" in sp["traits"]:
+            pen.poly([(x, y + 4), (x + size * 0.12, y + 4), (x + size * 0.06, y + size * 0.32)], (240, 235, 220), rim=False)
+        return
+    o = size * 0.9 * open_
+    pen.poly([(x - size * 1.1, y), (x + size * 0.3, y - 4), (x + size * 0.3, y + o), (x - size * 1.0, y + o * 0.7)],
+             (90, 10, 18), rim=False)
+    n = 9 if sp["hybrid"] else 6
+    for i in range(n):
+        tx = x - size * 1.0 + i * (size * 1.25 / n)
+        pen.poly([(tx, y), (tx + size * 0.11, y), (tx + size * 0.055, y + size * 0.3 * open_ + 6)], tooth, rim=False)
+        pen.poly([(tx, y + o * 0.8), (tx + size * 0.11, y + o * 0.8), (tx + size * 0.055, y + o * 0.8 - size * 0.24 * open_)],
+                 tooth, rim=False)
+        if sp.get("bloody") and i % 2 == 0:
+            L = size * (0.5 + 0.4 * ((i * 37) % 5) / 4)
+            pen.line([(tx + size * 0.05, y + o * 0.8), (tx + size * 0.05, y + o * 0.8 + L)], 7, (150, 8, 14))
+    if sp.get("horror"):  # drool
+        for k in range(3):
+            pen.line([(x - size * (0.2 + 0.3 * k), y + o * 0.8), (x - size * (0.2 + 0.3 * k), y + o * 0.8 + size * 0.5)], 4, (200, 210, 215))
+
+
+def traits_on_back(pen, sp, bx, by, bl, bh, ph, st):
+    tr, col = sp["traits"], sp["color"]
+    dk = dark(col, 0.75)
+    if "hump" in tr:
+        pen.ell(bx - bl * 0.05, by - bh * 0.62, bl * 0.2, bh * 0.38, col)
+    if "shell" in tr:
+        pen.ell(bx, by - bh * 0.18, bl * 0.58, bh * 0.75, mix(col, (40, 50, 30), 0.35))
+        for i in (-1, 0, 1):
+            pen.ell(bx + i * bl * 0.25, by - bh * 0.5, bl * 0.12, bh * 0.2, dark(col, 0.65), rim=False)
+    if "spikes" in tr:
+        n = 7
+        for i in range(n):
+            x = bx - bl * 0.45 + i * bl * 0.9 / (n - 1)
+            h = bh * (0.35 + 0.15 * math.sin(i * 1.7)) * (1.7 if sp["hybrid"] else 1.0)
+            pen.poly([(x - 14, by - bh * 0.42), (x + 14, by - bh * 0.42), (x + 4, by - bh * 0.42 - h)], light(col, 0.15))
+    if "fins" in tr:
+        pen.poly([(bx - 20, by - bh * 0.4), (bx + 70, by - bh * 0.4), (bx - 10, by - bh * 1.0)], dk)
+    if "mane" in tr:
+        for i in range(9):
+            a = -0.2 + i * 0.5
+            pen.ell(bx + bl * 0.38 + math.cos(a) * 55, by - bh * 0.1 + math.sin(a) * 55, 40, 40, mix(col, (80, 40, 10), 0.45))
+    if "extra_float" in tr or "tentacles" in tr:
+        for i in range(5):
+            x0 = bx - bl * 0.35 + i * bl * 0.17
+            pts = []
+            for j in range(7):
+                u = j / 6
+                pts.append((x0 - u * 70 + 18 * math.sin(ph * 1.5 + i + u * 5),
+                            by - bh * 0.35 - u * 160 + 14 * math.cos(ph * 1.3 + i * 2 + u * 4)))
+            pen.line(pts, 20 - 2 * i, mix(col, sp.get("accent", col), 0.4))
+    if "wings" in tr or "extra_bird" in tr:
+        flap = math.sin(ph * 2.2)
+        for k, sh in ((0, 0.8), (1, 1.0)):
+            ex, ey = bx - bl * 0.1 - k * 25, by - bh * 0.45
+            tipx, tipy = ex - 150 - k * 30, ey - 70 - 150 * flap
+            pen.poly([(ex, ey), (ex - 80, ey - 10), (tipx, tipy), (ex - 30 - k * 20, ey - 140 * flap - 20)],
+                     mix(col, (10, 10, 20), 0.35 + 0.15 * k))
+    if "stinger" in tr or "extra_bug" in tr:
+        pts = [(bx - bl * 0.45, by - bh * 0.1), (bx - bl * 0.8, by - bh * 0.6), (bx - bl * 0.8, by - bh * 1.3),
+               (bx - bl * 0.45, by - bh * 1.6)]
+        pen.line(pts, 24, dk)
+        pen.poly([(bx - bl * 0.45, by - bh * 1.6), (bx - bl * 0.3, by - bh * 1.5), (bx - bl * 0.32, by - bh * 1.2)], (230, 220, 200))
+    if "extra_crab" in tr or "pincers" in tr:
+        for k in (0, 1):
+            ax = bx + bl * 0.55 + k * 20
+            ay = by + bh * 0.1 - k * 25
+            pen.line([(bx + bl * 0.3, by), (ax, ay), (ax + 60, ay - 40 + 10 * math.sin(ph * 2 + k))], 20, dk)
+            pen.poly([(ax + 60, ay - 40), (ax + 120, ay - 70), (ax + 95, ay - 25)], mix(col, (200, 60, 40), 0.5))
+            pen.poly([(ax + 60, ay - 40), (ax + 120, ay - 20), (ax + 85, ay - 5)], mix(col, (200, 60, 40), 0.35))
+
+
+def tail(pen, sp, bx, by, bl, bh, ph):
+    tr, col = sp["traits"], sp["color"]
+    x0, y0 = bx - bl * 0.48, by - bh * 0.1
+    if "bushtail" in tr:
+        pen.ell(x0 - 70, y0 - 15 + 10 * math.sin(ph), 80, 32, col)
+    elif "curltail" in tr:
+        pts = [(x0 + k * -26, y0 + 18 * math.sin(ph * 0.8 + k) - k * 6 * (1 if k < 3 else -2)) for k in range(7)]
+        pen.line(pts, 18, col)
     else:
-        fc = ("[0:v]split[a][b];"
-              "[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=40:5[bg];"
-              "[b]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
-              "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1")
-    run(["ffmpeg", "-y", "-i", raw, "-filter_complex", fc, "-frames:v", "1", out_png], cwd=WORK)
+        L = 120 if "longtail" in tr else 80
+        pts = [(x0 - u * L, y0 + 20 * math.sin(ph * 0.9 + u * 3) * u) for u in (0, 0.5, 1)]
+        pen.line(pts, 24, col)
 
 
-def make_picture(name, prompt):
-    """Full-frame AI picture saved as work/<name>.png. Returns True on success."""
-    raw = fetch_ai_image(name, prompt)
-    if not raw:
-        return False
-    try:
-        compose_vertical(raw, f"{name}.png")
-        log(f"Picture '{name}': AI")
-        return True
-    except RuntimeError:
-        log(f"Picture '{name}': AI image could not be read")
-        return False
-
-
-def gradient_plate(name, c0="0x203a43", c1="0x0f2027"):
-    run(["ffmpeg", "-y", "-f", "lavfi", "-i",
-         f"gradients=s=1080x1920:c0={c0}:c1={c1}:x0=0:y0=0:x1=0:y1=1920:d=1",
-         "-frames:v", "1", f"{name}.png"], cwd=WORK)
-
-
-def make_plate(name, desc):
-    """Background picture (no creature). Falls back to a plain gradient so a scene always has one."""
-    prompt = (f"{STYLE} Wide empty landscape, {desc}. Open ground in the lower half, "
-              "no animals, no creatures, no people, nothing in the center.")
-    if make_picture(name, prompt):
-        return True
-    log(f"Background '{name}': AI failed, using a plain gradient.")
-    gradient_plate(name)
-    return False
-
-
-# ---------------------------------------------------------------- creature cutouts
-def image_size(path):
-    out = run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-               "stream=width,height", "-of", "csv=p=0", str(WORK / path)])
-    w, h = out.strip().split(",")[:2]
-    return int(w), int(h)
-
-
-def backdrop_color(raw):
-    """Average color of the four corners, as (hex, (r, g, b)). None if the corners do not match,
-    which means the picture has no plain backdrop to cut out."""
-    w, h = image_size(raw)
-    cols = []
-    for x, y in ((0, 0), (w - 24, 0), (0, h - 24), (w - 24, h - 24)):
-        r = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", raw, "-vf",
-                            f"crop=24:24:{x}:{y},scale=1:1", "-frames:v", "1", "-f", "rawvideo",
-                            "-pix_fmt", "rgb24", "-"], cwd=WORK, capture_output=True)
-        if r.returncode != 0 or len(r.stdout) < 3:
-            return None
-        cols.append(tuple(r.stdout[:3]))
-    spread = max(max(c[i] for c in cols) - min(c[i] for c in cols) for i in range(3))
-    if spread > 70:
-        return None
-    rgb = tuple(sum(c[i] for c in cols) // 4 for i in range(3))
-    return f"0x{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}", rgb
-
-
-def key_sprite(raw, color_hex, despill, out_png, similarity=0.30):
-    """Remove the plain backdrop. Returns how much of the picture is creature (percent)."""
-    chain = f"[0:v]format=rgba,colorkey={color_hex}:{similarity}:0.12"
-    if despill:
-        chain += f",despill=type={despill}"
-    # erode one pixel more than we grow back, so no colored fringe from the backdrop is left on the edge
-    chain += (",split[c][d];[d]alphaextract,erosion,erosion,erosion,dilation,dilation[m];"
-              "[c][m]alphamerge,format=rgba")
-    run(["ffmpeg", "-y", "-i", raw, "-filter_complex", chain, "-frames:v", "1", out_png], cwd=WORK)
-    text = run_capture(["ffmpeg", "-i", out_png, "-vf",
-                        "alphaextract,signalstats,metadata=print:file=-", "-f", "null", "-"], cwd=WORK)
-    m = re.search(r"lavfi\.signalstats\.YAVG=([\d.]+)", text)
-    return float(m.group(1)) / 255 * 100 if m else 0.0
-
-
-def sprite_bbox(png):
-    text = run_capture(["ffmpeg", "-i", png, "-vf",
-                        "alphaextract,bbox=min_val=60,metadata=print:file=-", "-f", "null", "-"], cwd=WORK)
-    vals = {}
-    for k in ("x1", "y1", "w", "h"):
-        m = re.search(rf"lavfi\.bbox\.{k}=(\d+)", text)
-        if not m:
-            return None
-        vals[k] = int(m.group(1))
-    return vals
-
-
-def make_sprite(name, desc, key, light, fierce=False):
-    """A cut-out creature. Returns {'png','w','h','face'} or None if it did not work out."""
-    color_words = KEYS[key][1]
-    mood = f" It is {FIERCE}." if fierce else ""
-    prompt = (f"{STYLE_SPRITE} {desc}.{mood} Lit by {light}. Full-body side view, walking pose, "
-              f"facing right, whole body in frame, standing in front of a perfectly flat, evenly lit "
-              f"{color_words} chroma key backdrop: one plain solid color, no gradient, no texture, "
-              "no ground, no shadow, no other objects.")
-    for attempt in range(2):
-        tag = f"Sprite '{name}' attempt {attempt + 1}"
-        raw = fetch_ai_image(f"{name}{attempt}", prompt, steps=8)
-        if not raw:
-            continue
-        try:
-            bd = backdrop_color(raw)
-            if not bd:
-                log(f"{tag}: the picture has no plain backdrop, rejected")
-                continue
-            color_hex, (r, g, b) = bd
-            despill = "green" if g > r + 30 and g > b + 30 else ("blue" if b > r + 30 and b > g + 30 else None)
-            cover = key_sprite(raw, color_hex, despill, f"{name}_k.png")
-            if not 4 <= cover <= 70:
-                log(f"{tag}: cut-out covers {cover:.0f}% of the picture (backdrop {color_hex}), rejected")
-                continue
-            bb = sprite_bbox(f"{name}_k.png")
-            if not bb or bb["w"] < 120 or bb["h"] < 120:
-                log(f"{tag}: could not find the creature outline")
-                continue
-            iw, ih = image_size(f"{name}_k.png")
-            if bb["w"] > 0.97 * iw and bb["h"] > 0.97 * ih:
-                log(f"{tag}: cut-out reaches every edge of the picture, so backdrop is left in, rejected")
-                continue
-            run(["ffmpeg", "-y", "-i", f"{name}_k.png", "-vf",
-                 f"crop={bb['w']}:{bb['h']}:{bb['x1']}:{bb['y1']}", "-frames:v", "1", f"{name}_c.png"],
-                cwd=WORK)
-            face = facing_direction(raw)
-            log(f"Sprite '{name}': AI cut-out {bb['w']}x{bb['h']}, backdrop {color_hex}, "
-                f"faces {'right' if face == 1 else 'left'}")
-            return {"png": f"{name}_c.png", "w": bb["w"], "h": bb["h"], "face": face}
-        except RuntimeError:
-            log(f"{tag}: cut-out failed")
-    return None
-
-
-# ---------------------------------------------------------------- backup footage (Pixabay)
-def pixabay_clip(query, dest, exclude=None):
-    """Free stock footage. `exclude` is a set of clip ids already used; the chosen id is added to it."""
-    if not PIXABAY_API_KEY:
-        return False
-    exclude = exclude if exclude is not None else set()
-    try:
-        r = requests.get("https://pixabay.com/api/videos/",
-                         params={"key": PIXABAY_API_KEY, "q": query[:90], "per_page": 20,
-                                 "safesearch": "true"}, timeout=30)
-        r.raise_for_status()
-        hits = r.json().get("hits", [])
-        random.shuffle(hits)
-        for h in hits:
-            if h.get("id") in exclude:
-                continue
-            for size in ("medium", "large", "small"):
-                url = h.get("videos", {}).get(size, {}).get("url")
-                if url:
-                    with requests.get(url, stream=True, timeout=120) as resp:
-                        resp.raise_for_status()
-                        with open(dest, "wb") as f:
-                            for chunk in resp.iter_content(1 << 20):
-                                f.write(chunk)
-                    exclude.add(h.get("id"))
-                    return True
-    except Exception as e:
-        log(f"Pixabay backup for '{query}' failed: {e}")
-    return False
-
-
-def frame_from_clip(clip, out_png):
-    for ss in ("0.5", "0"):
-        try:
-            run(["ffmpeg", "-y", "-ss", ss, "-i", clip, "-frames:v", "1", out_png], cwd=WORK)
-            if (WORK / out_png).exists() and (WORK / out_png).stat().st_size > 0:
-                return True
-        except RuntimeError:
-            pass
-    return False
-
-
-def get_animal(animal, name, key, light):
-    """Everything needed to show one parent animal: a background plate and a walking sprite."""
-    sprite = make_sprite(f"spr_{name}", f"A real {animal}", key, light)
-    plate = f"plate_{name}.png"
-    if sprite:
-        make_plate(f"plate_{name}", f"the natural habitat of a {animal}")
-        return {"plate": plate, "sprite": sprite}
-    # Backup 1: a full-frame AI portrait, shown as a still
-    if make_picture(f"port_{name}", f"{STYLE} A close-up portrait of a {animal} in its natural environment."):
-        return {"plate": f"port_{name}.png", "sprite": None}
-    # Backup 2: a frame of real stock footage
-    if pixabay_clip(animal, str(WORK / f"{name}.mp4")) and frame_from_clip(f"{name}.mp4", f"{name}_f.png"):
-        compose_vertical(f"{name}_f.png", f"port_{name}.png")
-        return {"plate": f"port_{name}.png", "sprite": None}
-    sys.exit(f"Could not get any picture of a {animal}.")
-
-
-# ---------------------------------------------------------------- voice
-def _save_audio(b64, mime, dest_wav):
-    raw = base64.b64decode(b64)
-    if raw[:4] == b"RIFF":
-        pathlib.Path(dest_wav).write_bytes(raw)
-        return
-    rate = 24000
-    m = re.search(r"rate=(\d+)", mime or "")
-    if m:
-        rate = int(m.group(1))
-    with wave.open(str(dest_wav), "wb") as w:  # raw 16-bit mono PCM -> add a WAV header
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(rate)
-        w.writeframes(raw)
-
-
-def gemini_tts(text, dest_wav):
-    """More natural voice from Gemini. Returns True on success."""
-    headers = {"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"}
-    style = "an excited, curious nature-documentary narrator, warm and dramatic, natural pacing"
-    attempts = []
-    for model in TTS_MODELS:
-        attempts.append((model, "interactions", True))
-        attempts.append((model, "interactions", False))
-        attempts.append((model, "classic", True))
-    dead = set()  # (model, endpoint type) pairs that answered 404
-    for model, style_kind, with_style in attempts:
-        if (model, style_kind) in dead:
-            continue
-        if style_kind == "interactions":
-            content = {"type": "text", "text": text}
-            if with_style:
-                content["annotations"] = [{"type": "speech_metadata", "style": style}]
-            body = {
-                "model": model,
-                "input": [{"type": "user_input", "content": [content]}],
-                "response_format": {"type": "audio"},
-                "generation_config": {"speech_config": [{"voice": GEMINI_VOICE}]},
-            }
-            url = f"{API_BASE}/interactions"
-        else:
-            body = {
-                "contents": [{"parts": [{"text": f"Say as {style}: {text}"}]}],
-                "generationConfig": {
-                    "responseModalities": ["AUDIO"],
-                    "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": GEMINI_VOICE}}},
-                },
-            }
-            url = f"{API_BASE}/models/{model}:generateContent"
-        try:
-            r = requests.post(url, headers=headers, json=body, timeout=180)
-            if r.status_code != 200:
-                log(f"Gemini voice {model} [{style_kind}] -> {r.status_code}: {r.text[:250]}")
-                if r.status_code == 404:
-                    dead.add((model, style_kind))
-                if r.status_code in (401, 403):
-                    return False
-                continue
-            item = find_media(r.json(), "audio")
-            if not item:
-                log(f"Gemini voice {model} [{style_kind}]: no audio in reply")
-                continue
-            _save_audio(item["data"], item["mime"], dest_wav)
-            log(f"Voice: Gemini {model} ({GEMINI_VOICE})")
-            return True
-        except Exception as e:
-            log(f"Gemini voice {model} [{style_kind}] failed: {e}")
-    return False
-
-
-async def edge_voice(text, mp3_path):
-    comm = edge_tts.Communicate(text, EDGE_VOICE, rate="+0%", boundary="WordBoundary")
-    words = []
-    with open(mp3_path, "wb") as f:
-        async for chunk in comm.stream():
-            if chunk["type"] == "audio":
-                f.write(chunk["data"])
-            elif chunk["type"] == "WordBoundary":
-                start = chunk["offset"] / 1e7
-                end = (chunk["offset"] + chunk["duration"]) / 1e7
-                words.append((start, end, chunk["text"]))
-    return words
-
-
-def audio_seconds(path):
-    out = run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
-               "-of", "default=nw=1:nk=1", str(path)])
-    return float(out.strip())
-
-
-# ---------------------------------------------------------------- sound effects
-def freesound_fetch(queries, dest_base, min_d, max_d):
-    """Download one CC0 sound from Freesound. Returns the saved file name or None."""
-    if not FREESOUND_API_KEY:
-        return None
-    for q in queries:
-        for flt in (f'license:"Creative Commons 0" duration:[{min_d} TO {max_d}]',
-                    'license:"Creative Commons 0"'):  # never drop the license filter
-            try:
-                r = requests.get("https://freesound.org/apiv2/search/text/", params={
-                    "query": q, "filter": flt, "fields": "id,name,duration,previews,license",
-                    "page_size": 15, "token": FREESOUND_API_KEY}, timeout=30)
-            except Exception as e:
-                log(f"Freesound search '{q}' failed: {e}")
-                break
-            if r.status_code in (401, 403):
-                log(f"Freesound refused the key ({r.status_code}); using synthetic sounds.")
-                return None
-            if r.status_code != 200:
-                log(f"Freesound '{q}' -> {r.status_code}: {r.text[:200]}")
-                continue
-            results = [x for x in r.json().get("results", [])
-                       if "zero" in str(x.get("license", "")).lower() or "cc0" in str(x.get("license", "")).lower()]
-            random.shuffle(results)
-            for x in results[:5]:
-                previews = x.get("previews") or {}
-                url = previews.get("preview-hq-mp3") or next(
-                    (v for v in previews.values() if str(v).endswith(".mp3")), None)
-                if not url:
-                    continue
-                try:
-                    data = requests.get(url, timeout=60)
-                    data.raise_for_status()
-                except Exception as e:
-                    log(f"Freesound download failed: {e}")
-                    continue
-                dest = f"{dest_base}.mp3"
-                (WORK / dest).write_bytes(data.content)
-                log(f"Sound '{q}': Freesound CC0 #{x.get('id')}")
-                return dest
-            break  # got a valid answer with no usable results, try the next query
-    return None
-
-
-def synth(kind, dest):
-    """Generate a sound effect with ffmpeg. All of these are made from scratch."""
-    L = "aevalsrc"
-    if kind == "growl":
-        fc = (f"{L}='0.6*sin(2*PI*(70+8*sin(2*PI*9*t))*t)+0.3*sin(2*PI*140*t)':d=1.3:s=44100[a];"
-              "anoisesrc=d=1.3:c=brown:a=0.3[n];[a][n]amix=inputs=2:normalize=0,tremolo=f=22:d=0.6,"
-              "acrusher=bits=6:mode=log:mix=0.3,afade=in:d=0.05,afade=out:st=0.9:d=0.4,alimiter=limit=0.9:level=0")
-    elif kind == "screech":
-        fc = (f"{L}='0.5*sin(2*PI*(700*t+900*t*t))+0.3*sin(2*PI*(1400*t+1800*t*t))':d=1.6:s=44100[a];"
-              "anoisesrc=d=1.6:c=white:a=0.25,highpass=f=2000[n];[a][n]amix=inputs=2:normalize=0,"
-              "tremolo=f=35:d=0.7,acrusher=bits=5:mode=log:mix=0.25,aecho=0.8:0.85:70:0.35,"
-              "afade=in:d=0.03,afade=out:st=1.1:d=0.5,alimiter=limit=0.9:level=0")
-    elif kind == "victim":
-        # a human-like shriek: a rising voice with vibrato, harmonics and breath, cut off abruptly
-        fc = (f"{L}='0.55*sin(2*PI*(520*t+380*t*t+14*sin(2*PI*7*t)))+0.3*sin(2*PI*(1040*t+760*t*t+28*sin(2*PI*7*t)))"
-              f"+0.18*sin(2*PI*(1560*t+1140*t*t))':d=1.0:s=44100[a];"
-              "anoisesrc=d=1.0:c=white:a=0.22,bandpass=f=2600:w=1500[n];[a][n]amix=inputs=2:normalize=0,"
-              "acrusher=bits=7:mode=log:mix=0.2,afade=in:d=0.06,afade=out:st=0.86:d=0.04,alimiter=limit=0.9:level=0")
-    elif kind == "distant":
-        fc = (f"{L}='0.5*sin(2*PI*(430*t+300*t*t+10*sin(2*PI*6*t)))+0.25*sin(2*PI*(860*t+600*t*t))':d=1.6:s=44100[a];"
-              "anoisesrc=d=1.6:c=pink:a=0.15[n];[a][n]amix=inputs=2:normalize=0,lowpass=f=2200,"
-              "aecho=0.8:0.8:180|320:0.5|0.35,afade=in:d=0.1,afade=out:st=0.9:d=0.7,alimiter=limit=0.8:level=0")
-    elif kind == "heart":
-        fc = (f"{L}='0.9*sin(2*PI*52*t)*exp(-14*t)+0.6*sin(2*PI*48*(t-0.16))*exp(-16*(t-0.16))*gt(t,0.16)':d=0.5:s=44100[a];"
-              "[a]lowpass=f=140,alimiter=limit=0.9:level=0")
-    elif kind == "whoosh":
-        fc = ("anoisesrc=d=0.9:c=pink:a=0.7,highpass=f=300,lowpass=f=5000,"
-              "afade=in:d=0.4,afade=out:st=0.4:d=0.5,alimiter=limit=0.9:level=0")
-    elif kind == "boom":
-        fc = (f"{L}='0.9*sin(2*PI*55*t)*exp(-3.5*t)':d=1.3:s=44100[a];"
-              "anoisesrc=d=1.3:c=brown:a=0.8,lowpass=f=300,afade=out:st=0.0:d=0.5[n];"
-              "[a][n]amix=inputs=2:normalize=0,alimiter=limit=0.9:level=0")
-    elif kind == "riser":
-        fc = (f"{L}='0.35*sin(2*PI*(220*t+500*t*t))':d=1.4:s=44100[a];"
-              "anoisesrc=d=1.4:c=pink:a=0.5,highpass=f=800[n];[a][n]amix=inputs=2:normalize=0,"
-              "afade=in:d=1.2,afade=out:st=1.3:d=0.1,alimiter=limit=0.9:level=0")
-    elif kind == "eerie":
-        fc = (f"{L}='0.32*sin(2*PI*(430*t-60*t*t))+0.3*sin(2*PI*(455*t-65*t*t))+0.22*sin(2*PI*95*t)':d=1.8:s=44100[a];"
-              "anoisesrc=d=1.8:c=pink:a=0.25,bandpass=f=1800:w=700[n];[a][n]amix=inputs=2:normalize=0,"
-              "tremolo=f=6:d=0.5,aecho=0.8:0.8:90:0.4,afade=in:d=0.25,afade=out:st=1.1:d=0.7,"
-              "alimiter=limit=0.9:level=0")
-    elif kind == "ambient":
-        fc = ("anoisesrc=d=12:c=brown:a=0.6,lowpass=f=700,tremolo=f=0.25:d=0.6,"
-              "afade=in:d=1,afade=out:st=11:d=1")
+# ---------------------------------------------------------------- creature kinds
+def draw_quad(pen, sp, ph, st):
+    tr, col = sp["traits"], sp["color"]
+    crouch, roar = st.get("crouch", 0), st.get("roar", 0)
+    moving = st.get("moving", True)
+    legH = 80 if "low" in tr else (200 if "tall" in tr else 150)
+    if "bigarms" in tr:
+        legH = 140
+    bl = 330 if "low" not in tr else 360
+    bh = 170 if "shell" not in tr else 150
+    if "bigarms" in tr:
+        bh = 200
+    legH *= (1 - 0.5 * crouch)
+    bob = -abs(math.sin(ph)) * 9 if moving else math.sin(ph * 0.4) * 3
+    bx, by = 0, -legH - bh / 2 + bob
+    amp = 0.55 if moving else 0.04
+    dk = dark(col, 0.72)
+    hy_ = by + bh * 0.28
+    hipf, hipr = bl * 0.3, -bl * 0.3
+    L1 = max(30, (legH - 4) * 0.5 + bh * 0.1)
+    # far legs, tail, body, near legs
+    cl = sp["hybrid"]
+    limb(pen, hipf, hy_, ph + math.pi, L1, L1 + 10, 34, dk, amp, claws=cl)
+    limb(pen, hipr, hy_, ph, L1, L1 + 10, 34, dk, amp, claws=cl)
+    tail(pen, sp, bx, by, bl, bh, ph)
+    pen.ell(bx, by, bl / 2, bh / 2, col)
+    if "spots" in tr:
+        for i in range(8):
+            pen.dot(bx - bl * 0.35 + (i % 4) * bl * 0.22, by - bh * 0.15 + (i // 4) * bh * 0.4, 10, dark(col, 0.45))
+    if "bigarms" in tr:
+        pen.ell(bx + bl * 0.3, by + bh * 0.2, 55, 90, dark(col, 0.85))
+    limb(pen, hipf, hy_, ph, L1, L1 + 10, 38, col, amp, claws=cl)
+    limb(pen, hipr, hy_, ph + math.pi, L1, L1 + 10, 38, col, amp, claws=cl)
+    if cl:  # old battle scars
+        pen.line([(bx - 70, by - 50), (bx - 10, by + 40)], 7, (190, 70, 70))
+        pen.line([(bx - 40, by - 60), (bx + 20, by + 30)], 6, (190, 70, 70))
+    traits_on_back(pen, sp, bx, by, bl, bh, ph, st)
+    # neck and head
+    longneck = "longneck" in tr
+    hr = 62 * (1.1 if sp["hybrid"] else 1.0)
+    nx, ny = bl * 0.36, by - bh * 0.25
+    hx, hy = bl * 0.5 + hr * 0.6, by - bh * 0.2 - (170 if longneck else 20) - st.get("headup", 0) * 40 + roar * -20
+    if sp["hybrid"] and not longneck:
+        hy -= 10
+    pen.line([(nx, ny), ((nx + hx) / 2 - 10, (ny + hy) / 2), (hx, hy)], 74 if not longneck else 56, col)
+    if "bigears" in tr:
+        pen.ell(hx - hr * 0.5, hy - hr * 0.95, hr * 0.4, hr * 0.9, col)
     else:
-        raise ValueError(kind)
-    # Every chain starts with a source filter, so label the end of it as the output.
-    run(["ffmpeg", "-y", "-filter_complex", fc + "[out]", "-map", "[out]", "-ac", "2", dest], cwd=WORK)
+        pen.poly([(hx - hr * 0.5, hy - hr * 0.7), (hx - hr * 0.1, hy - hr * 1.35), (hx + hr * 0.1, hy - hr * 0.7)], col)
+    if "horns" in tr:
+        pen.poly([(hx - hr * 0.1, hy - hr * 0.7), (hx + hr * 0.1, hy - hr * 2.0), (hx + hr * 0.45, hy - hr * 0.75)], (225, 215, 190))
+        pen.poly([(hx - hr * 0.7, hy - hr * 0.55), (hx - hr * 0.8, hy - hr * 1.7), (hx - hr * 0.3, hy - hr * 0.7)], (205, 195, 170))
+    pen.ell(hx, hy, hr, hr * 0.85, col)
+    sl = 1.9 if "longsnout" in tr else 1.0
+    pen.ell(hx + hr * 0.85, hy + hr * 0.25, hr * 0.75 * sl, hr * 0.42, mix(col, (255, 255, 255), 0.08))
+    if "trunk" in tr:
+        pts = [(hx + hr * 0.8, hy + hr * 0.3 + k * 28, ) for k in range(6)]
+        pts = [(x + 24 * math.sin(ph * 0.8 + k * 0.6) + k * 5, y) for k, (x, y) in enumerate(pts)]
+        pen.line(pts, 40, col)
+    if "tusks" in tr:
+        pen.poly([(hx + hr * 0.6, hy + hr * 0.6), (hx + hr * 1.3, hy + hr * 1.1), (hx + hr * 0.5, hy + hr * 0.85)], (240, 235, 215))
+    if "gills" in tr or "crest" in tr:
+        for i in range(3):
+            pen.line([(hx - hr * 0.55, hy - hr * 0.2 + i * 18), (hx - hr * 1.2, hy - hr * 0.5 + i * 24)], 10,
+                     mix(col, (255, 120, 140), 0.6))
+    eye(pen, hx + hr * 0.3, hy - hr * 0.2, hr * (0.28 if "bigeyes" not in tr else 0.4), sp, st)
+    mouth(pen, hx + hr * 0.9 + (hr * 0.5 if "longsnout" in tr else 0), hy + hr * 0.4, hr * 0.9, roar, sp)
+    if "extra_float" in tr and not sp["hybrid"]:
+        pass
 
 
-def make_scream(call_a, call_b, dest):
-    """Layer both parents' calls (one pitched down, one up) with a screech, then distort."""
-    synth("screech", "scr_synth.wav")
-    ins = ["-i", "scr_synth.wav"]
-    if not call_a:
-        synth("growl", "g_a.wav")
-    if not call_b:
-        synth("growl", "g_b.wav")
-    ca = call_a or "g_a.wav"
-    cb = call_b or "g_b.wav"
-    ins += ["-i", ca, "-i", cb]
-    fc = ("[0:a]aresample=44100,aformat=channel_layouts=stereo[s];"
-          "[1:a]aresample=44100,asetrate=33075,aresample=44100,atrim=0:2.2,aformat=channel_layouts=stereo[ca];"
-          "[2:a]aresample=44100,asetrate=55125,aresample=44100,atrim=0:1.8,aformat=channel_layouts=stereo[cb];"
-          "[s][ca][cb]amix=inputs=3:normalize=0:weights='1 0.8 0.6',acrusher=bits=6:mode=log:mix=0.3,"
-          "aecho=0.8:0.8:80:0.3,alimiter=limit=0.95:level=0[out]")
-    run(["ffmpeg", "-y"] + ins + ["-filter_complex", fc, "-map", "[out]", dest], cwd=WORK)
+def draw_bird(pen, sp, ph, st):
+    tr, col = sp["traits"], sp["color"]
+    flying = "flying" in tr
+    flap = math.sin(ph * (3.0 if flying else 1.0))
+    y0 = -230 - 40 * math.sin(ph * 0.7) if flying else -150
+    bob = 0 if flying else -abs(math.sin(ph)) * 8
+    bx, by = 0, y0 + bob
+    if not flying:
+        for k in (0, 1):
+            limb(pen, -10 + k * 30, by + 70, ph + k * math.pi, 50, 50, 16, mix(col, (230, 170, 50), 0.6), 0.5)
+    pen.ell(bx - 60, by + 10, 110, 40, dark(col, 0.8))
+    pen.ell(bx, by, 95, 100 if not flying else 60, col)
+    if "walker" in tr:
+        pen.ell(bx + 15, by + 15, 55, 80, (235, 235, 235))
+    hx, hy = bx + 100, by - 85 if not flying else by - 25
+    pen.ell(hx, hy, 55, 52, col)
+    if "beak" in tr or "flying" in tr:
+        pen.poly([(hx + 40, hy - 8), (hx + 120, hy + 12), (hx + 40, hy + 24)], (235, 190, 60))
+    elif "walker" in tr:
+        pen.poly([(hx + 40, hy), (hx + 90, hy + 14), (hx + 40, hy + 26)], (235, 150, 50))
+    eye(pen, hx + 22, hy - 10, 11, sp, st)
+    if "wings" in tr or "flying" in tr:
+        for k, sh in ((0, 0.7), (1, 1.0)):
+            ex, ey = bx - 10 - k * 30, by - 20
+            pen.poly([(ex, ey), (ex - 120, ey - 20 - 120 * flap * sh), (ex - 230, ey + 30 - 150 * flap * sh),
+                      (ex - 90, ey + 60)], mix(col, (0, 0, 0), 0.2 + 0.2 * k))
+    elif "flipper" in tr:
+        pen.poly([(bx - 10, by - 10), (bx - 90, by + 50 + 20 * flap), (bx - 20, by + 60)], dark(col, 0.8))
+    traits_on_back(pen, {**sp, "traits": sp["traits"] - {"wings"}}, bx, by, 190, 100, ph, st)
+    if sp["hybrid"]:
+        mouth(pen, hx + 70, hy + 20, 60, st.get("roar", 0), sp)
 
 
-def prepare_sounds(a, b, ambient_query):
-    """Returns a dict of sound file names inside WORK."""
-    s = {}
-    for kind in ("whoosh", "boom", "riser", "growl", "eerie", "victim", "distant", "heart"):
-        synth(kind, f"{kind}.wav")
-        s[kind] = f"{kind}.wav"
-    queries = lambda x: [f"{x} sound", f"{x} call", f"{x} roar"]
-    ca = freesound_fetch(queries(a), "call_a", 0.5, 8)
-    cb = freesound_fetch(queries(b), "call_b", 0.5, 8)
-    if not ca:
-        synth("growl", "call_a.wav")
-    if not cb:
-        synth("growl", "call_b.wav")
-    s["call_a"] = ca or "call_a.wav"
-    s["call_b"] = cb or "call_b.wav"
-    make_scream(ca, cb, "scream.wav")
-    s["scream"] = "scream.wav"
-    amb = freesound_fetch([ambient_query], "ambient", 8, 90)
-    if not amb:
-        synth("ambient", "ambient.wav")
-    s["ambient"] = amb or "ambient.wav"
-    s["real_calls"] = bool(ca) + bool(cb)
-    return s
+def draw_swim(pen, sp, ph, st):
+    tr, col = sp["traits"], sp["color"]
+    big = 1.4 if "big" in tr else 1.0
+    y0 = -330 + 25 * math.sin(ph * 0.5)
+    L = 420 * big
+    pts_top, pts_bot = [], []
+    n = 12
+    for i in range(n + 1):
+        u = i / n
+        x = L / 2 - u * L
+        wave = math.sin(ph * 1.6 - u * 5) * (10 + 45 * u)
+        th = 95 * big * math.sin(math.pi * min(1, u * 0.9 + 0.1)) ** 0.7 * (1 - 0.75 * u * u) + 6
+        pts_top.append((x, y0 + wave - th))
+        pts_bot.append((x, y0 + wave + th * 0.8))
+    tailx, taily = pts_top[-1][0], (pts_top[-1][1] + pts_bot[-1][1]) / 2
+    fl = 90 * big
+    pen.poly([(tailx + 10, taily), (tailx - fl * 0.9, taily - fl * 1.1 * (1 if "fluke" not in tr else 0.4)),
+              (tailx - fl * 0.3, taily), (tailx - fl * 0.9, taily + fl * 1.0 * (1 if "fluke" not in tr else 0.4))], dark(col, 0.8))
+    pen.poly(pts_top + pts_bot[::-1], col)
+    belly = mix(col, (255, 255, 255), 0.35)
+    pen.poly(pts_bot[:-3] + [(p[0], p[1] - 22) for p in pts_bot[:-3][::-1]], belly, rim=False)
+    if "fins" in tr:
+        mx = pts_top[4]
+        pen.poly([(mx[0] + 30, mx[1] + 6), (mx[0] - 70, mx[1] + 6), (mx[0] - 10, mx[1] - 110)], dark(col, 0.85))
+    pen.poly([(-40, y0 + 70), (-130, y0 + 150 + 20 * math.sin(ph * 2)), (-10, y0 + 85)], dark(col, 0.85))
+    hx = L / 2 - 50
+    eye(pen, hx, y0 - 20, 13, sp, st)
+    mouth(pen, L / 2 - 10, y0 + 28, 90, st.get("roar", 0), sp)
+    traits_on_back(pen, {**sp, "traits": sp["traits"] - {"fins", "fluke"}}, 0, y0, L * 0.7, 150, ph, st)
 
 
-def build_audio(voice_name, total, events, ambient, out_wav, quiet=None):
-    """Mix the narration with timed sound effects and a quiet ambient bed."""
-    cmd = ["ffmpeg", "-y", "-i", voice_name, "-stream_loop", "-1", "-i", ambient]
-    fmt = "aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo"
-    parts = [f"[0:a]aresample=44100,{fmt}[v]",
-             f"[1:a]aresample=44100,{fmt},atrim=0:{total + 1:.2f},volume=0.14"
-             + "".join(f",volume='if(between(t,{a:.2f},{b:.2f}),0,1)':eval=frame" for a, b in (quiet or [])) + "[amb]"]
-    labels = ["[v]", "[amb]"]
-    for i, ev in enumerate(events):
-        cmd += ["-i", ev["file"]]
-        ms = max(int(ev["at"] * 1000), 0)
-        cut = f",atrim=0:{ev['max']}" if ev.get("max") else ""
-        parts.append(f"[{i + 2}:a]aresample=44100,{fmt}{cut},asetpts=PTS-STARTPTS,"
-                     f"volume={ev['vol']},adelay={ms}|{ms}[e{i}]")
-        labels.append(f"[e{i}]")
-    parts.append("".join(labels) + f"amix=inputs={len(labels)}:duration=first:normalize=0:"
-                 "dropout_transition=0,alimiter=limit=0.95:level=0[mix]")
-    cmd += ["-filter_complex", ";".join(parts), "-map", "[mix]", out_wav]
-    run(cmd, cwd=WORK)
+def draw_float(pen, sp, ph, st):
+    tr, col = sp["traits"], sp["color"]
+    pulse = math.sin(ph * 1.2)
+    y0 = -330 + 30 * math.sin(ph * 0.6)
+    ry = 120 + 14 * pulse
+    rx = 135 - 8 * pulse
+    for i in range(8):
+        x0 = -rx * 0.8 + i * rx * 1.6 / 7
+        pts = []
+        for j in range(9):
+            u = j / 8
+            pts.append((x0 + 26 * math.sin(ph * 1.4 + i * 0.8 + u * 5) * u + u * 40,
+                        y0 + ry * 0.6 + u * (230 + 20 * (i % 2))))
+        pen.line(pts, max(8, 24 - 2 * i % 6), mix(col, (255, 255, 255), 0.1 + 0.05 * (i % 3)))
+    pen.ell(0, y0, rx, ry, col)
+    pen.ell(0, y0 + ry * 0.35, rx * 0.95, ry * 0.45, mix(col, (255, 255, 255), 0.2), rim=False)
+    eye(pen, 30, y0 - 10, 18, sp, st)
+    eye(pen, -45, y0 - 10, 18, sp, st)
+    if sp["hybrid"]:
+        mouth(pen, 55, y0 + 60, 90, st.get("roar", 0), sp)
+    traits_on_back(pen, {**sp, "traits": sp["traits"] - {"tentacles"}}, 0, y0 + 40, 280, 200, ph, st)
 
 
-# ---------------------------------------------------------------- captions
-def ass_time(t):
-    cs = int(round(t * 100))
-    h, cs = divmod(cs, 360000)
-    m, cs = divmod(cs, 6000)
-    s, cs = divmod(cs, 100)
-    return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
+def draw_snake(pen, sp, ph, st):
+    col = sp["color"]
+    pts = []
+    n = 16
+    for i in range(n + 1):
+        u = i / n
+        pts.append((190 - u * 420, -40 + 38 * math.sin(ph * 1.5 - u * 9)))
+    pen.line(pts, 58, col)
+    pen.line(pts[:-2], 22, mix(col, (255, 255, 255), 0.3))
+    hx, hy = pts[0]
+    pen.ell(hx + 20, hy - 20 - st.get("headup", 0) * 40, 62, 46, col)
+    eye(pen, hx + 35, hy - 32, 11, sp, st)
+    pen.line([(hx + 70, hy - 18), (hx + 105, hy - 12), (hx + 125, hy - 25)], 6, (200, 40, 60))
+    mouth(pen, hx + 70, hy - 5, 70, st.get("roar", 0), sp)
 
 
-def even_words(text, total):
-    """Estimated word timings (used when the voice gives none). Longer words get more time."""
-    toks = text.split()
-    weights = [len(t) + 2 for t in toks]
-    scale = total / max(sum(weights), 1)
-    out, t = [], 0.0
-    for tok, w in zip(toks, weights):
-        out.append((t, t + w * scale, tok))
-        t += w * scale
-    return out
+def draw_bug(pen, sp, ph, st):
+    tr, col = sp["traits"], sp["color"]
+    nl = 4 if "eight" in tr else 3
+    y0 = -90
+    for side in (0, 1):
+        for i in range(nl):
+            x = -60 + i * 55 * (1.3 if nl == 3 else 1.0)
+            c = dark(col, 0.65 if side == 0 else 1.0)
+            hy_ = y0 + 10
+            for sgn in (1,):
+                p = ph + i * 1.2 + side * math.pi
+                a = math.sin(p) * 0.5
+                kx, ky = x + 60 + math.sin(a) * 40, hy_ - 70 + 6 * abs(math.cos(p))
+                pen.line([(x, hy_), (kx, ky), (kx + 30 + math.sin(a) * 30, 0)], 12, c)
+    sx = 1.0
+    pen.ell(0, y0, 130 * sx, 70, col)
+    pen.ell(-150, y0 + 5, 90, 58, dark(col, 0.85)) if "eight" in tr else pen.ell(-120, y0, 80, 50, dark(col, 0.9))
+    pen.ell(130, y0 - 10, 55, 48, col)
+    for k in range(4 if "eight" in tr else 2):
+        pen.dot(150 + k * 8 - (k // 2) * 14, y0 - 22 + (k % 2) * 16 - (k // 2) * 0, 9, (255, 40, 40) if sp["hybrid"] else (240, 240, 230))
+    traits_on_back(pen, sp, 0, y0, 260, 130, ph, st)
+    mouth(pen, 170, y0 + 8, 60, st.get("roar", 0), sp)
 
 
-def write_captions(words, total, path, card=None):
-    if not words:
-        return False
-    header = (
-        "[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\n\n"
-        "[V4+ Styles]\n"
-        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, "
-        "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
-        "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        "Style: Default,Liberation Sans Narrow,112,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,"
-        "1,0,0,0,100,100,1,0,1,8,3,2,60,60,520,1\n"
-        "Style: Card,Liberation Sans Narrow,62,&H00D9D9D9,&H000000FF,&H00000000,&H00000000,"
-        "1,0,0,0,100,100,10,0,1,3,0,8,60,60,330,1\n\n"
-        "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
-    )
-    lines = []
-    group = 2
-    for i in range(0, len(words), group):
-        chunk = words[i:i + group]
-        start = chunk[0][0]
-        nxt = words[i + group][0] if i + group < len(words) else total
-        end = max(chunk[-1][1], min(nxt, chunk[-1][1] + 0.4))
-        toks = [w[2].upper().replace("{", "").replace("}", "") for w in chunk]
-        key = max(range(len(toks)), key=lambda j: len(toks[j]))  # the longest word is shown in orange
-        toks[key] = "{\\c&H001E9BFF&}" + toks[key] + "{\\c&H00FFFFFF&}"
-        text = " ".join(toks)
-        lines.append(f"Dialogue: 0,{ass_time(start)},{ass_time(end)},Default,,0,0,0,,{text}")
-    if card:
-        lines.append(f"Dialogue: 1,{ass_time(1.5)},{ass_time(3.9)},Card,,0,0,0,,{{\\fad(300,450)}}{card}")
-    path.write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
-    return True
+def draw_crab(pen, sp, ph, st):
+    col = sp["color"]
+    y0 = -100
+    for side in (-1, 1):
+        for i in range(3):
+            x = -70 + i * 55
+            p = ph * 1.3 + i * 1.3 + (0 if side > 0 else math.pi)
+            kx = x + side * 70 + 12 * math.sin(p)
+            pen.line([(x, y0 + 20), (kx, y0 - 60 + 8 * math.cos(p)), (kx + side * 25, 0)], 12, dark(col, 0.7))
+    pen.ell(0, y0, 150, 75, col)
+    pen.ell(0, y0 - 25, 120, 40, mix(col, (255, 255, 255), 0.1), rim=False)
+    for k in (-1, 1):
+        ax = k * 190
+        pen.line([(k * 100, y0 - 10), (ax, y0 - 90 + 12 * math.sin(ph * 2 + k)), (ax + k * 20, y0 - 150)], 18, dark(col, 0.75))
+        pen.poly([(ax + k * 20, y0 - 150), (ax + k * 80, y0 - 190), (ax + k * 70, y0 - 120)], col)
+        pen.poly([(ax + k * 20, y0 - 150), (ax + k * 85, y0 - 130), (ax + k * 40, y0 - 100)], mix(col, (160, 30, 30), 0.4))
+    pen.line([(30, y0 - 70), (35, y0 - 110)], 8, col)
+    pen.line([(-30, y0 - 70), (-35, y0 - 110)], 8, col)
+    eye(pen, 35, y0 - 112, 12, sp, st)
+    eye(pen, -35, y0 - 112, 12, sp, st)
+    traits_on_back(pen, {**sp, "traits": sp["traits"] - {"pincers", "extra_crab"}}, 0, y0, 300, 150, ph, st)
+    mouth(pen, 60, y0 + 15, 70, st.get("roar", 0), sp)
 
 
-# ---------------------------------------------------------------- video: shots
-LOOK = {"grade": "null"}  # color grade of the current video, set in main()
+KINDS = {"quad": draw_quad, "bird": draw_bird, "swim": draw_swim, "float": draw_float,
+         "snake": draw_snake, "bug": draw_bug, "crab": draw_crab}
 
 
-def ensure_shadow():
-    if (WORK / "shadow.png").exists():
-        return
-    run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=600x90,format=rgba,"
-         "geq=r=0:g=0:b=0:a='255*0.85*pow(max(0,1-hypot((X-W/2)/(W/2),(Y-H/2)/(H/2))),1.4)'",
-         "-frames:v", "1", "shadow.png"], cwd=WORK)
+
+# ---------------------------------------------------------------- the horror beast (folklore monster)
+SNOUTS = {"wolf": 1.0, "fox": 1.0, "cheetah": 0.8, "crocodile": 1.3, "bull": 0.55, "bear": 0.6, "lion": 0.6,
+          "snake": 0.8, "owl": 0.35, "bat": 0.5}
 
 
-def ensure_fog():
-    """A soft, drifting band of dust/mist that sits in front of the creature's feet."""
-    if (WORK / "fog.png").exists():
-        return
-    # small random noise stretched up gives soft cloud shapes (no streaks), faded out top and bottom
-    fc = ("color=c=0x808080:s=54x13,format=gray,noise=alls=100:allf=u,"
-          "scale=2160:520:flags=bicubic,gblur=sigma=42,eq=contrast=2.0:brightness=0.04,"
-          "geq=lum='min(255,lum(X,Y)*1.15)*(1-pow(abs(Y-H/2)/(H/2),1.4))'[g];"
-          "color=c=0xd9cfbf:s=2160x520,format=rgba[c];[c][g]alphamerge")
-    run(["ffmpeg", "-y", "-filter_complex", fc, "-frames:v", "1", "fog.png"], cwd=WORK)
+def dleg(pen, hx, hy, phase, col, amp=1.0):
+    """A hind leg that bends backwards like a hunting dog's, ending in a long clawed foot."""
+    s, c = math.sin(phase), math.cos(phase)
+    t1 = 0.9 + 0.45 * s * amp
+    kx, ky = hx + math.sin(t1) * 125, hy + math.cos(t1) * 125
+    t2 = -0.55 + 0.3 * s * amp - 0.55 * max(0.0, c) * amp
+    ax, ay = kx + math.sin(t2) * 135, ky + math.cos(t2) * 135
+    fx, fy = ax + 80, ay + 46
+    pen.line([(hx, hy), (kx, ky)], 52, col)
+    pen.line([(kx, ky), (ax, ay)], 34, col)
+    pen.line([(ax, ay), (fx, fy)], 24, col)
+    for k in range(3):
+        pen.poly([(fx - 4 + k * 9, fy - 10), (fx + 52 + k * 7, fy + 6 + k * 3), (fx + 6 + k * 9, fy + 8)], (225, 218, 195), rim=False)
 
 
-def desaturate(s):
-    """colorchannelmixer settings that pull colors toward gray (s=1 keeps them, 0 is black and white)."""
-    k = 1 - s
-    return (f"colorchannelmixer=rr={s + k * 0.299:.3f}:rg={k * 0.587:.3f}:rb={k * 0.114:.3f}:"
-            f"gr={k * 0.299:.3f}:gg={s + k * 0.587:.3f}:gb={k * 0.114:.3f}:"
-            f"br={k * 0.299:.3f}:bg={k * 0.587:.3f}:bb={s + k * 0.114:.3f}")
+def draw_beast(pen, sp, ph, st):
+    col = sp["color"]
+    dk = dark(col, 0.62)
+    bone = (214, 206, 184)
+    moving = st.get("moving", True)
+    crouch = st.get("crouch", 0.0)
+    roar = max(st.get("roar", 0.0), 0.4)
+    amp = 1.0 if moving else 0.0
+    t = st.get("t", 0.0)
+    bob = (-abs(math.sin(ph)) * 12 if moving else math.sin(t * 2.5) * 5) + 80 * crouch
+    snout = sp.get("snout", 0.9)
+
+    def B(pts):
+        return [(x, y + bob) for x, y in pts]
+
+    # far arm and far leg
+    limb(pen, 150, -330 + bob, ph + math.pi, 165, 175, 40, dk, 0.5 * amp + 0.05, 0.8, claws=True)
+    dleg(pen, -170, -235 + bob, ph, dk, amp)
+    # whip tail with a barb
+    pts = [(-235 - u * 270, -215 + bob + 45 * math.sin(ph * 0.9 + u * 4) * u + 55 * u) for u in (0, 0.25, 0.5, 0.75, 1)]
+    pen.line(pts[:3], 30, col)
+    pen.line(pts[2:], 16, col)
+    ex, ey = pts[-1]
+    pen.poly([(ex, ey - 12), (ex - 60, ey + 6), (ex, ey + 14)], bone, rim=False)
+    # hunched body
+    back = [(-235, -215), (-190, -290), (-90, -365), (20, -420), (110, -442), (185, -410)]
+    front = [(240, -340), (255, -290), (215, -215)]
+    belly = [(120, -185), (0, -205), (-100, -195), (-185, -165)]
+    pen.poly(B(back + front + belly), col)
+    # ribs, scars, ragged fur
+    for i in range(4):
+        x = 10 + i * 42
+        pen.line(B([(x, -208), (x + 28, -270), (x + 48, -335)]), 6, bone)
+    pen.line(B([(-70, -330), (-10, -250)]), 6, (190, 30, 40))
+    pen.line(B([(-40, -345), (20, -262)]), 6, (190, 30, 40))
+    for i in range(9):
+        k = i / 8
+        x = -200 + k * 380
+        y = -240 - 190 * math.sin(k * 2.7) * 0.9 - 30 * k
+        h = 46 + 26 * ((i * 53) % 4) / 3
+        pen.poly(B([(x - 18, y + 14), (x + 12, y + 14), (x - 6, y - h)]), bone, rim=False)
+    for x in range(-170, 130, 32):
+        pen.poly(B([(x, -190), (x + 16, -190), (x + 4, -146 - (x % 3) * 10)]), dk, rim=False)
+    # near leg and near arm
+    dleg(pen, -130, -235 + bob, ph + math.pi, col, amp)
+    limb(pen, 150, -330 + bob, ph, 165, 175, 44, col, 0.5 * amp + 0.05, 0.8, claws=True)
+    # head: a long skull, a huge hinged jaw, rows of teeth, several eyes
+    hx0, hy0 = 235, -345 + bob * 0.7 + 30 * crouch
+    L = 120 + 150 * snout
+    o = 150 * roar
+    upper = [(hx0, hy0 - 58), (hx0 + 90, hy0 - 62), (hx0 + 90 + L, hy0 - 12), (hx0 + 98 + L, hy0 + 14), (hx0 + 80, hy0 + 17), (hx0, hy0 + 20)]
+    lower = [(hx0 + 10, hy0 + 18), (hx0 + 85 + L * 0.95, hy0 + 16 + o * 0.9), (hx0 + 80 + L * 0.95, hy0 + 40 + o), (hx0 + 10, hy0 + 56 + o * 0.3)]
+    pen.poly(lower, dk)
+    pen.poly([(hx0 + 20, hy0 + 16), (hx0 + 90 + L, hy0 + 14), (hx0 + 85 + L * 0.95, hy0 + 16 + o * 0.9), (hx0 + 20, hy0 + 30 + o * 0.3)],
+             (70, 6, 14), rim=False)
+    tooth = (236, 200, 190) if sp.get("bloody") else (240, 235, 215)
+    n = 9
+    for i in range(n):
+        k = i / (n - 1)
+        x = hx0 + 100 + L - k * (L + 30)
+        h = (40 + 14 * ((i * 37) % 3)) * (0.7 + 0.6 * roar)
+        pen.poly([(x, hy0 + 15), (x - 15, hy0 + 15), (x - 5, hy0 + 15 + h)], tooth, rim=False)
+        ly = hy0 + 17 + (o * 0.9) * (1 - k * 0.05)
+        lx = hx0 + 85 + L * 0.95 - k * (L * 0.95 - 10)
+        ly = hy0 + 17 + (hy0 + 16 + o * 0.9 - (hy0 + 17)) * (1 - k)
+        pen.poly([(lx, ly), (lx - 14, ly), (lx - 4, ly - h * 0.8)], tooth, rim=False)
+        if sp.get("bloody") and i % 2 == 0:
+            pen.line([(x - 8, hy0 + 15 + h), (x - 8, hy0 + 15 + h + 26 + (i % 3) * 18)], 6, (150, 8, 14))
+    pen.poly(upper, col)
+    pen.poly([(hx0 + 40, hy0 - 52), (hx0 + 190, hy0 - 40), (hx0 + 200, hy0 - 68), (hx0 + 40, hy0 - 78)], dark(col, 0.5), rim=False)  # angry brow
+    # torn ears and horns
+    pen.poly([(hx0 + 10, hy0 - 55), (hx0 - 35, hy0 - 155), (hx0 + 55, hy0 - 70)], col)
+    pen.poly([(hx0 + 50, hy0 - 62), (hx0 + 44, hy0 - 135), (hx0 + 88, hy0 - 68)], dk)
+    if "horns" in sp["traits"] and sp["name"] == "bull":
+        pen.poly([(hx0 + 55, hy0 - 60), (hx0 + 30, hy0 - 180), (hx0 + 125, hy0 - 245), (hx0 + 80, hy0 - 140), (hx0 + 105, hy0 - 62)], bone)
+    eye(pen, hx0 + 112, hy0 - 30, 12, sp, st)
+    eye(pen, hx0 + 62, hy0 - 40, 7, sp, st)
+    eye(pen, hx0 + 160, hy0 - 22, 6, sp, st)
+    for k in range(3):  # drool
+        x = hx0 + 100 + L - k * 40
+        pen.line([(x, hy0 + 18 + o * 0.9), (x, hy0 + 40 + o * 0.9 + 30 + 10 * k)], 4, (205, 215, 220))
 
 
-def still_clip(img, dur, out, mode="in"):
-    """Turn a picture into a video with camera motion: in, out, left or right."""
+KINDS["beast"] = draw_beast
+
+
+def head_anchor(sp):
+    """Where the face is, in creature units (used to zoom in on it)."""
+    tr, k = sp["traits"], sp["kind"]
+    if k == "beast":
+        return 345, -330
+    if k == "quad":
+        legH = 80 if "low" in tr else (200 if "tall" in tr else 150)
+        if "bigarms" in tr:
+            legH = 140
+        bl = 360 if "low" in tr else 330
+        bh = 200 if "bigarms" in tr else (150 if "shell" in tr else 170)
+        hr = 62 * (1.1 if sp["hybrid"] else 1.0)
+        by = -legH - bh / 2
+        hy = by - bh * 0.2 - (170 if "longneck" in tr else 20) - (10 if sp["hybrid"] and "longneck" not in tr else 0)
+        return bl * 0.5 + hr * 0.9, hy
+    return {"bird": (110, -235), "swim": (160, -350), "float": (0, -330), "snake": (210, -60),
+            "bug": (140, -100), "crab": (0, -210)}.get(k, (100, -250))
+
+
+def draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=None, focus=None):
+    st = st or {}
+    s = 1.4 * (scale if scale is not None else 1.0) * sp.get("scale", 1.0) * (0.78 if sp["kind"] in ("swim", "float") else 0.72 if sp["kind"] == "beast" else 1.0)
+    if focus:  # (ax, ay, tx, ty): put the creature point (ax, ay) at screen position (tx, ty)
+        ax, ay, tx, ty = focus
+        cx, gy = tx - facing * s * ax, ty - s * ay
+    if sp["hybrid"] and st.get("aura", True):
+        for k, a in ((1.0, 22), (0.78, 26), (0.56, 30)):
+            img_draw.ellipse((cx - 380 * s * k, gy - 640 * s * k, cx + 380 * s * k, gy + 40 * s * k), fill=(170, 10, 14, a))
+    pen = Pen(img_draw, cx, gy, s, facing, rimfn)
+    if sp["kind"] not in ("swim", "float") and sp["kind"] != "bird" or (sp["kind"] == "bird" and "flying" not in sp["traits"]):
+        shadow(img_draw, cx, gy, 150 * s)
+    KINDS[sp["kind"]](pen, sp, phase, st)
+
+
+def shadow(d, cx, gy, w):
+    d.ellipse((cx - w, gy - 14, cx + w, gy + 18), fill=(8, 8, 14))
+
+
+def prey_spec(text):
+    """Pick a small animal to chase, based on what the story says the hybrid hunts."""
+    x = (text or "").lower()
+    has = lambda *w: any(k in x for k in w)
+    if has("bird", "eagle", "owl", "hawk", "sparrow", "pigeon", "vulture", "gull", "bat"):
+        return animal_spec("owl"), 0.42
+    if has("fish", "shark", "eel", "squid", "krill", "shrimp", "seal", "penguin", "jelly"):
+        return animal_spec("shark"), 0.4
+    if has("lizard", "gecko", "snake", "skink", "scorpion", "beetle", "insect", "spider", "ant ", "crab", "frog"):
+        return animal_spec("lizard"), 0.5
+    if has("deer", "antelope", "gazelle", "goat", "sheep", "ibex", "caribou", "camel", "elk"):
+        sp = animal_spec("wolf")
+        sp["color"] = rgb("#c9a878")
+        return sp, 0.42
+    return {"name": "hare", "kind": "quad", "color": (200, 170, 130), "traits": {"bigears", "low"},
+            "scale": 1.0, "hybrid": False}, 0.55
+
+
+def draw_prey(d, cx, gy, phase, facing, prey):
+    sp, sc = prey
+    draw_creature(d, sp, cx, gy, phase * 1.8, facing, sc, {"moving": True})
+
+
+def dim(im, amount=110):
+    im.paste(Image.new("RGB", im.size, (0, 0, 0)), mask=Image.new("L", im.size, amount))
+
+
+def closeup(im, d, sp, t, dur, z0, z1, roar=0.6, shake=0.0, tt=0.0):
+    """The camera is right up in the creature's face."""
+    dim(im, 120)
+    ax, ay = head_anchor(sp)
+    k = min(1.0, t / max(dur, 0.01))
+    k = k * k * (3 - 2 * k)
+    z = z0 + (z1 - z0) * k
+    ox = shake * math.sin(tt * 90)
+    oy = shake * 0.7 * math.cos(tt * 77)
+    draw_creature(d, sp, 0, 0, tt * 2.0, 1, z, {"t": tt, "roar": roar, "moving": False},
+                  focus=(ax, ay, 600 + ox, 800 + oy))
+
+
+# ---------------------------------------------------------------- scenes
+PLACES = {
+    "the Sahara desert": dict(sky=("#f2b46d", "#8a3d2c"), far="#b5623c", near="#6e3426", ground="#4a2419", sil="dunes", sun="#ffe0a3", part="dust"),
+    "Antarctica": dict(sky=("#b5cfe6", "#4a6682"), far="#8aa5bd", near="#547089", ground="#e3edf5", sil="spikes", sun="#ffffff", part="snow"),
+    "the deep ocean": dict(sky=("#0d4468", "#02121f"), far="#0e3550", near="#071e30", ground="#06141f", sil="rocks", sun=None, part="bubbles"),
+    "a land of active volcanoes": dict(sky=("#3a0d0d", "#e0602a"), far="#2c0d0b", near="#170706", ground="#0e0404", sil="cones", sun="#ffb060", part="embers"),
+    "Mars": dict(sky=("#e09a78", "#5e2c24"), far="#93492f", near="#5e2c20", ground="#41201a", sil="rocks", sun="#ffd9c0", part="dust"),
+    "the clouds of Venus": dict(sky=("#e8ab55", "#6b3a1a"), far="#b8702f", near="#7a3f17", ground="#4c2610", sil="clouds", sun="#fff0c0", part="dust"),
+    "an icy moon like Europa": dict(sky=("#05060f", "#1d2e50"), far="#3a5780", near="#243a5c", ground="#afc9e6", sil="spikes", sun="planet", part="snow"),
+    "a rainforest after a flood": dict(sky=("#5a8269", "#1f382c"), far="#33594a", near="#17331f", ground="#0f2018", sil="trees", sun=None, part="rain"),
+    "a mountain peak above the clouds": dict(sky=("#86afe0", "#eaf0f8"), far="#a3b8d2", near="#6d819e", ground="#f4f7fb", sil="peaks", sun="#ffffff", part="snow"),
+    "a planet with two suns": dict(sky=("#6e2c80", "#ee9a55"), far="#7e3062", near="#471c3e", ground="#2a1226", sil="rocks", sun="two", part="dust"),
+    "a swamp full of toxic mud": dict(sky=("#2f3e25", "#101c0f"), far="#213623", near="#122414", ground="#1c2c14", sil="reeds", sun="#d8e8b0", part="fireflies"),
+    "the edge of a black hole": dict(sky=("#000000", "#180b2a"), far="#1c1036", near="#0c071a", ground="#0b0816", sil="rocks", sun="hole", part="stars"),
+}
+PLACES["a village at night"] = dict(sky=("#0a1030", "#1b2a55"), far="#101c3a", near="#080f22",
+                                    ground="#050914", sil="trees", sun="#d8dcc8", part="fireflies")
+PLACES["an eerie pathway"] = dict(sky=("#1a0f2e", "#3a2548"), far="#241638", near="#120a20", ground="#0a0612",
+                                  sil="dead", sun="#c9c3d8", part="fog", fog=0.35, stars=True)
+PLACES["a dark forest"] = dict(sky=("#08141a", "#1f4440"), far="#173a34", near="#0b211d", ground="#040a09",
+                               sil="pines", sun=None, part="fireflies", fog=0.3, stars=True)
+PLACES["a graveyard at night"] = dict(sky=("#0b1020", "#2a3558"), far="#1a2340", near="#0b1022", ground="#070a14",
+                                      sil="graves", sun="#e6e6d8", part="fog", fog=0.5, stars=True)
+PLACES["a misty river bank"] = dict(sky=("#0e1a2a", "#324a5e"), far="#1f3345", near="#0e1c28", ground="#08121a",
+                                    sil="reeds", sun="#cfd8e0", part="fog", fog=0.6, stars=True)
+PLACES["a moonlit field"] = dict(sky=("#0a1030", "#2a3a68"), far="#16224a", near="#0b1330", ground="#080d20",
+                                 sil="wheat", sun="#f0ecd0", part="leaves", fog=0.1, stars=True)
+PLACES["a stormy hillside"] = dict(sky=("#0b0e1a", "#444e6c"), far="#2a3350", near="#141a2e", ground="#06080f",
+                                   sil="peaks", sun=None, part="rain", fog=0.2, storm=True, stars=False)
+PLACES["a village at night"]["houses"] = True
+SETTINGS = {"pathway": "an eerie pathway", "forest": "a dark forest", "graveyard": "a graveyard at night",
+            "river": "a misty river bank", "village": "a village at night", "field": "a moonlit field",
+            "hills": "a stormy hillside"}
+DEFAULT_PLACE = dict(sky=("#1a2a44", "#0a0f1c"), far="#1f3050", near="#101a30", ground="#0a1020", sil="dunes", sun="#e8e8f0", part="dust")
+
+
+def _hills(rnd, width, base, amp, period_w):
+    ks = [(rnd.choice([1, 2, 3, 5]), rnd.uniform(0, 6.28), rnd.uniform(0.4, 1.0)) for _ in range(3)]
+    pts = []
+    for x in range(0, width + 1, 12):
+        y = base + sum(a * amp * math.sin(2 * math.pi * k * x / period_w + ph) for k, ph, a in ks)
+        pts.append((x, y))
+    return pts
+
+
+class World:
+    PW = 2160  # the repeating width of the scrolling layers
+
+    def __init__(self, place, seed=0, weather=None):
+        weather = weather or {}
+        self.st = dict(PLACES.get(place, DEFAULT_PLACE))
+        if weather.get("redmoon") and self.st.get("sun"):
+            self.st["sun"] = "#ff4a3a"
+        self.fog = weather.get("fog", self.st.get("fog", 0.0))
+        self.storm = weather.get("storm", self.st.get("storm", False))
+        self.push, self.shake = 0.0, 0.0
+        self.rnd = random.Random(seed * 7919 + len(place))
+        st, rnd = self.st, self.rnd
+        # sky
+        sky = Image.new("RGB", (W, H))
+        d = ImageDraw.Draw(sky)
+        for y in range(H):
+            d.line((0, y, W, y), fill=mix(st["sky"][0], st["sky"][1], min(1, y / (GROUND + 80))))
+        sx = rnd.randint(620, 880)
+        sun = st["sun"]
+        if sun == "two":
+            for cx, cy, r, c in ((300, 560, 130, "#ffe9b0"), (760, 420, 80, "#ffb38a")):
+                for k, a in ((2.4, 0.1), (1.7, 0.2)):
+                    d.ellipse((cx - r * k, cy - r * k, cx + r * k, cy + r * k), fill=mix(st["sky"][0], c, a))
+                d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=rgb(c))
+        elif sun == "planet":
+            d.ellipse((520, 180, 1020, 680), fill=rgb("#c9a27a"))
+            for i in range(6):
+                d.arc((520, 180 + i * 40, 1020, 680 - i * 40), 200, 340, fill=rgb("#a9825e"), width=10)
+        elif sun == "hole":
+            for k in range(14, 0, -1):
+                d.ellipse((sx - k * 34, 520 - k * 12, sx + k * 34, 520 + k * 12), fill=mix("#000000", "#ff9a3c", 0.04 * (15 - k)))
+            d.ellipse((sx - 120, 400, sx + 120, 640), fill=(0, 0, 0))
+        elif sun:
+            c = sun
+            for k, a in ((3.0, 0.08), (2.2, 0.14), (1.5, 0.25)):
+                r = 80 * k
+                d.ellipse((sx - r, 520 - r, sx + r, 520 + r), fill=mix(st["sky"][0], c, a))
+            d.ellipse((sx - 85, 435, sx + 85, 605), fill=rgb(c))
+        if st.get("stars") or st["sky"][0] in ("#05060f", "#000000", "#2f3e25", "#3a0d0d", "#0a1030"):
+            for _ in range(160):
+                x, y = rnd.randint(0, W), rnd.randint(0, 900)
+                d.point((x, y), fill=(230, 230, 255))
+                if rnd.random() < 0.1:
+                    d.ellipse((x - 2, y - 2, x + 2, y + 2), fill=(255, 255, 255))
+        self.sky = sky
+        # layers
+        self.far = self._layer(st["far"], GROUND - 520, 520, 0.0, far=True)
+        self.near = self._layer(st["near"], GROUND - 260, 330, 1.0, far=False)
+        self.ground = Image.new("RGB", (W, H - GROUND))
+        gd = ImageDraw.Draw(self.ground)
+        for y in range(H - GROUND):
+            gd.line((0, y, W, y), fill=mix(st["ground"], (0, 0, 0), min(0.6, y / 900)))
+        self.parts = [[rnd.uniform(0, W), rnd.uniform(0, H), rnd.uniform(0.5, 1.5), rnd.uniform(0, 6.28)] for _ in range(70)]
+
+    def _layer(self, color, top, height, density, far):
+        PW, rnd, st = self.PW, self.rnd, self.st
+        img = Image.new("RGBA", (PW, height), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        col = rgb(color) + (255,)
+        sil = st["sil"]
+        base_y = height * (0.55 if far else 0.45)
+        pts = _hills(rnd, PW, base_y, height * (0.18 if far else 0.12), PW)
+        d.polygon(pts + [(PW, height), (0, height)], fill=col)
+        n = int(PW / (150 if far else 190))
+        for i in range(n):
+            x = i * PW / n + rnd.uniform(-30, 30)
+            hy = min([p[1] for p in pts if abs(p[0] - x) < 14] or [base_y])
+            s = rnd.uniform(0.7, 1.4) * (1.0 if far else 1.25)
+            shapes = []
+            if sil in ("spikes", "peaks", "cones"):
+                w, h = (60 if sil != "peaks" else 130) * s, (120 if sil == "spikes" else 200) * s * (1.4 if sil == "peaks" else 1)
+                shapes.append([(x - w, hy + 8), (x + w * 0.15, hy - h), (x + w, hy + 8)])
+                if sil == "cones":
+                    shapes[-1][1] = (x, hy - h * 0.8)
+            elif sil == "rocks":
+                w, h = 70 * s, 55 * s
+                shapes.append([(x - w, hy + 6), (x - w * 0.5, hy - h), (x + w * 0.3, hy - h * 0.8), (x + w, hy + 6)])
+            elif sil == "trees":
+                h = 260 * s
+                d.rectangle((x - 9 * s, hy - h, x + 9 * s, hy + 8), fill=col)
+                for k in range(5):
+                    a = k * 1.25
+                    shapes.append([(x, hy - h), (x + math.cos(a) * 80 * s, hy - h - 30 * s + math.sin(a) * 30 * s),
+                                   (x + math.cos(a + .5) * 60 * s, hy - h + 15 * s)])
+            elif sil == "dead":  # bare, twisted trees
+                h = 300 * s
+                d.polygon([(x - 12 * s, hy + 8), (x - 5 * s, hy - h), (x + 5 * s, hy - h), (x + 14 * s, hy + 8)], fill=col)
+                for k in range(6):
+                    sgn = 1 if k % 2 else -1
+                    by = hy - h * (0.35 + 0.1 * k)
+                    d.line((x, by, x + sgn * 80 * s, by - 55 * s), fill=col, width=max(3, int(8 * s - k)))
+                    d.line((x + sgn * 80 * s, by - 55 * s, x + sgn * 120 * s, by - 100 * s), fill=col, width=max(2, int(5 * s)))
+            elif sil == "pines":  # dense dark pines
+                h = 400 * s
+                for k in range(5):
+                    w = (100 - k * 14) * s
+                    yy = hy - h * (0.2 + 0.18 * k)
+                    shapes.append([(x - w, yy + 70 * s), (x, yy - 90 * s), (x + w, yy + 70 * s)])
+                d.rectangle((x - 8 * s, hy - 60 * s, x + 8 * s, hy + 8), fill=col)
+            elif sil == "graves":
+                for k in range(3):
+                    gx = x + (k - 1) * 70
+                    gh = rnd.uniform(60, 120) * s
+                    if rnd.random() < 0.5:
+                        d.rectangle((gx - 7, hy - gh, gx + 7, hy + 6), fill=col)
+                        d.rectangle((gx - 30 * s, hy - gh * 0.8, gx + 30 * s, hy - gh * 0.8 + 14), fill=col)
+                    else:
+                        d.rounded_rectangle((gx - 30 * s, hy - gh, gx + 30 * s, hy + 6), radius=24, fill=col)
+            elif sil == "wheat":
+                for k in range(9):
+                    d.line((x + k * 9, hy + 6, x + k * 9 + rnd.uniform(-8, 8), hy - rnd.uniform(60, 120) * s), fill=col, width=4)
+            elif sil == "reeds":
+                for k in range(4):
+                    d.line((x + k * 12, hy + 6, x + k * 12 + rnd.uniform(-14, 14), hy - 110 * s - k * 12), fill=col, width=6)
+            elif sil == "clouds":
+                for k in range(4):
+                    d.ellipse((x - 60 + k * 45, hy - 40 * s - (k % 2) * 20, x + 40 + k * 45, hy + 20), fill=col)
+            for sh in shapes:
+                d.polygon(sh, fill=col)
+        # light edge along the top so shapes stand out from the sky (rim light)
+        rim = light(rgb(color), 0.25) + (255,)
+        d.line(pts, fill=rim, width=3)
+        img.top = top
+        return img
+
+    def frame(self, cam, t):
+        """The background for one frame: cam is how far the world has scrolled."""
+        im = self.sky.copy()
+        for layer, k in ((self.far, 0.18), (self.near, 0.6)):
+            off = int(cam * k) % self.PW
+            for ox in (-off, -off + self.PW):
+                if ox < W and ox + self.PW > 0:
+                    im.paste(layer, (ox, layer.top), layer)
+        im.paste(self.ground, (0, GROUND))
+        d = ImageDraw.Draw(im, "RGBA")
+        # ground streaks that scroll with the creature's steps
+        for i in range(22):
+            x = (i * 137 - cam * 1.0) % (W + 200) - 100
+            y = GROUND + 40 + (i * 53) % 420
+            d.ellipse((x, y, x + 60 + (i % 5) * 20, y + 6), fill=(255, 255, 255, 18))
+        p = self.st["part"]
+        for q in self.parts:
+            x = (q[0] - cam * 0.9 * q[2] - t * 25 * q[2]) % W
+            y = (q[1] + t * (140 if p in ("rain",) else 40 if p in ("snow",) else -50 if p in ("bubbles", "embers") else 6) * q[2]) % H
+            if p == "rain":
+                d.line((x, y, x - 8, y + 36), fill=(200, 220, 255, 90), width=2)
+            elif p == "snow":
+                d.ellipse((x, y, x + 5 * q[2], y + 5 * q[2]), fill=(255, 255, 255, 200))
+            elif p == "embers":
+                d.ellipse((x, y, x + 6 * q[2], y + 6 * q[2]), fill=(255, 150, 40, 220))
+            elif p == "bubbles":
+                d.ellipse((x, y, x + 14 * q[2], y + 14 * q[2]), outline=(200, 235, 255, 140), width=2)
+            elif p == "fireflies":
+                a = 120 + int(100 * math.sin(t * 3 + q[3]))
+                d.ellipse((x, y, x + 6, y + 6), fill=(190, 255, 90, a))
+            elif p == "stars":
+                pass
+            elif p == "leaves":
+                xx = (q[0] - cam * 0.9 - t * 120 * q[2]) % W
+                yy = (q[1] * 0.5 + 700 + 40 * math.sin(t * 2 + q[3]) + t * 20) % 1000 + 600
+                d.ellipse((xx, yy, xx + 12 * q[2], yy + 6 * q[2]), fill=(120, 80, 40, 190))
+            else:
+                d.ellipse((x, y, x + 4 * q[2], y + 3 * q[2]), fill=(255, 230, 200, 80))
+        if self.fog > 0:  # low drifting fog banks
+            for i in range(9):
+                fx = (i * 260 - cam * 0.5 - t * 18 * (1 + i % 3)) % (W + 600) - 300
+                fy = GROUND - 140 + (i % 4) * 55 + 12 * math.sin(t * 0.7 + i)
+                d.ellipse((fx - 330, fy - 70, fx + 330, fy + 70), fill=(190, 205, 225, int(34 * self.fog)))
+        if self.storm:
+            ph = (t * 0.45) % 1.0
+            f = 0.0
+            if ph < 0.03:
+                f = 0.6
+            elif 0.08 < ph < 0.10:
+                f = 0.35
+            if f:
+                im = Image.blend(im.convert("RGB"), Image.new("RGB", im.size, (225, 232, 255)), f)
+        return im
+
+
+# ---------------------------------------------------------------- video writer
+def write_video(out, dur, painter, world, cwd=None, cam_dir=1):
+    """painter(draw, t, u, cam) draws the actors. Frames are piped straight into ffmpeg."""
     n = max(int(dur * FPS), 2)
-    if mode == "out":
-        z, x = f"1.15-0.15*on/{n}", "(iw-iw/zoom)/2"
-    elif mode == "left":
-        z, x = "1.15", f"(iw-iw/zoom)*on/{n}"
-    elif mode == "right":
-        z, x = "1.15", f"(iw-iw/zoom)*(1-on/{n})"
-    else:
-        z, x = f"1+0.15*on/{n}", "(iw-iw/zoom)/2"
-    vf = ("scale=1296:2304:force_original_aspect_ratio=increase,crop=1296:2304,"
-          f"zoompan=z='{z}':x='{x}':y='(ih-ih/zoom)/2':d={n}:s=1080x1920:fps={FPS},setsar=1")
-    run(["ffmpeg", "-y", "-i", img, "-vf", vf, "-t", f"{dur:.3f}", "-an",
-         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", out], cwd=WORK)
-
-
-def sprite_geometry(spr, factor=1.0):
-    scale = min(MAX_SPRITE_W * factor / spr["w"], MAX_SPRITE_H * factor / spr["h"])
-    tw, th = int(spr["w"] * scale) // 2 * 2, int(spr["h"] * scale) // 2 * 2
-    ang = 0.045
-    rw = int(tw * math.cos(ang) + th * math.sin(ang)) // 2 * 2 + 4
-    rh = int(th * math.cos(ang) + tw * math.sin(ang)) // 2 * 2 + 4
-    return tw, th, rw, rh, ang
-
-
-def composite_shot(bg, sprites, dur, out, simple):
-    """Put walking creatures on a background clip. simple=True drops the fancy effects."""
-    ensure_shadow()
-    cmd = ["ffmpeg", "-y", "-i", bg]
-    for sp in sprites:
-        cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{dur:.3f}", "-i", sp["spec"]["png"]]
-    cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{dur:.3f}", "-i", "shadow.png"]
-    shadow_idx = len(sprites) + 1
-    fog_idx = len(sprites) + 2
-    if not simple:
-        ensure_fog()
-        cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{dur:.3f}", "-i", "fog.png"]
-    parts, last = [], "[0:v]"
-    for i, sp in enumerate(sprites):
-        spec = sp["spec"]
-        tw, th, rw, rh, ang = sprite_geometry(spec, sp.get("scale", 1.0))
-        # walk a few steps, but never so far that the creature leaves the screen
-        dist = max(0.0, min(420.0, 70 * dur, 1080 - rw - 80 - 2 * abs(sp.get("dx", 0))))
-        flip = "hflip," if spec["face"] != sp["move"] else ""
-        alpha = f",colorchannelmixer=aa={sp['alpha']}" if sp.get("alpha", 1) < 1 else ""
-        lean = 0.02 * sp["move"]  # lean slightly into the walk
-        # soften edges and match the scene's colors, then sway with each step
-        look = "" if simple else f"gblur=sigma=0.8,{desaturate(0.82)},{LOOK['grade']},"
-        parts.append(
-            f"[{i + 1}:v]format=rgba,{flip}{look}scale={tw}:{th},"
-            f"rotate=a='{ang}*sin(PI*{STEP_RATE}*t)+{lean}':c=none:ow={rw}:oh={rh}{alpha}[s{i}]")
-        parts.append(f"[{shadow_idx}:v]format=rgba,scale={int(tw * 0.8)}:46{alpha}[sh{i}]")
-        cx = 540 + sp.get("dx", 0)
-        xexpr = f"{cx - rw / 2:.1f}+{sp['move']}*{dist:.1f}*(t/{dur:.3f}-0.5)"
-        # feet sink a few pixels into the ground so the creature does not float
-        yexpr = f"{GROUND_Y + 14 - rh}-18*abs(sin(PI*{STEP_RATE}*t))"
-        sh_x = f"{cx - tw * 0.4:.1f}+{sp['move']}*{dist:.1f}*(t/{dur:.3f}-0.5)"
-        parts.append(f"{last}[sh{i}]overlay=x='{sh_x}':y='{GROUND_Y - 22}':eval=frame:format=auto[b{i}]")
-        parts.append(f"[b{i}][s{i}]overlay=x='{xexpr}':y='{yexpr}':eval=frame:format=auto[o{i}]")
-        last = f"[o{i}]"
-    if simple:
-        parts.append(f"{last}format=yuv420p[v]")
-    else:
-        # drifting dust/mist in front of the feet ties the creature into the ground
-        parts.append(f"[{fog_idx}:v]format=rgba,colorchannelmixer=aa=0.55[fogl]")
-        parts.append(f"{last}[fogl]overlay=x='-100-t*35':y='{GROUND_Y - 320}':eval=frame:format=auto,"
-                     "format=yuv420p[v]")
-    cmd += ["-filter_complex", ";".join(parts), "-map", "[v]", "-t", f"{dur:.3f}", "-an",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", out]
-    run(cmd, cwd=WORK)
-
-
-def shot(plate, sprites, dur, out, bg_mode="in"):
-    """A background with walking creatures on top.
-    sprites: list of {'spec': sprite, 'move': +1/-1, 'alpha': 0-1, 'dx': pixels offset}.
-    If the full effects fail, a simpler version is tried, and last of all the background alone."""
-    bg = f"bg_{abs(hash(out)) % 10**8}.mp4"
-    still_clip(plate, dur, bg, bg_mode)
-    if sprites:
-        for simple in (False, True):
-            try:
-                composite_shot(bg, sprites, dur, out, simple)
-                return
-            except RuntimeError as e:
-                log(f"Shot '{out}': {'simple ' if simple else 'full '}compositing failed ({e})")
-        log(f"Shot '{out}': showing the background only.")
-    (WORK / bg).replace(WORK / out)
-
-
-def clip_seconds(path):
+    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{OW}x{OH}",
+           "-r", str(FPS), "-i", "-", "-vf", "scale=1080:1920:flags=bicubic", "-c:v", "libx264",
+           "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-an", out]
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, cwd=cwd)
     try:
-        path = pathlib.Path(path)
-        if not path.is_absolute():
-            path = WORK / path
-        out = run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)])
-        return float(out.strip())
-    except Exception:
-        return 0.0
+        for i in range(n):
+            t = i / FPS
+            u = i / max(n - 1, 1)
+            cam = t * 260 * cam_dir
+            im = world.frame(cam, t)
+            d = ImageDraw.Draw(im, "RGBA")
+            ov = painter(im, d, t, u, cam)
+            if ov is not None:
+                im = ov
+            push, shake = getattr(world, "push", 0.0), getattr(world, "shake", 0.0)
+            if push or shake:
+                z = 1.0 + push * (u * u * (3 - 2 * u)) + (0.05 if shake else 0.0)
+                cw, ch = W / z, H / z
+                cx = W / 2 + shake * math.sin(t * 61) * 1.0
+                cy = min(max(H * 0.62 + shake * math.cos(t * 53), ch / 2), H - ch / 2)
+                cx = min(max(cx, cw / 2), W - cw / 2)
+                im = im.crop((int(cx - cw / 2), int(cy - ch / 2), int(cx + cw / 2), int(cy + ch / 2)))
+            proc.stdin.write(im.resize((OW, OH), Image.LANCZOS).tobytes())
+    finally:
+        proc.stdin.close()
+        rc = proc.wait()
+    if rc != 0:
+        raise RuntimeError(f"toon render failed (ffmpeg code {rc})")
 
 
-def clip_shot(clip, dur, out):
-    """Use an AI-made video clip for `dur` seconds: fill the tall frame, trim it, or slow it down a
-    little (at most 1.5x) and hold the last frame if the clip is shorter than needed."""
-    d = clip_seconds(clip)
-    if d < 0.5:
-        raise RuntimeError("clip unreadable")
-    f = 1.0 if d >= dur else min(dur / d, 1.5)
-    extra = max(dur - d * f, 0.0)
-    vf = (f"scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,setsar=1,"
-          f"fps={FPS},setpts={f:.4f}*PTS,tpad=stop_mode=clone:stop_duration={extra + 0.2:.3f}")
-    run(["ffmpeg", "-y", "-i", clip, "-vf", vf, "-t", f"{dur:.3f}", "-an",
-         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", out], cwd=WORK)
+STEP = 1.9 * 2 * math.pi
 
 
-def shot_or_clip(plate, clip, dur, out, mode="in"):
-    """The AI video clip if there is one (and it works), otherwise the still picture with camera motion."""
-    if not plate:
-        if not (WORK / "grad.png").exists():
-            gradient_plate("grad")
-        plate = "grad.png"
-    if clip:
-        try:
-            clip_shot(clip, dur, out)
-            log(f"Used video clip {pathlib.Path(clip).name} for {dur:.1f}s")
+def walk_scene(out, dur, world, sp, facing=1, zoom=(1.0, 1.0), hybrid_roar_end=False, cwd=None,
+               intro=None, outro=None):
+    """One creature walking across the scene. intro/outro = (creature, seconds): a close-up of
+    that creature's face at the start or at the end of the shot."""
+    def paint(im, d, t, u, cam):
+        if intro and t < intro[1]:
+            closeup(im, d, intro[0], t, intro[1], 3.0, 2.5, roar=0.7, shake=5, tt=t)
             return
-        except RuntimeError as e:
-            log(f"Clip {clip} could not be used ({e}); using a still picture instead.")
-    shot(plate, [], dur, out, mode)
+        if outro and t > dur - outro[1]:
+            closeup(im, d, outro[0], t - (dur - outro[1]), outro[1], 2.5, 3.0, roar=0.7, shake=3, tt=t)
+            return
+        z = zoom[0] + (zoom[1] - zoom[0]) * u
+        roar = 0.0
+        if hybrid_roar_end and u > 0.72:
+            roar = min(1.0, (u - 0.72) / 0.1) * (1 if u < 0.95 else (1 - (u - 0.95) / 0.05))
+        sh = (6 * math.sin(t * 70)) if roar > 0.1 else 0
+        draw_creature(d, sp, (400 if facing == 1 else 680) + sh, GROUND + 20, t * STEP * 0.5,
+                      facing, z, {"t": t, "roar": roar, "moving": True})
+    write_video(out, dur, paint, world, cwd, cam_dir=facing)
 
 
-def open_times(dh, dm):
-    """Timing of the opening block: hook + morph. Times are seconds from the start of the video."""
-    la, lb, lm = 1.3, 1.3, 0.9
-    big_la = dh + la
-    total = dh + dm
-    lh = total - (big_la + lb + lm) + 3 * FADE
-    return {"la": big_la, "lb": lb, "lm": lm, "lh": lh, "total": total,
-            "b": big_la - FADE, "mix": big_la + lb - 2 * FADE, "reveal": big_la + lb + lm - 3 * FADE}
+def face_scene(out, dur, world, sp, cwd=None):
+    """A close-up of the face with a roar."""
+    def paint(im, d, t, u, cam):
+        closeup(im, d, sp, t, dur, 1.9, 3.0, roar=min(1.0, u * 2.2), shake=4 + 8 * u, tt=t)
+    write_video(out, dur, paint, world, cwd, cam_dir=0.2)
 
 
-def open_block(dh, dm, assets, out):
-    """Animal A walks -> animal B walks -> both overlap -> the hybrid appears."""
-    t = open_times(dh, dm)
-    if t["lh"] < 1.0:
-        raise RuntimeError("Opening too short")
-    a, b, h = assets["a"], assets["b"], assets["h"]
-    shot_or_clip(a["plate"], a.get("clip"), t["la"], "o_a.mp4", "right")
-    shot_or_clip(b["plate"], b.get("clip"), t["lb"], "o_b.mp4", "left")
-    mixed = False
-    if assets.get("mix"):
-        shot_or_clip(None, assets["mix"], t["lm"], "o_m.mp4", "in")
-        mixed = True
-    elif a.get("clip") and b.get("clip"):
-        try:
-            clip_shot(a["clip"], t["lm"], "m_a.mp4")
-            clip_shot(b["clip"], t["lm"], "m_b.mp4")
-            run(["ffmpeg", "-y", "-i", "m_a.mp4", "-i", "m_b.mp4", "-filter_complex",
-                 "[0:v][1:v]blend=all_mode=average,format=yuv420p", "-t", f"{t['lm']:.3f}", "-an",
-                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "o_m.mp4"], cwd=WORK)
-            mixed = True
-        except RuntimeError:
-            log("Footage overlap failed; using a simple fade instead.")
-    if not mixed:
-        pa, pb = a["plate"], b["plate"]
-        if pa and pb:
-            run(["ffmpeg", "-y", "-i", pa, "-i", pb, "-filter_complex",
-                 "[0:v][1:v]blend=all_mode=average", "-frames:v", "1", "mix.png"], cwd=WORK)
-            still_clip("mix.png", t["lm"], "o_m.mp4", "in")
+def hunt_scene(out, dur, world, sp, prey_text="", cwd=None):
+    """The hybrid stalks, snaps into a close-up of its face (the eerie sound plays here), and then
+    immediately goes after its prey: it crouches, pounces and roars."""
+    prey = prey_spec(prey_text)
+    zt = min(1.5, dur * 0.3)          # length of the stalk + zoom part
+    pre = zt * 0.35                    # the stalk before the snap zoom
+    rest = max(dur - zt, 0.5)
+
+    def paint(im, d, t, u0, cam):
+        if t < pre:
+            draw_prey(d, 700, GROUND + 14, t * STEP * 0.5, 1, prey)
+            draw_creature(d, sp, 260, GROUND + 20, t * STEP * 0.5, 1, 1.0, {"t": t, "moving": True})
+            return
+        if t < zt:
+            closeup(im, d, sp, t - pre, zt - pre, 1.2, 3.0, roar=min(1.0, (t - pre) / (zt - pre) * 1.6),
+                    shake=12 * (1 - (t - pre) / (zt - pre)) + 3, tt=t)
+            return
+        u = (t - zt) / rest
+        crouch = roar = lunge = flash = 0.0
+        if u < 0.42:
+            moving, hx = True, 230
+        elif u < 0.58:
+            moving, hx = False, 230
+            crouch = min(1, (u - 0.42) / 0.06)
+        elif u < 0.68:
+            moving = True
+            k = (u - 0.58) / 0.10
+            hx = 230 + 250 * k * k
+            crouch = 1 - k
+            lunge = k
         else:
-            shot_or_clip(pa or pb, a.get("clip") or b.get("clip"), t["lm"], "o_m.mp4", "in")
-    shot_or_clip(h["plate"], h.get("clip"), t["lh"], "o_h.mp4", "in")
-    o1, o2, o3 = t["b"], t["mix"], t["reveal"]
-    fc = (f"[0][1]xfade=transition=fade:duration={FADE}:offset={o1:.3f}[v1];"
-          f"[v1][2]xfade=transition=dissolve:duration={FADE}:offset={o2:.3f}[v2];"
-          f"[v2][3]xfade=transition=dissolve:duration={FADE}:offset={o3:.3f}[v]")
-    run(["ffmpeg", "-y", "-i", "o_a.mp4", "-i", "o_b.mp4", "-i", "o_m.mp4", "-i", "o_h.mp4",
-         "-filter_complex", fc, "-map", "[v]", "-t", f"{t['total']:.3f}", "-an",
-         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", out], cwd=WORK)
-    return t
-
-
-def plan_scenes(sentences, total):
-    """Split the audio time across sentences, then decide what to show for each."""
-    chars = [max(len(s["text"]), 1) for s in sentences]
-    tot = sum(chars)
-    ds = [total * c / tot for c in chars]
-    n = len(sentences)
-    dh = ds[0]
-    d, i = ds[1], 2
-    while d < 4.8 and i < n - 1:
-        d += ds[i]
-        i += 1
-    scenes = [{"kind": "open", "dur": dh + d, "hook": dh, "morph": d}]
-    while i < n - 1:
-        scenes.append({"kind": "scene", "dur": ds[i], "image": sentences[i]["image"]})
-        i += 1
-    scenes.append({"kind": "hold", "dur": ds[n - 1] + 0.3})
-    return scenes
-
-
-def build_video(scenes, assets, audio_name, captions_name, out_path):
-    segs, reveal = [], 0.0
-    k = 0
-    h = assets["h"]
-    for i, sc in enumerate(scenes):
-        seg = f"seg{i}.mp4"
-        if sc["kind"] == "open":
-            t = open_block(sc["hook"], sc["morph"], assets, seg)
-            reveal = t["reveal"]
-        elif sc["kind"] == "hold":
-            shot_or_clip(h["plate"], sc.get("clip"), sc["dur"], seg, "in")
+            moving, hx = False, 480
+            roar = min(1, (u - 0.68) / 0.08) * (1 if u < 0.95 else (1 - (u - 0.95) / 0.05))
+        px = 620 + 160 * min(u / 0.58, 1) if u < 0.6 else 780
+        sx = sy = 0
+        if 0.66 < u < 0.74:
+            flash = 0.6 * (1 - (u - 0.66) / 0.08)
+            sx, sy = 14 * math.sin(t * 80), 10 * math.cos(t * 73)
+        if u < 0.68:
+            draw_prey(d, px + sx, GROUND + 14, t * STEP * 0.5, 1, prey)
         else:
-            shot_or_clip(sc["plate"], sc.get("clip"), sc["dur"], seg, MOTIONS[k % len(MOTIONS)])
-            k += 1
-        segs.append(seg)
-    (WORK / "list.txt").write_text("".join(f"file '{s}'\n" for s in segs))
-    T = reveal
-    shake = (f"between(t,{T:.2f},{T + 0.9:.2f})")
-    # gentle handheld wobble all the time, a hard shake when the hybrid is revealed
-    xe = f"27+3*sin(t*2.1)+2*sin(t*5.3)+{shake}*24*sin(t*65)*(1-(t-{T:.2f})/0.9)"
-    ye = f"48+3*cos(t*1.7)+2*cos(t*4.9)+{shake}*30*cos(t*57)*(1-(t-{T:.2f})/0.9)"
-    flash = f"if(between(t,{T:.2f},{T + 0.35:.2f}),0.6*(1-(t-{T:.2f})/0.35),0)"
-    # one shared "old film" look over everything: faded colors, scene color grade, heavy grain, vignette
-    vf = (f"scale=1134:2016,crop=1080:1920:x='{xe}':y='{ye}',"
-          f"curves=preset=vintage,{LOOK['grade']},"
-          f"eq=brightness='{flash}':saturation=0.92:contrast=1.06:eval=frame,"
-          "vignette=PI/4.5,noise=alls=16:allf=t+u")
-    if captions_name:
-        vf += f",subtitles={captions_name}"
-    run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "list.txt", "-i", audio_name,
-         "-vf", vf, "-map", "0:v", "-map", "1:a",
-         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
-         "-c:a", "aac", "-b:a", "160k", "-shortest", "-t", "59", str(out_path)], cwd=WORK)
+            for i in range(10):
+                a = i * 0.63 + t * 2
+                r = 30 + 160 * min(1, (u - 0.68) / 0.12)
+                d.ellipse((780 + math.cos(a) * r - 20, GROUND - 30 + math.sin(a) * r * 0.4 - 20,
+                           780 + math.cos(a) * r + 20, GROUND - 30 + math.sin(a) * r * 0.4 + 20), fill=(220, 200, 170))
+            if u < 0.9:
+                blood_burst(d, 790, GROUND - 70, (u - 0.68) / 0.22, seed=3, power=0.6)
+        draw_creature(d, sp, hx + sx, GROUND + 20 + sy, t * STEP * 0.5, 1, 1.0 + 0.1 * lunge,
+                      {"t": t, "crouch": crouch, "roar": roar, "moving": moving, "headup": roar})
+        if flash > 0:
+            return Image.blend(im, Image.new("RGB", im.size, (255, 255, 255)), flash)
+    write_video(out, dur, paint, world, cwd, cam_dir=1)
+    return {"zoom_at": pre, "lunge_at": zt + rest * 0.58}
 
 
-def sound_events(scenes, sounds, hunt=None):
-    """When each sound effect plays, in seconds from the start of the video."""
-    first = scenes[0]
-    t = open_times(first["hook"], first["morph"])
-    ev = [
-        {"file": sounds["scream"], "at": 0.05, "vol": 0.8, "max": 1.4},      # scary opening flash
-        {"file": sounds["call_a"], "at": 1.5, "vol": 0.8, "max": 3.0},
-        {"file": sounds["whoosh"], "at": t["b"] - 0.1, "vol": 0.45},
-        {"file": sounds["call_b"], "at": t["b"] + 0.15, "vol": 0.8, "max": 3.0},
-        {"file": sounds["whoosh"], "at": t["mix"] - 0.1, "vol": 0.45},
-        {"file": sounds["riser"], "at": max(t["reveal"] - 1.3, 0), "vol": 0.55},
-        {"file": sounds["boom"], "at": t["reveal"], "vol": 0.9},
-        {"file": sounds["scream"], "at": t["reveal"] + 0.05, "vol": 0.95, "max": 2.6},
-    ]
-    at = first["dur"]
-    for sc in scenes[1:]:
-        ev.append({"file": sounds["whoosh"], "at": at - 0.1, "vol": 0.3})
-        if sc.get("hunt") and hunt:
-            ev.append({"file": sounds["eerie"], "at": at + hunt["zoom_at"] - 0.05, "vol": 0.9})
-            ev.append({"file": sounds["boom"], "at": at + hunt["zoom_at"], "vol": 0.6})
-            ev.append({"file": sounds["growl"], "at": at + hunt["lunge_at"] - 0.1, "vol": 0.8})
-            ev.append({"file": sounds["boom"], "at": at + hunt["lunge_at"] + 0.25, "vol": 0.7})
-        at += sc["dur"]
-    # closing close-up of the face: a last growl and a quiet eerie tone, then the video loops
-    ev.append({"file": sounds["growl"], "at": max(at - scenes[-1]["dur"] + 0.3, 0), "vol": 0.6})
-    ev.append({"file": sounds["eerie"], "at": max(at - 1.4, 0), "vol": 0.5})
-    return ev
+def meet_scene(out, dur, world, sa, sb, cwd=None):
+    """Both parent animals walk toward each other and overlap. The morph into the hybrid follows."""
+    def paint(im, d, t, u, cam):
+        ph = t * STEP * 0.5
+        ax, bx = 250 + 230 * u, 830 - 230 * u
+        draw_creature(d, sa, ax, GROUND + 20, ph, 1, 0.9, {"t": t, "moving": True})
+        draw_creature(d, sb, bx, GROUND + 20, ph + 1.5, -1, 0.9, {"t": t, "moving": True})
+    write_video(out, dur, paint, world, cwd, cam_dir=0.3)
 
 
-# ---------------------------------------------------------------- upload
-def upload_to_youtube(video_path, title, description, tags):
-    from google.oauth2.credentials import Credentials
-    from googleapiclient.discovery import build
-    from googleapiclient.http import MediaFileUpload
-
-    creds = Credentials(
-        None,
-        refresh_token=os.environ["YT_REFRESH_TOKEN"],
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=os.environ["YT_CLIENT_ID"],
-        client_secret=os.environ["YT_CLIENT_SECRET"],
-        scopes=["https://www.googleapis.com/auth/youtube.upload"],
-    )
-    yt = build("youtube", "v3", credentials=creds, cache_discovery=False)
-    body = {
-        "snippet": {"title": title, "description": description, "tags": tags, "categoryId": "15"},
-        "status": {"privacyStatus": PRIVACY, "selfDeclaredMadeForKids": False},
-    }
-    media = MediaFileUpload(str(video_path), mimetype="video/mp4", resumable=True, chunksize=-1)
-    request = yt.videos().insert(part="snippet,status", body=body, media_body=media)
-    response = None
-    while response is None:
-        _, response = request.next_chunk()
-    return response["id"]
+# ---------------------------------------------------------------- folklore: a person and the creature that follows
+def folk_creature(name):
+    """A folklore creature drawn in the scary style (glowing eyes, fangs, dark body)."""
+    sp = animal_spec(name)
+    sp["kind"] = "beast"
+    sp["snout"] = SNOUTS.get(name, 0.9)
+    sp["hybrid"] = True
+    sp["horror"] = True
+    sp["eye"] = (255, 40, 30)
+    sp["scale"] = 1.05
+    sp["color"] = mix(sp["color"], (10, 8, 18), 0.78)
+    sp["traits"] = set(sp["traits"]) | {"fangs", "glow_eyes"}
+    sp["traits"] -= {"flying", "walker"}
+    if sp["kind"] == "bird":
+        sp["traits"] |= {"wings", "beak"}
+    return sp
 
 
-# ---------------------------------------------------------------- main
-def main():
-    if not GEMINI_API_KEY:
-        sys.exit("Missing secret: GEMINI_API_KEY")
-    if not (CF_ACCOUNT and CF_TOKEN):
-        sys.exit("Missing secret: CLOUDFLARE_ACCOUNT_ID and/or CLOUDFLARE_API_TOKEN")
+CAST = {"kind": None}   # "child", "elder" or "pair": a second person who travels with the main one
+COMPANION = {"child": 0.6, "elder": 0.88, "pair": 0.96}
 
-    WORK.mkdir(exist_ok=True)
-    OUT.mkdir(exist_ok=True)
-    history = load_history()
-    key, a, b, (place_name, place_desc, ambient_query, place_light, place_grade) = pick_idea(history)
-    LOOK["grade"] = GRADES.get(place_grade, "null")
-    log(f"Idea: {a} + {b} in {place_name}")
 
-    story = ask_gemini(a, b, place_name)
-    sentences = story["sentences"]
-    narration = " ".join(s["text"] for s in sentences)
-    look = story["hybrid_look"]
-    log(f"Title: {story['title']}")
-
-    # --- voice
-    words = None
-    audio_name = "voice.wav"
-    if not gemini_tts(narration, WORK / "voice.wav"):
-        log("Falling back to the basic free voice.")
-        audio_name = "voice.mp3"
-        words = asyncio.run(edge_voice(narration, str(WORK / "voice.mp3")))
-    total = audio_seconds(WORK / audio_name)
-    if not words:
-        words = even_words(narration, total)
-    has_caps = write_captions(words, total, WORK / "captions.ass")
-
-    # --- creatures and backgrounds
-    keycolor = pick_key([a, b])
-    log(f"Cut-out backdrop color: {keycolor}")
-    assets = {"a": get_animal(a, "a", pick_key([a]), place_light),
-              "b": get_animal(b, "b", pick_key([b]), place_light)}
-    h_sprite = make_sprite("spr_h", f"An imaginary hybrid creature: {look}", keycolor,
-                           place_light, fierce=True)
-    plate_ok = make_plate("plate_h", place_desc)
-    if h_sprite:
-        assets["h"] = {"plate": "plate_h.png", "sprite": h_sprite}
-    else:
-        log("Hybrid cut-out failed. Trying a full-frame hybrid picture.")
-        prompt = (f"{STYLE} An imaginary hybrid creature: {look} It is {FIERCE}. "
-                  f"It stands in {place_name}, shown clearly and dominantly.")
-        if not make_picture("port_h", prompt):
-            log("Hybrid picture failed. Using a blend of the two animals instead.")
-            run(["ffmpeg", "-y", "-i", assets["a"]["plate"], "-i", assets["b"]["plate"], "-filter_complex",
-                 "[0:v][1:v]blend=all_mode=average", "-frames:v", "1", "port_h.png"], cwd=WORK)
-        assets["h"] = {"plate": "port_h.png", "sprite": None}
-
-    scenes = plan_scenes(sentences, total)
-    for i, sc in enumerate(scenes):
-        if sc["kind"] != "scene":
-            continue
-        name = f"plate_s{i}"
-        if assets["h"]["sprite"]:
-            make_plate(name, sc["image"])  # the walking creature is added on top
-        else:
-            # no cut-out creature available: the picture itself must show the creature
-            prompt = f"{STYLE} The creature: {look} Scene in {place_name}: {sc['image']}"
-            if not make_picture(name, prompt):
-                shutil.copy(WORK / assets["h"]["plate"], WORK / f"{name}.png")
-        sc["plate"] = f"{name}.png"
-
-    # --- sound
-    sounds = prepare_sounds(a, b, ambient_query)
-    events = sound_events(scenes, sounds)
-    build_audio(audio_name, total, events, sounds["ambient"], "mix.wav")
-
-    out_path = OUT / "short.mp4"
-    build_video(scenes, assets, "mix.wav", "captions.ass" if has_caps else None, out_path)
-    sprites = sum(1 for k in ("a", "b", "h") if assets[k]["sprite"])
-    log(f"Video ready: {out_path} ({total:.1f}s of speech, animated creatures: {sprites}/3, "
-        f"real animal calls: {sounds['real_calls']}/2)")
-
-    title = story["title"][:80].rstrip() + " #Shorts"
-    description = (
-        f"Impossible Animals #{plan.get('episode', 1)}: {story['creature_name']}, an imaginary animal hybrid ({a} + {b}) in {place_name}.\n"
-        "This is a fictional story made for fun and the creature is not real. "
-        "The images and animation are AI-generated, the narration uses a synthetic voice, "
-        "and the sound effects are synthesized or CC0.\n\n"
-        "Comment which two animals I should combine next!\n\n"
-        "#shorts #animals #whatif #speculativebiology"
-    )
-    tags = ["shorts", "animals", "what if", "hybrid animals", "speculative biology", a, b]
-    (OUT / "meta.json").write_text(json.dumps(
-        {"title": title, "description": description, "narration": narration,
-         "animated_creatures": sprites, "real_animal_calls": sounds["real_calls"]}, indent=2))
-
-    if DRY_RUN:
-        log("DRY RUN: not uploading. Download the video from the run's Artifacts.")
+def draw_companion(d, cx, gy, phase, facing=1, scale=1.0):
+    kind = CAST["kind"]
+    if not kind:
         return
-    video_id = upload_to_youtube(out_path, title, description, tags)
-    log(f"Uploaded as '{PRIVACY}': https://youtube.com/shorts/{video_id}")
-    history.append(key)
-    HISTORY_FILE.write_text(json.dumps(history, indent=1))
+    cs = COMPANION[kind]
+    draw_human(d, cx, gy, phase * (1.6 if kind == "child" else 1.0) + 1.3, facing, scale * cs, lamp=None, cast=False)
+    if kind == "elder":  # a walking stick
+        s = 1.35 * scale * cs
+        d.line((cx + facing * 52 * s, gy, cx + facing * 70 * s, gy - 300 * s), fill=(40, 28, 20), width=max(4, int(8 * s)))
 
 
-# ---------------------------------------------------------------- two-step mode: plan, then build
-PLAN_DIR = ROOT / "plan"
-CLIPS_DIR = ROOT / "clips"
-CLIP_EXT = (".mp4", ".mov", ".webm", ".m4v", ".gif")
-IMAGE_EXT = (".jpg", ".jpeg", ".png", ".webp")
+def draw_human(d, cx, gy, phase, facing=1, scale=1.0, lamp="lantern", cast=True):
+    """A flat silhouette of a person walking with a lantern. With cast=True, a companion walks just ahead."""
+    if cast and CAST["kind"] and lamp == "lantern":
+        draw_companion(d, cx + facing * 170 * scale, gy, phase, facing, scale)
+    s = 1.35 * scale
+    pen = Pen(d, cx, gy, s, facing, lambda c: (80, 100, 150))
+    col = (8, 10, 20)
+    shadow(d, cx, gy, 90 * s)
+    bob = -abs(math.sin(phase)) * 6
+    limb(pen, -6, -165 + bob, phase + math.pi, 85, 85, 24, col, 0.5)
+    limb(pen, 6, -165 + bob, phase, 85, 85, 26, col, 0.5)
+    pen.poly([(-38, -170 + bob), (38, -170 + bob), (30, -330 + bob), (-30, -330 + bob)], col)
+    sw = math.sin(phase)
+    pen.line([(0, -315 + bob), (30 * sw, -240 + bob), (45 * sw, -175 + bob)], 18, col)
+    ax, ay = 20 + 30 * -sw, -245 + bob
+    pen.line([(0, -315 + bob), (ax, ay), (ax + 22, ay + 70)], 18, col)
+    if lamp:
+        big = 1.9 if lamp == "torch" else 1.0
+        for k, a in ((3.2, 26), (2.2, 40), (1.4, 70)):
+            r = 22 * k * s * big
+            d.ellipse((pen.X(ax + 22) - r, pen.Y(ay + 78) - r, pen.X(ax + 22) + r, pen.Y(ay + 78) + r), fill=(255, 170, 70, a))
+        pen.ell(ax + 22, ay + 78, 12 * big, 15 * big, (255, 215, 130), rim=False)
+        if lamp == "torch":
+            pen.line([(ax + 22, ay + 90), (ax + 24, ay + 150)], 8, (60, 40, 25))
+    pen.ell(0, -372 + bob, 36, 40, col)
 
 
-def clip_prompts(look, place_name, place_desc, prey="a small animal", move="it pounces with lightning speed"):
-    """Three prompts to paste into an AI video website."""
-    base = ("Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, "
-            "real fur, skin and scale texture, vertical 9:16, no text, no people.")
-    return [
-        ("Clip 1 - the reveal (plays when the hybrid first appears)",
-         f"{base} A massive imaginary hybrid creature steps out and walks toward the camera in "
-         f"{place_name}: {place_desc}. {look} It is menacing and dominant."),
-        ("Clip 2 - the signature move on its prey (plays in the middle of the story)",
-         f"{base} In {place_desc}, the same hybrid creature goes after {prey}. {move}. "
-         f"Fast, powerful movement, camera follows the action. {look}"),
-        ("Clip 3 - the close-up (plays at the end)",
-         f"{base} Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and "
-         f"breathing heavily, wind and dust moving around it. {look}"),
-    ]
+def folk_scene(out, dur, world, sp, gap0, gap1, intro=None, outro=None, roar_end=False, cwd=None):
+    """A person walks through the night and the creature follows, closer and closer.
+    gap = how many pixels behind the person the creature is (large means it is off-screen)."""
+    def paint(im, d, t, u, cam):
+        if intro and t < intro[1]:
+            closeup(im, d, intro[0], t, intro[1], 3.0, 2.5, roar=0.7, shake=5, tt=t)
+            return
+        if outro and t > dur - outro[1]:
+            closeup(im, d, outro[0], t - (dur - outro[1]), outro[1], 2.5, 3.0, roar=0.8, shake=4, tt=t)
+            return
+        gap = gap0 + (gap1 - gap0) * u
+        ph = t * STEP * 0.5
+        hx = 700
+        roar = 0.0
+        if roar_end and u > 0.7:
+            roar = min(1.0, (u - 0.7) / 0.1)
+        cx = hx - gap
+        if cx > -420:
+            draw_creature(d, sp, cx, GROUND + 20, ph + 0.7, 1, 1.0, {"t": t, "moving": True, "roar": roar})
+        draw_human(d, hx, GROUND + 20, ph, 1, 1.0)
+    write_video(out, dur, paint, world, cwd, cam_dir=1)
 
 
-
-# ---------------------------------------------------------------- series 2: dark folklore
-FOLK_ANIMALS = ["bull", "wolf", "bear", "fox", "snake", "owl", "lion", "cheetah", "crocodile", "bat"]
-FOLK_REGIONS = ["Kerala, India", "Scotland", "Japan", "Mexico", "Romania", "Nigeria", "the Philippines",
-                "Iceland", "Brazil", "Russia", "Ireland", "Turkey", "Indonesia", "Greece", "Korea"]
-FOLK_PLACE = ("a village at night", "a dark village path under a full moon", "night crickets ambience",
-              "cold blue moonlight with a warm lantern glow", "cool")
-
-
-def ask_folklore(history):
-    region = random.choice(FOLK_REGIONS)
-    used = [k.split(":", 2)[2] for k in history if k.startswith("folk:") and k.count(":") >= 2]
-    prompt = f"""You write narration for 40-second YouTube Shorts that retell DARK FOLKLORE: old legends about
-people who turn into animals or creatures that follow travellers at night.
-
-Pick one real, well-known legend of shapeshifting or a night creature from: {region}.
-Do not reuse these legends: {used or "none yet"}.
-
-Return ONLY valid JSON, no markdown, in exactly this shape:
-{{
-  "legend_name": "the name of the legend or creature, 1 to 3 words",
-  "region": "short place name, for example Kerala, India",
-  "animal": "ONE word from this list that best matches the creature: {", ".join(FOLK_ANIMALS)}",
-  "title": "catchy title under 70 characters, no hashtags",
-  "people": "who is in danger: one of alone, child, elder, pair",
-  "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "setting": "one place word from the list below"}}]
-}}
-
-Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken English, no emojis):
-- Sentence 1: a gripping hook in the form "If <something> follows you at night in <place>... don't look back."
-- Retell the legend as "the old tales say". Never present it as true or as something that really happens.
-- Be respectful of the culture it comes from. Do not mock any people, religion or community.
-- Horror is welcome: dread, screams, attacks and their terrifying aftermath. Show harm through implication and
-  aftermath (a scream cut off, a dropped lantern, blood on the path, a smear where someone was dragged away).
-  Never describe injuries or body parts in explicit detail, and never name real people as victims.
-- Every sentence gets a "beat": the ONE scene word that best shows what that sentence says. Pick from:
-  "walk" (a person walks through the night), "footprints" (footsteps are mentioned: a person's prints appear and huge
-  clawed prints follow inside them), "home" (a person goes to or reaches their house), "village" (the sleeping village,
-  lights going out), "window" (something watches or scratches at a window), "door" (something pounds at a locked door),
-  "transform" (a person changes into the creature), "chase" (someone runs, the creature gives chase), "hide" (someone
-  hides while it passes), "mob" (villagers with torches hunt it), "stalk" (the creature closes in), "attack" (it strikes),
-  "aftermath" (the horrible quiet after).
-  Use at least 5 different scene words, never the same one twice in a row, and use "attack" once, followed by "aftermath".
-  The first sentence must be "walk"; the last should be "stalk" or "aftermath".
-- Every sentence also gets a "setting", the place where that sentence happens: "pathway" (an eerie road), "forest" (a dark
-  forest), "graveyard", "river" (a misty river bank), "village" (houses and a street), "field" (a moonlit field),
-  "hills" (a stormy hillside). Follow the story's journey, for example pathway, then forest, then village, and use at
-  least 3 different settings. Put "home" and "village" scenes in "village".
-- "people": "alone" if one traveller, "child" if a child walks with them, "elder" if an old person does, "pair" if two adults.
-- The second to last sentence builds to the moment of danger.
-- Last sentence: end with a question for viewers, such as "Would you turn around?"
-"""
-    url = f"{API_BASE}/models/{GEMINI_MODEL}:generateContent"
-    body = {"contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 1.0, "responseMimeType": "application/json"}}
-    last = None
-    for attempt in range(3):
-        try:
-            r = requests.post(url, params={"key": GEMINI_API_KEY}, json=body, timeout=90)
-            r.raise_for_status()
-            text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-            text = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.M).strip()
-            data = json.loads(text)
-            sents = [s for s in data["sentences"] if isinstance(s, dict) and str(s.get("text", "")).strip()]
-            assert data["title"] and data["legend_name"] and len(sents) >= 5
-            for s in sents:
-                s["text"] = s["text"].strip()
-            data["sentences"] = sents[:9]
-            if data.get("animal") not in FOLK_ANIMALS:
-                data["animal"] = "wolf"
-            data["region"] = str(data.get("region") or region).strip()
-            return data
-        except Exception as e:
-            last = e
-            log(f"Gemini folklore attempt {attempt + 1} failed: {e}")
-    raise RuntimeError(f"Gemini failed 3 times: {last}")
+# ---------------------------------------------------------------- blood and horror effects (stylized, not anatomical)
+def blood_burst(d, cx, cy, k, seed=1, power=1.0):
+    """Red droplets flying out from a hit. k goes from 0 (the hit) to 1 (everything has landed)."""
+    rnd = random.Random(seed)
+    if k < 0.3:  # the big splat right at the hit
+        pts = []
+        for i in range(18):
+            a = i * math.pi * 2 / 18
+            r = (90 + rnd.uniform(-30, 120)) * (0.4 + 2 * k) * power
+            pts.append((cx + math.cos(a) * r, cy + math.sin(a) * r * 0.8))
+        d.polygon(pts, fill=(140, 6, 10, 230))
+    for i in range(54):
+        a = rnd.uniform(-math.pi * 0.98, -math.pi * 0.02) + rnd.uniform(-0.4, 0.4)
+        v = rnd.uniform(200, 820) * power
+        r = rnd.uniform(5, 19) * (1 - 0.4 * k)
+        x0, y0 = cx + math.cos(a) * v * k * 0.8, cy + math.sin(a) * v * k * 0.8 + 700 * (k * 0.8) ** 2
+        x, y = cx + math.cos(a) * v * k, cy + math.sin(a) * v * k + 700 * k * k
+        if k < 0.7:
+            d.line((x0, y0, x, y), fill=(120, 5, 9, 210), width=max(2, int(r * 0.8)))
+        d.ellipse((x - r, y - r * 1.2, x + r, y + r * 1.2), fill=(150, 8, 12, 240))
 
 
-ATTACK_WORDS = ("attack", "lunge", "pounc", "tore", "torn", "bit ", "bite", "blood", "killed", "dragged", "devour",
-                "scream", "slash", "mauled", "ripped", "snatched", "never seen again", "claws")
+def blood_pool(d, cx, gy, k, wide=260):
+    w = wide * min(1, k)
+    d.ellipse((cx - w, gy - 6, cx + w, gy + 34 * min(1, k) + 6), fill=(92, 4, 8, 240))
+    d.ellipse((cx - w * 0.7, gy - 2, cx + w * 0.5, gy + 12), fill=(150, 10, 16, 200))
 
 
-SCENE_FUNCS = ("footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob")
-SCENES = ("walk", "footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
-          "stalk", "attack", "aftermath")
-SCENE_WORDS = (("footprints", ("footstep", "footprint", "steps behind", "tracks")),
-               ("home", ("home", "house", "hut", "cottage", "doorstep")),
-               ("village", ("village", "townsfolk", "town ")),
-               ("window", ("window", "glass", "shutter")),
-               ("door", ("door", "knock", "locked")),
-               ("transform", ("turn into", "turns into", "transform", "shape", "becomes a", "changes into")),
-               ("chase", ("run", "ran ", "flee", "chase", "race")),
-               ("hide", ("hide", "hid ", "hiding", "silent", "holds his breath", "holds her breath")),
-               ("mob", ("torch", "villagers", "hunt")))
+def blood_trail(d, x0, x1, gy, k):
+    """A smear on the ground where something was dragged away."""
+    xe = x0 + (x1 - x0) * min(1, k)
+    for i in range(5):
+        off = i * 9 - 18
+        d.line((x0, gy + 14 + off, xe, gy + 14 + off * 0.6), fill=(100, 5, 9, 230), width=9)
 
 
-SETTING_WORDS = (("forest", ("forest", "wood", "trees", "jungle")),
-                 ("graveyard", ("grave", "cemetery", "tomb", "buried")),
-                 ("river", ("river", "lake", "water", "ford", "stream", "mist")),
-                 ("village", ("village", "home", "house", "hut", "street", "door", "window")),
-                 ("field", ("field", "farm", "paddy", "crop", "meadow")),
-                 ("hills", ("hill", "mountain", "storm", "ridge", "cliff", "thunder")))
-SETTING_CYCLE = ("pathway", "forest", "village", "graveyard", "field", "river", "hills")
+def lantern_on_ground(d, x, gy, t, alive=1.0):
+    fl = 0.6 + 0.4 * math.sin(t * 17) * math.sin(t * 5.3)
+    for kk, a in ((5.0, 22), (3.4, 38), (2.0, 70)):
+        r = 22 * kk * (0.6 + 0.4 * fl) * alive
+        d.ellipse((x - r, gy - 24 - r * 0.6, x + r, gy - 24 + r * 0.6), fill=(255, 150, 60, int(a * alive)))
+    d.rectangle((x - 16, gy - 46, x + 16, gy - 8), fill=(30, 22, 18))
+    d.rectangle((x - 10, gy - 40, x + 10, gy - 14), fill=(255, int(190 * fl + 40), 80))
 
 
-def assign_settings(sentences, beats):
-    out = []
-    for i, s in enumerate(sentences):
-        st = s.get("setting")
-        if st not in SETTING_CYCLE:
-            st = None
-            low = s["text"].lower()
-            for name, words in SETTING_WORDS:
-                if any(w in low for w in words):
-                    st = name
-                    break
-            if st is None:
-                st = out[-1] if out else "pathway"
-        if beats[i] in ("home", "village", "mob"):
-            st = "village"
-        out.append(st)
-    out[0] = out[0] if out[0] != "village" else "pathway"
-    # make sure the story actually travels: at least 3 places, and never more than 3 scenes in the same one
-    run = 1
-    for i in range(1, len(out)):
-        run = run + 1 if out[i] == out[i - 1] else 1
-        if run > 3 and beats[i] not in ("home", "village", "mob"):
-            out[i] = next(c for c in SETTING_CYCLE if c != out[i - 1])
-            run = 1
-    if len(set(out)) < 3:
-        for i in range(2, len(out) - 1, 2):
-            if beats[i] not in ("home", "village", "mob"):
-                out[i] = next(c for c in SETTING_CYCLE if c not in out)
-                break
-    return out
+def red_wash(im, amount):
+    return Image.blend(im, Image.new("RGB", im.size, (140, 0, 0)), max(0.0, min(0.7, amount)))
 
 
-def assign_beats(sentences):
-    n = len(sentences)
-    beats = []
-    for i, s in enumerate(sentences):
-        b = s.get("beat")
-        low = s["text"].lower()
-        if b not in SCENES:
-            b = None
-            if any(w in low for w in ATTACK_WORDS) and i >= 2:
-                b = "attack"
+def claw_slash(d, cx, cy, k, size=1.0):
+    """Three parallel diagonal claw strokes, white-hot at first and then red."""
+    k = max(0.0, min(1.0, k))
+    for j in range(3):
+        x0, y0 = cx - 150 * size + j * 70 * size, cy - 230 * size
+        x1, y1 = x0 + 190 * size * min(1, k * 2.2), y0 + 460 * size * min(1, k * 2.2)
+        col = (255, 245, 235, 255) if k < 0.3 else (190, 10, 16, int(255 * (1 - (k - 0.3) / 0.9)))
+        d.line((x0, y0, x1, y1), fill=col, width=int(26 * size * (1.2 - k)))
+
+
+def attack_scene(out, dur, world, sp, cwd=None):
+    """The creature closes in. The person turns, sees it and RUNS. It gallops after them, gains on them, leaps,
+    and rakes its claws across their back: a flash, a spray of blood, and the person is gone. Only the lantern
+    is left, dropped on a growing pool of blood. A companion, if there is one, keeps running and escapes."""
+    sp2 = dict(sp)
+    sp2["bloody"] = False
+    sp3 = dict(sp)
+    sp3["bloody"] = True
+    t_walk, t_run, t_leap, t_hit = 0.22, 0.32, 0.58, 0.66
+    info = {"impact_at": dur * t_hit, "stalk_at": dur * t_walk}
+    world.shake = 0.0
+    hx = 760
+
+    def paint(im, d, t, u, cam):
+        ph = t * STEP * 0.5
+        if u < t_hit:
+            comp_x = hx + 170 + max(0.0, u - t_walk) * 1900
+            running = u >= t_run
+            pph = t * STEP * (1.0 if running else 0.5)
+            if u < t_walk:
+                gap = 960 - 280 * (u / t_walk)
+            elif u < t_run:  # it is right there: the person freezes and looks back
+                gap = 680 - 60 * ((u - t_walk) / (t_run - t_walk))
+            elif u < t_leap:  # the chase: the gap closes while everything speeds past
+                gap = 620 - 440 * ((u - t_run) / (t_leap - t_run))
             else:
-                for name, words in SCENE_WORDS:
-                    if any(w in low for w in words):
-                        b = name
-                        break
-            if b is None:
-                b = "stalk" if i >= n - 4 else "walk"
-        beats.append(b)
-    beats[0] = "walk"
-    if n >= 5 and "attack" not in beats[2:n - 1]:
-        beats[n - 3] = "attack"
-    if beats[-1] in ("attack",) or beats[-1] not in ("stalk", "aftermath", "walk"):
-        beats[-1] = "aftermath" if beats[-2] == "attack" else "stalk"
-    for i in range(1, n):
-        if beats[i] == "attack" and beats[i - 1] == "attack":
-            beats[i] = "aftermath"  # one attack at a time
-    for i in range(n - 1):
-        if beats[i] == "attack" and beats[i + 1] != "aftermath":
-            beats[i + 1] = "aftermath"
-    for i in range(1, n - 1):  # never the same scene twice in a row
-        if beats[i] == beats[i - 1] and beats[i] not in ("attack",):
-            beats[i] = "stalk" if beats[i] != "stalk" else "walk"
-    return beats
-
-
-def folk_sound_events(durs, beats, impacts, sounds, hits=None, quiet=None):
-    hits = hits or {}
-    quiet = quiet if quiet is not None else []
-    ev = [{"file": sounds["eerie"], "at": 0.05, "vol": 0.9},
-          {"file": sounds["scream"], "at": 0.1, "vol": 0.6, "max": 1.2}]
-    at = 0.0
-    for i, d in enumerate(durs):
-        if i:
-            ev.append({"file": sounds["whoosh"], "at": at - 0.1, "vol": 0.3})
-        if beats[i] == "attack":
-            hit = at + impacts.get(i, d * 0.6)
-            # a heartbeat that speeds up as the creature closes in, then total silence just before the strike
-            tt, gapb = at + d * 0.25, 0.85
-            while tt < hit - 0.9:
-                ev.append({"file": sounds["heart"], "at": tt, "vol": 0.9})
-                tt += gapb
-                gapb = max(0.42, gapb * 0.88)
-            quiet.append((hit - 0.8, hit - 0.05))
-            ev.append({"file": sounds["eerie"], "at": at + d * 0.3, "vol": 0.7})
-            ev.append({"file": sounds["boom"], "at": hit, "vol": 0.9})
-            ev.append({"file": sounds["victim"], "at": max(hit - 0.45, at), "vol": 0.95, "max": 0.6})  # the victim screams, cut off at impact
-            ev.append({"file": sounds["scream"], "at": hit, "vol": 0.7, "max": 1.4})
-            ev.append({"file": sounds["growl"], "at": hit + 0.4, "vol": 0.6})
-        elif beats[i] == "stalk":
-            ev.append({"file": sounds["growl"], "at": at + 0.3, "vol": 0.4})
-        elif beats[i] == "aftermath":
-            ev.append({"file": sounds["growl"], "at": at + 0.5, "vol": 0.3})
-            ev.append({"file": sounds["distant"], "at": at + 0.8, "vol": 0.55})
-        elif beats[i] in ("footprints", "door", "village", "mob", "window", "hide"):
-            for h in hits.get(i, [])[:6]:
-                ev.append({"file": sounds["boom"], "at": at + h, "vol": 0.45})
-            if beats[i] in ("window", "door"):
-                ev.append({"file": sounds["growl"], "at": at + d * 0.3, "vol": 0.45})
-                ev.append({"file": sounds["victim"], "at": at + d * 0.85, "vol": 0.7, "max": 0.7})
-            if beats[i] == "village":
-                ev.append({"file": sounds["distant"], "at": at + d * 0.78, "vol": 0.7})
-        elif beats[i] == "transform":
-            ev.append({"file": sounds["growl"], "at": at + d * 0.45, "vol": 0.8})
-            ev.append({"file": sounds["scream"], "at": at + d * 0.5, "vol": 0.6, "max": 1.4})
-            ev.append({"file": sounds["victim"], "at": at + d * 0.3, "vol": 0.8, "max": 0.9})
-        elif beats[i] == "chase":
-            ev.append({"file": sounds["growl"], "at": at + 0.2, "vol": 0.5})
-            ev.append({"file": sounds["whoosh"], "at": at + d * 0.5, "vol": 0.4})
-            ev.append({"file": sounds["victim"], "at": at + 0.15, "vol": 0.85, "max": 0.9})
-            ev.append({"file": sounds["victim"], "at": at + d * 0.55, "vol": 0.85, "max": 0.7})
-        at += d
-    ev.append({"file": sounds["eerie"], "at": max(at - 1.6, 0), "vol": 0.8})
-    ev.append({"file": sounds["scream"], "at": max(at - 1.5, 0), "vol": 0.8, "max": 1.6})
-    return ev
-
-
-def build_folk_main(plan):
-    import toon
-    story = plan["story"]
-    sentences = story["sentences"]
-    animal = story["animal"]
-    region = story["region"]
-    episode = plan.get("episode", 1)
-    narration = " ".join(s["text"] for s in sentences)
-    place_name, place_desc, ambient_query, place_light, place_grade = FOLK_PLACE
-    LOOK["grade"] = GRADES.get(place_grade, "null")
-    WORK.mkdir(exist_ok=True)
-    OUT.mkdir(exist_ok=True)
-    log(f"Building folklore: {story['legend_name']} ({animal}) from {region}")
-    log(f"Title: {story['title']}")
-
-    words = None
-    audio_name = "voice.wav"
-    if not gemini_tts(narration, WORK / "voice.wav"):
-        log("Falling back to the basic free voice.")
-        audio_name = "voice.mp3"
-        words = asyncio.run(edge_voice(narration, str(WORK / "voice.mp3")))
-    total = audio_seconds(WORK / audio_name)
-    if not words:
-        words = even_words(narration, total)
-    has_caps = write_captions(words, total, WORK / "captions.ass",
-                              card=f"{region.upper()}  \u00b7  DARK FOLKLORE #{episode}")
-
-    creature = toon.folk_creature(animal)
-    chars = [max(len(s["text"]), 1) for s in sentences]
-    durs = [total * c / sum(chars) for c in chars]
-    durs[-1] += 0.3
-    n = len(durs)
-    beats = assign_beats(sentences)
-    log("Beats: " + ", ".join(beats))
-    settings = assign_settings(sentences, beats)
-    log("Settings: " + ", ".join(settings))
-    people = story.get("people", "alone")
-    toon.CAST["kind"] = people if people in ("child", "elder", "pair") else None
-    WEATHER = {"stalk": dict(fog=0.55), "attack": dict(fog=0.6, redmoon=True), "aftermath": dict(fog=0.7, redmoon=True),
-               "chase": dict(storm=True), "transform": dict(redmoon=True), "window": dict(storm=True)}
-    PUSH = {"walk": 0.10, "stalk": 0.16, "home": 0.10, "village": 0.08, "hide": 0.10, "footprints": 0.0,
-            "aftermath": 0.06, "mob": 0.08}
-    SHAKE = {"chase": 7.0}
-    scenes, impacts, blooded, hits = [], {}, False, {}
-    for i, dur in enumerate(durs):
-        w = toon.World(toon.SETTINGS[settings[i]], 5 + (i % 3), WEATHER.get(beats[i]))
-        w.push = PUSH.get(beats[i], 0.0)
-        w.shake = SHAKE.get(beats[i], 0.0)
-        out = str(WORK / f"toon_s{i}.mp4")
-        cur = dict(creature, bloody=True) if blooded else creature
-        g0 = 1300 - 740 * i / n
-        g1 = 1300 - 740 * (i + 1) / n
-        intro = (cur, min(1.4, dur * 0.5)) if i == 0 else None
-        last = i == n - 1
-        if beats[i] == "attack":
-            impacts[i] = toon.attack_scene(out, dur, w, creature, cwd=WORK)["impact_at"]
-            blooded = True
-        elif beats[i] == "aftermath":
-            toon.aftermath_scene(out, dur, w, cur, cwd=WORK, outro=min(1.6, dur * 0.6) if last else None)
-        elif beats[i] in SCENE_FUNCS and not (i == 0 or last):
-            hits[i] = getattr(toon, beats[i] + "_scene")(out, dur, w, cur, cwd=WORK).get("hits", [])
-        else:
-            outro = (cur, min(1.6, dur * 0.6)) if last else None
-            toon.folk_scene(out, dur, w, cur, g0, g1, intro=intro, outro=outro,
-                            roar_end=(beats[min(i + 1, n - 1)] == "attack"), cwd=WORK)
-        scenes.append({"kind": "hold" if last else "scene", "dur": dur,
-                       "clip": f"toon_s{i}.mp4", "plate": None})
-    sounds = prepare_sounds(animal, animal, ambient_query)
-    quiet = []
-    events = folk_sound_events(durs, beats, impacts, sounds, hits, quiet)
-    build_audio(audio_name, total, events, sounds["ambient"], "mix.wav", quiet)
-    out_path = OUT / "short.mp4"
-    build_video(scenes, {"h": {"plate": None, "sprite": None, "clip": None}}, "mix.wav",
-                "captions.ass" if has_caps else None, out_path)
-    log(f"Video ready: {out_path} ({total:.1f}s of speech)")
-
-    title = story["title"][:80].rstrip() + " #Shorts"
-    description = (
-        f"{story['legend_name']}: a dark folk legend from {region}, retold for fun.\n"
-        "The old tales say... this is folklore, not fact. The animation is drawn by software, "
-        "the narration uses a synthetic voice, and the sound effects are synthesized or CC0.\n\n"
-        "Would you turn around? Tell me in the comments, and tell me which legend I should tell next!\n\n"
-        "#shorts #folklore #darkfolklore #legend #scarystories"
-    )
-    tags = ["shorts", "folklore", "dark folklore", "legend", "scary stories", region, story["legend_name"]]
-    (OUT / "meta.json").write_text(json.dumps(
-        {"title": title, "description": description, "narration": narration, "series": "folklore"}, indent=2))
-    if DRY_RUN or not os.environ.get("YT_REFRESH_TOKEN"):
-        log("Not uploading (dry run, or YouTube is not set up yet). Download the video from the run's Artifacts.")
-        return
-    video_id = upload_to_youtube(out_path, title, description, tags)
-    log(f"Uploaded as '{PRIVACY}': https://youtube.com/shorts/{video_id}")
-
-
-def plan_main():
-    if not GEMINI_API_KEY:
-        sys.exit("Missing secret: GEMINI_API_KEY")
-    OUT.mkdir(exist_ok=True)
-    PLAN_DIR.mkdir(exist_ok=True)
-    history = load_history()
-    # the two series take turns: hybrid animals, then dark folklore, and so on
-    series = "folklore" if len(history) % 2 == 1 else "hybrid"
-    episode = 1 + sum(1 for k in history if k.startswith("folk:") == (series == "folklore"))
-    plan, lines = None, []
-    if series == "folklore":
-        try:
-            story = ask_folklore(history)
-            key = f"folk:{story['animal']}:{story['legend_name']}"
-            plan = {"series": "folklore", "key": key, "episode": episode, "story": story}
-            log(f"Folklore #{episode}: {story['legend_name']} ({story['region']})")
-            lines = [f"# {story['title']}", "", f"**Dark Folklore #{episode}:** {story['legend_name']} ({story['region']})", "",
-                     "No clips are needed for this one. The Build step draws the whole animation.", "",
-                     "## The story that will be spoken", "", " ".join(x["text"] for x in story["sentences"]), ""]
-        except RuntimeError as e:
-            log(f"Folklore story failed ({e}); making a hybrid story instead.")
-            series = "hybrid"
-            episode = 1 + sum(1 for k in history if not k.startswith("folk:"))
-    if series == "hybrid":
-        key, a, b, place = pick_idea(history)
-        place_name, place_desc = place[0], place[1]
-        log(f"Hybrid #{episode}: {a} + {b} in {place_name}")
-        story = ask_gemini(a, b, place_name)
-        plan = {"series": "hybrid", "key": key, "a": a, "b": b, "place": list(place), "story": story,
-                "episode": episode,
-                "clips": [{"title": t, "prompt": p} for t, p in
-                          clip_prompts(story["hybrid_look"], place_name, place_desc,
-                                       story.get("prey", "a small animal"), story.get("signature_move", "it pounces"))]}
-        lines = [f"# {story['title']}", "",
-                 f"**Impossible Animals #{episode}:** {story['creature_name']} ({a} + {b}) in {place_name}", "",
-                 "## Optional: your own AI video clips (the video is made without them)", "",
-                 "Use PixVerse or Kling (text-to-video), **9:16**, **5 seconds**. Save the results as "
-                 "`clip1.mp4`, `clip2.mp4`, `clip3.mp4` and upload them to the `clips` folder.", ""]
-        for i, c in enumerate(plan["clips"], 1):
-            lines += [f"### {c['title']}", "", "```", c["prompt"], "```", ""]
-        lines += ["## The story that will be spoken", "", " ".join(x["text"] for x in story["sentences"]), ""]
-    (PLAN_DIR / "plan.json").write_text(json.dumps(plan, indent=1))
-    history.append(plan["key"])
-    HISTORY_FILE.write_text(json.dumps(history, indent=1))
-    md = "\n".join(lines)
-    (OUT / "PROMPTS.md").write_text(md)
-    summary = os.environ.get("GITHUB_STEP_SUMMARY")
-    if summary:
-        with open(summary, "a") as f:
-            f.write(md)
-    log("Plan saved. Open the run page and read the summary.")
-
-
-def find_clips():
-    files = sorted(p for p in CLIPS_DIR.glob("*") if p.suffix.lower() in CLIP_EXT) if CLIPS_DIR.exists() else []
-    good = []
-    for p in files:
-        dst = WORK / f"in_{len(good) + 1}{p.suffix.lower()}"
-        shutil.copy(p, dst)
-        if clip_seconds(dst) >= 0.5:
-            good.append(dst.name)
-        else:
-            log(f"Clip {p.name} cannot be read, skipping it.")
-    log(f"Video clips found: {len(good)}")
-    return good[:3]
-
-
-def find_user_image():
-    """A picture you made yourself (jpg/png/webp in the clips folder). Used as the hybrid's picture."""
-    files = sorted(p for p in CLIPS_DIR.glob("*") if p.suffix.lower() in IMAGE_EXT) if CLIPS_DIR.exists() else []
-    for p in files:
-        dst = WORK / f"user_img{p.suffix.lower()}"
-        shutil.copy(p, dst)
-        try:
-            compose_vertical(dst.name, "user_h.png")
-            log(f"Using your picture {p.name} as the hybrid picture")
-            return "user_h.png"
-        except RuntimeError:
-            log(f"Picture {p.name} cannot be read, skipping it.")
-    return None
-
-
-def build_main():
-    if not GEMINI_API_KEY:
-        sys.exit("Missing secret: GEMINI_API_KEY")
-    plan_file = PLAN_DIR / "plan.json"
-    if not plan_file.exists():
-        sys.exit("No plan found. Run the 'Plan' workflow first.")
-    plan = json.loads(plan_file.read_text())
-    if plan.get("series") == "folklore":
-        return build_folk_main(plan)
-    WORK.mkdir(exist_ok=True)
-    OUT.mkdir(exist_ok=True)
-    key, a, b = plan["key"], plan["a"], plan["b"]
-    place_name, place_desc, ambient_query, place_light, place_grade = plan["place"]
-    story = plan["story"]
-    sentences = story["sentences"]
-    look = story["hybrid_look"]
-    narration = " ".join(s["text"] for s in sentences)
-    LOOK["grade"] = GRADES.get(place_grade, "null")
-    log(f"Building: {a} + {b} in {place_name}")
-    log(f"Title: {story['title']}")
-    clips = find_clips()
-
-    # --- voice
-    words = None
-    audio_name = "voice.wav"
-    if not gemini_tts(narration, WORK / "voice.wav"):
-        log("Falling back to the basic free voice.")
-        audio_name = "voice.mp3"
-        words = asyncio.run(edge_voice(narration, str(WORK / "voice.mp3")))
-    total = audio_seconds(WORK / audio_name)
-    if not words:
-        words = even_words(narration, total)
-    has_caps = write_captions(words, total, WORK / "captions.ass",
-                              card=f"{place_name.upper()}  \u00b7  IMPOSSIBLE ANIMALS #{plan.get('episode', 1)}")
-
-    # --- the animation: every creature is drawn and animated by the bot (flat, stylized look)
-    import toon
-    sa, sb = toon.animal_spec(a), toon.animal_spec(b)
-    sh = toon.hybrid_spec(a, b)
-    scenes = plan_scenes(sentences, total)
-    first = scenes[0]
-    t = open_times(first["hook"], first["morph"])
-    world = toon.World(place_name, 1)
-    log(f"Animating: {a} ({sa['kind']}), {b} ({sb['kind']}), hybrid ({sh['kind']}, traits: {', '.join(sorted(sh['traits']))})")
-    toon.walk_scene(str(WORK / "toon_a.mp4"), t["la"], world, sa, 1, (1.0, 1.1), cwd=WORK, intro=(sh, 1.3))
-    toon.walk_scene(str(WORK / "toon_b.mp4"), t["lb"], world, sb, -1, (1.0, 1.1), cwd=WORK)
-    toon.meet_scene(str(WORK / "toon_m.mp4"), t["lm"], world, sa, sb, cwd=WORK)
-    toon.walk_scene(str(WORK / "toon_h.mp4"), t["lh"], world, sh, 1, (0.95, 1.15), hybrid_roar_end=True, cwd=WORK)
-    assets = {"a": {"plate": None, "sprite": None, "clip": "toon_a.mp4"},
-              "b": {"plate": None, "sprite": None, "clip": "toon_b.mp4"},
-              "mix": "toon_m.mp4",
-              "h": {"plate": None, "sprite": None, "clip": "toon_h.mp4"}}
-    if clips:  # a clip you made yourself replaces the drawn reveal
-        assets["h"]["clip"] = clips[0]
-
-    middle = [i for i, sc in enumerate(scenes) if sc["kind"] == "scene"]
-    hunt_at = middle[len(middle) // 2] if middle else None
-    hunt_info = None
-    k = 0
-    for i, sc in enumerate(scenes):
-        if sc["kind"] == "open":
-            continue
-        w = toon.World(place_name, i + 2)
-        out = str(WORK / f"toon_s{i}.mp4")
-        if sc["kind"] == "hold":
-            toon.walk_scene(out, sc["dur"], w, sh, 1, (1.0, 1.15), cwd=WORK, outro=(sh, min(1.5, sc["dur"] * 0.6)))
-        elif i == hunt_at:
-            hunt_info = toon.hunt_scene(out, sc["dur"], w, sh, story.get("prey", ""), cwd=WORK)
-            sc["hunt"] = True
-        else:
-            shot_type = k % 3
-            if shot_type == 0:
-                toon.walk_scene(out, sc["dur"], w, sh, 1, (1.0, 1.2), cwd=WORK)
-            elif shot_type == 1:
-                toon.walk_scene(out, sc["dur"], w, sh, -1, (0.62, 0.7), hybrid_roar_end=True, cwd=WORK)
+                gap = 180 - 70 * ((u - t_leap) / (t_hit - t_leap))
+            lift = 0.0
+            if u >= t_leap:
+                kk = (u - t_leap) / (t_hit - t_leap)
+                lift = 190 * math.sin(math.pi * min(1, kk))
+            jx = 6 * math.sin(t * 61) if running else 0
+            draw_companion(d, comp_x, GROUND + 20, pph, 1, 1.0)
+            draw_creature(d, sp2, hx - gap, GROUND + 20 - lift, ph * (2.0 if running else 1.0) + 0.7, 1, 1.0 + 0.08 * (u > t_leap),
+                          {"t": t, "moving": True, "roar": 0.9 if u > t_run else 0.0})
+            if u < t_walk:
+                draw_human(d, hx, GROUND + 20, ph, 1, 1.0, cast=False)
+            elif u < t_run:
+                draw_human(d, hx + 3 * math.sin(t * 40), GROUND + 20, 0.0, 1, 1.0, cast=False)
             else:
-                toon.face_scene(out, sc["dur"], w, sh, cwd=WORK)
-            k += 1
-        sc["clip"] = f"toon_s{i}.mp4"
-        sc["plate"] = None
-    if len(clips) >= 2 and middle:
-        scenes[hunt_at]["clip"] = clips[1]
-    if len(clips) >= 3:
-        scenes[-1]["clip"] = clips[2]
-
-    # --- sound
-    sounds = prepare_sounds(a, b, ambient_query)
-    events = sound_events(scenes, sounds, hunt_info)
-    build_audio(audio_name, total, events, sounds["ambient"], "mix.wav")
-
-    out_path = OUT / "short.mp4"
-    build_video(scenes, assets, "mix.wav", "captions.ass" if has_caps else None, out_path)
-    log(f"Video ready: {out_path} ({total:.1f}s of speech, AI video clips used: {len(clips)}/3, "
-        f"real animal calls: {sounds['real_calls']}/2)")
-
-    title = story["title"][:80].rstrip() + " #Shorts"
-    description = (
-        f"{story['creature_name']}: an imaginary animal hybrid ({a} + {b}) in {place_name}.\n"
-        "This is a fictional story made for fun and the creature is not real. "
-        "The animation is drawn by software, the narration uses a synthetic voice, "
-        "and the sound effects are synthesized or CC0.\n\n"
-        "Comment which two animals I should combine next!\n\n"
-        "#shorts #animals #whatif #speculativebiology"
-    )
-    tags = ["shorts", "animals", "what if", "hybrid animals", "speculative biology", a, b]
-    (OUT / "meta.json").write_text(json.dumps(
-        {"title": title, "description": description, "narration": narration,
-         "video_clips_used": len(clips), "real_animal_calls": sounds["real_calls"]}, indent=2))
-
-    if DRY_RUN or not os.environ.get("YT_REFRESH_TOKEN"):
-        log("Not uploading (dry run, or YouTube is not set up yet). Download the video from the run's Artifacts.")
-        return
-    video_id = upload_to_youtube(out_path, title, description, tags)
-    log(f"Uploaded as '{PRIVACY}': https://youtube.com/shorts/{video_id}")
+                draw_human(d, hx + jx, GROUND + 20, pph, 1, 1.0, cast=False)
+            if u >= t_leap:  # the claws rake across the person's back
+                claw_slash(d, hx + 10, GROUND - 200, (u - t_leap) / (t_hit - t_leap) * 0.55)
+            if u > t_walk:
+                beat = max(0.0, math.sin(t * 9 + 3)) ** 6 * 0.2 * min(1, (u - t_walk) / 0.12)
+                return red_wash(im, beat + (0.08 if running else 0.0))
+            return
+        k = (u - t_hit) / (1 - t_hit)
+        if k < 0.07:  # jump-scare: a few frames of the monster's face, blood red, right at the impact
+            closeup(im, d, sp3, 0.0, 0.3, 2.3, 2.7, roar=1.0, shake=12, tt=t)
+            return red_wash(im, 0.4)
+        sx = 16 * math.sin(t * 90) * max(0.0, 1 - k * 4)
+        sy = 12 * math.cos(t * 80) * max(0.0, 1 - k * 4)
+        blood_pool(d, hx - 20, GROUND + 26, min(1, k * 2.2))
+        lantern_on_ground(d, hx + 150, GROUND + 28, t, alive=max(0.0, 1.0 - max(0.0, k - 0.6) * 2.5))
+        draw_creature(d, sp3, hx - 330 + sx, GROUND + 20 + sy, ph, 1, 1.05, {"t": t, "moving": False, "roar": min(1, k * 3)})
+        blood_burst(d, hx + 20, GROUND - 330, min(1, k * 1.6), seed=7)
+        claw_slash(d, hx + 10, GROUND - 200, 0.55 + k * 1.2)
+        if k < 0.14:
+            return Image.blend(im, Image.new("RGB", im.size, (255, 255, 255)), 0.6 * (1 - (k - 0.07) / 0.07))
+        if k < 0.35:
+            return red_wash(im, 0.5 * (1 - k / 0.35))
+    world.shake = 7.0
+    write_video(out, dur, paint, world, cwd, cam_dir=2.2)
+    return info
 
 
+def aftermath_scene(out, dur, world, sp, cwd=None, outro=None):
+    """The quiet after: a pool of blood, a long smear where something was dragged away, a flickering lantern,
+    and the creature standing over it with red eyes, its fangs dripping."""
+    sp3 = dict(sp)
+    sp3["bloody"] = True
 
-if __name__ == "__main__":
-    mode = sys.argv[1] if len(sys.argv) > 1 else "build"
-    if mode == "plan":
-        plan_main()
-    else:
-        build_main()
+    def paint(im, d, t, u, cam):
+        if outro and t > dur - outro:
+            closeup(im, d, sp3, t - (dur - outro), outro, 2.5, 3.0, roar=0.8, shake=4, tt=t)
+            return
+        blood_pool(d, 520, GROUND + 26, 1.0, wide=300)
+        blood_trail(d, 520, 40, GROUND + 26, min(1, u * 2.5))
+        lantern_on_ground(d, 690, GROUND + 28, t, alive=max(0.0, 1.0 - max(0.0, u - 0.55) * 2.2))
+        z = 1.0 + 0.1 * u
+        draw_creature(d, sp3, 760, GROUND + 20, 0.0, -1, z * 0.95, {"t": t, "moving": False, "roar": 0.2 + 0.3 * math.sin(t * 3) ** 2})
+        if u > 0.55:
+            dim(im, int(150 * min(1, (u - 0.55) / 0.4)))
+    write_video(out, dur, paint, world, cwd, cam_dir=0.05)
+
+
+# ---------------------------------------------------------------- story scenes
+def draw_house(d, x, gy, s=1.0, lit=1.0, door=0.0, t=0.0):
+    """A small village house in silhouette: a lit window, a door, a chimney with smoke."""
+    col, roof = (7, 9, 18), (4, 6, 12)
+    w, h = 130 * s, 150 * s
+    d.polygon([(x + w * 0.45, gy - h - 60 * s), (x + w * 0.72, gy - h - 60 * s), (x + w * 0.72, gy - h), (x + w * 0.45, gy - h)], fill=roof)
+    d.polygon([(x - w, gy), (x - w, gy - h), (x + w, gy - h), (x + w, gy)], fill=col)
+    d.polygon([(x - w - 30 * s, gy - h + 8 * s), (x, gy - h - 115 * s), (x + w + 30 * s, gy - h + 8 * s)], fill=roof)
+    d.line([(x - w - 30 * s, gy - h + 8 * s), (x, gy - h - 115 * s), (x + w + 30 * s, gy - h + 8 * s)], fill=(60, 80, 130), width=max(2, int(3 * s)))
+    wc = mix((7, 9, 18), (255, 200, 110), lit)
+    d.rectangle((x - w * 0.72, gy - h * 0.82, x - w * 0.22, gy - h * 0.42), fill=wc)
+    if lit > 0.1:
+        r = 120 * s * lit
+        d.ellipse((x - w * 0.47 - r, gy - h * 0.62 - r, x - w * 0.47 + r, gy - h * 0.62 + r), fill=(255, 190, 90, int(28 * lit)))
+    d.line((x - w * 0.47, gy - h * 0.82, x - w * 0.47, gy - h * 0.42), fill=(20, 14, 10), width=max(2, int(4 * s)))
+    d.line((x - w * 0.72, gy - h * 0.62, x - w * 0.22, gy - h * 0.62), fill=(20, 14, 10), width=max(2, int(4 * s)))
+    dx0, dx1 = x + w * 0.15, x + w * 0.62
+    d.rectangle((dx0, gy - h * 0.72, dx1, gy), fill=(26, 18, 14))
+    if door > 0:
+        d.polygon([(dx0, gy - h * 0.72), (dx1, gy - h * 0.72), (dx1, gy), (dx0, gy)], fill=(255, 196, 110, int(230 * door)))
+        d.polygon([(dx0, gy), (dx1, gy), (dx1 + 260 * s * door, gy + 40 * s), (dx0 - 140 * s * door, gy + 40 * s)], fill=(255, 190, 100, int(90 * door)))
+    for i in range(5):  # chimney smoke
+        k = (t * 0.5 + i * 0.2) % 1.0
+        r = (12 + 26 * k) * s
+        d.ellipse((x + w * 0.58 + 40 * k * s - r, gy - h - 70 * s - 160 * k * s - r, x + w * 0.58 + 40 * k * s + r, gy - h - 70 * s - 160 * k * s + r),
+                  fill=(120, 130, 150, int(50 * (1 - k))))
+
+
+def home_scene(out, dur, world, sp, cwd=None):
+    """The person walks toward their house, the door opens and lets the warm light out, they step in and the
+    door closes. Far behind, two red eyes open in the dark."""
+    info = {"hits": [dur * 0.62]}
+
+    def paint(im, d, t, u, cam):
+        hxs = 780
+        draw_house(d, hxs + 80, GROUND + 10, 1.5, lit=1.0, door=0.0 if u < 0.55 else min(1, (u - 0.55) / 0.08) * (1 if u < 0.78 else max(0, 1 - (u - 0.78) / 0.08)), t=t)
+        px = 120 + 600 * min(1, u / 0.58)
+        if u < 0.58:
+            draw_human(d, px, GROUND + 20, t * STEP * 0.5, 1, 0.95)
+        elif u < 0.66:
+            draw_human(d, px, GROUND + 20, 0.0, 1, 0.95)
+        if u > 0.7:
+            k = min(1, (u - 0.7) / 0.15)
+            for ex in (140, 205):
+                for r, a in ((46, 40), (30, 80), (16, 200)):
+                    d.ellipse((ex - r * k, GROUND - 210 - r * k * 0.6, ex + r * k, GROUND - 210 + r * k * 0.6), fill=(255, 30, 24, a))
+    write_video(out, dur, paint, world, cwd, cam_dir=0.1)
+    return info
+
+
+def village_scene(out, dur, world, sp, cwd=None):
+    """A sleepy village. The lights go out one by one while two red eyes watch from the hill."""
+    houses = [(150, 0.75), (400, 1.0), (680, 0.85), (930, 1.1)]
+    off = [0.30, 0.45, 0.60, 0.74]
+
+    def paint(im, d, t, u, cam):
+        for (x, s), o in zip(houses, off):
+            lit = 1.0 if u < o else max(0.0, 1 - (u - o) / 0.05)
+            draw_house(d, x, GROUND + 8, s * 1.15, lit=lit, t=t)
+        k = min(1, u / 0.25)
+        for ex in (850, 905):
+            for r, a in ((44, 30), (26, 80), (13, 230)):
+                d.ellipse((ex - r * k, GROUND - 470 - r * k * 0.6, ex + r * k, GROUND - 470 + r * k * 0.6), fill=(255, 30, 24, a))
+    write_video(out, dur, paint, world, cwd, cam_dir=0.15)
+    return {"hits": [dur * o for o in off]}
+
+
+_TOP = {}
+
+
+def _topdown_texture():
+    """A dirt path seen from above, as a tall tile that can scroll."""
+    if "tex" in _TOP:
+        return _TOP["tex"]
+    rnd = random.Random(5)
+    img = Image.new("RGB", (W, 1920), (16, 22, 24))
+    d = ImageDraw.Draw(img)
+    for y in range(0, 1920, 8):
+        wob = 28 * math.sin(y * 2 * math.pi / 1920 * 2)
+        d.rectangle((300 + wob, y, 780 + wob, y + 8), fill=(44, 38, 34))
+    for _ in range(900):
+        x, y = rnd.randint(0, W), rnd.randint(0, 1919)
+        c = (30, 26, 24) if 300 < x < 780 else (10, 30, 22)
+        d.ellipse((x, y, x + rnd.randint(3, 10), y + rnd.randint(3, 8)), fill=c)
+    for _ in range(140):
+        x, y = rnd.choice([rnd.randint(0, 280), rnd.randint(800, W)]), rnd.randint(0, 1919)
+        for k in range(4):
+            d.line((x, y, x + (k - 1.5) * 9, y - rnd.randint(30, 60)), fill=(14, 52, 36), width=4)
+    _TOP["tex"] = img
+    return img
+
+
+def _boot(d, x, y, flip):
+    dx = -6 if flip else 6
+    d.ellipse((x - 16, y + 4, x + 16, y + 34), fill=(14, 12, 12, 240))                        # heel
+    d.ellipse((x - 20 + dx, y - 44, x + 20 + dx, y + 2), fill=(14, 12, 12, 240))             # sole
+    d.ellipse((x - 20 + dx, y - 46, x + 20 + dx, y - 38), fill=(70, 62, 56, 120))
+
+
+def _claw_print(d, x, y, glow):
+    if glow > 0:
+        r = 110 * (0.6 + 0.4 * glow)
+        d.ellipse((x - r, y - r, x + r, y + r), fill=(255, 30, 24, int(60 * glow)))
+    d.ellipse((x - 46, y - 24, x + 46, y + 46), fill=(6, 4, 8, 250))
+    for k in range(4):
+        tx = x + (k - 1.5) * 34
+        ty = y - 54 - 10 * (1 - abs(k - 1.5) / 1.5)
+        d.ellipse((tx - 14, ty - 22, tx + 14, ty + 18), fill=(6, 4, 8, 250))
+        d.polygon([(tx - 6, ty - 18), (tx + 6, ty - 18), (tx, ty - 62)], fill=(6, 4, 8, 250))
+
+
+def footprints_scene(out, dur, world, sp, cwd=None):
+    """Seen from above: a person's footprints appear on the path, step by step. Then, one by one, huge
+    clawed prints stamp down exactly inside them."""
+    speed, appear_y, stamp_y = 300, 560, 1260
+    delay = (stamp_y - appear_y) / speed
+    gap = 0.55
+    steps = [(i * gap, 520 if i % 2 == 0 else 580) for i in range(int(dur / gap) + 2)]
+    hits = [ti + delay for ti, _ in steps if ti + delay < dur - 0.2]
+    tex = _topdown_texture()
+
+    def paint(im, d, t, u, cam):
+        off = int((t * speed) % 1920)
+        im.paste(tex, (0, off - 1920))
+        im.paste(tex, (0, off))
+        d2 = ImageDraw.Draw(im, "RGBA")
+        for i, (ti, x) in enumerate(steps):
+            if t >= ti:
+                y = appear_y + (t - ti) * speed
+                if y < 2100:
+                    _boot(d2, x, y, i % 2 == 0)
+        for i, (ti, x) in enumerate(steps):
+            tc = ti + delay
+            if t >= tc:
+                y = stamp_y + (t - tc) * speed
+                if y < 2200:
+                    _claw_print(d2, x, y, max(0.0, 1 - (t - tc) / 0.6))
+                if t - tc < 0.25:
+                    for k in range(8):
+                        a = k * 0.8
+                        rr = 30 + 160 * (t - tc)
+                        d2.ellipse((x + math.cos(a) * rr - 14, stamp_y + math.sin(a) * rr * 0.5 - 14, x + math.cos(a) * rr + 14, stamp_y + math.sin(a) * rr * 0.5 + 14), fill=(120, 110, 100, 90))
+        # a vignette, darker at the bottom where the thing is coming from
+        dim(im, 70)
+        if t > dur - 1.0:
+            return red_wash(im, 0.25 * ((t - (dur - 1.0)) / 1.0))
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+_WALL = {}
+
+
+def _wall():
+    if "w" in _WALL:
+        return _WALL["w"]
+    wall = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(wall)
+    d.rectangle((0, 0, W, H), fill=(24, 15, 11, 255))
+    for x in range(0, W, 90):
+        d.line((x, 0, x, H), fill=(14, 9, 7, 255), width=4)
+    wx0, wy0, wx1, wy1 = 270, 480, 810, 1180
+    d.rectangle((wx0, wy0, wx1, wy1), fill=(0, 0, 0, 0))
+    d.rectangle((wx0 - 26, wy0 - 26, wx1 + 26, wy1 + 26), outline=(62, 40, 26, 255), width=30)
+    d.line((540, wy0, 540, wy1), fill=(62, 40, 26, 255), width=18)
+    d.line((wx0, 830, wx1, 830), fill=(62, 40, 26, 255), width=18)
+    d.polygon([(wx0 - 30, wy0 - 40), (wx0 + 90, wy0 - 40), (wx0 + 30, wy1), (wx0 - 30, wy1)], fill=(70, 14, 20, 255))
+    d.polygon([(wx1 + 30, wy0 - 40), (wx1 - 90, wy0 - 40), (wx1 - 30, wy1), (wx1 + 30, wy1)], fill=(70, 14, 20, 255))
+    d.rectangle((wx0 - 50, wy1 + 20, wx1 + 50, wy1 + 70), fill=(48, 30, 20, 255))
+    _WALL["w"] = wall
+    return wall
+
+
+def window_scene(out, dur, world, sp, cwd=None):
+    """Inside a house: a candle on the sill, the night outside the window. Two red eyes appear. Claws scrape down
+    the glass. A face presses against it, its breath fogging the pane. The glass cracks and the candle dies."""
+    wall = _wall()
+    info = {"hits": [dur * 0.55, dur * 0.9]}
+
+    def paint(im, d, t, u, cam):
+        # the night outside
+        if u > 0.15:
+            k = min(1, (u - 0.15) / 0.2)
+            z = 1.2 + 0.6 * max(0.0, (u - 0.5) / 0.4)
+            ax, ay = head_anchor(sp)
+            draw_creature(d, sp, 0, 0, t * 2, 1, z, {"t": t, "moving": False, "roar": 0.3 + 0.5 * max(0, u - 0.7)}, focus=(ax, ay, 540 - 20 * (1 - k), 840))
+            if u < 0.5:  # at first the head is hidden in the dark and only the eyes show
+                dim(im, int(235 * (1 - k * 0.4)))
+        else:
+            for ex in (480, 600):
+                for r, a in ((40, 40), (24, 90), (11, 240)):
+                    d.ellipse((ex - r, 820 - r * 0.6, ex + r, 820 + r * 0.6), fill=(255, 30, 24, a))
+        im.paste(wall, (0, 0), wall)
+        d = ImageDraw.Draw(im, "RGBA")
+        if 0.35 < u < 0.9:  # claws scraping down the glass
+            k = (u - 0.35) / 0.4
+            for j in range(4):
+                x = 360 + j * 62
+                yy = 560 + min(1, k) * 420
+                d.line((x, 560, x + 18, yy), fill=(200, 196, 182, 200), width=6)
+                d.polygon([(x + 12, yy - 6), (x + 28, yy - 6), (x + 18, yy + 60)], fill=(235, 228, 205, 235))
+        if u > 0.55:  # breath fogging the glass
+            f = (0.5 + 0.5 * math.sin(t * 5)) * min(1, (u - 0.55) / 0.15)
+            d.ellipse((380, 760, 700, 980), fill=(210, 220, 230, int(70 * f)))
+        if u > 0.88:  # the glass cracks
+            for a in range(0, 360, 40):
+                rr = 380 * min(1, (u - 0.88) / 0.05)
+                d.line((540, 830, 540 + math.cos(math.radians(a)) * rr, 830 + math.sin(math.radians(a)) * rr), fill=(235, 240, 245, 220), width=3)
+        # the candle on the sill
+        alive = 1.0 if u < 0.85 else max(0.0, 1 - (u - 0.85) / 0.05)
+        fl = 0.7 + 0.3 * math.sin(t * 19)
+        d.rectangle((300, 1120, 330, 1200), fill=(220, 210, 190, 255))
+        if alive > 0:
+            for r, a in ((200, 22), (120, 40), (50, 120)):
+                d.ellipse((315 - r * alive, 1110 - r * alive, 315 + r * alive, 1110 + r * alive), fill=(255, 170, 70, int(a * alive * fl)))
+            d.ellipse((305, 1070, 325, 1118), fill=(255, 220, 140, 255))
+        if u > 0.85:
+            dim(im, int(160 * min(1, (u - 0.85) / 0.1)))
+        if u > 0.5:
+            sx, sy = 6 * math.sin(t * 60) * min(1, (u - 0.5) * 4), 5 * math.cos(t * 51) * min(1, (u - 0.5) * 4)
+            return im.transform(im.size, Image.AFFINE, (1, 0, sx, 0, 1, sy))
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return info
+
+
+def door_scene(out, dur, world, sp, cwd=None):
+    """A locked wooden door with warm light underneath. Something large paces outside, then slams into it.
+    Claw marks appear and the planks crack, with a red glow leaking through."""
+    knocks = [dur * k for k in (0.25, 0.5, 0.68, 0.85)]
+
+    def paint(im, d, t, u, cam):
+        im.paste(Image.new("RGB", im.size, (12, 8, 7)))
+        shake = 0.0
+        for kt in knocks:
+            if 0 < t - kt < 0.3:
+                shake = 22 * (1 - (t - kt) / 0.3) * math.sin((t - kt) * 70)
+        ox = int(shake)
+        d = ImageDraw.Draw(im, "RGBA")
+        d.rectangle((190 + ox, 360, 890 + ox, 1520), fill=(44, 28, 20))
+        for x in range(190, 890, 70):
+            d.line((x + ox, 360, x + ox, 1520), fill=(24, 15, 11), width=5)
+        for y in (520, 1300):
+            d.rectangle((190 + ox, y, 890 + ox, y + 46), fill=(26, 26, 32))
+        d.ellipse((780 + ox, 900, 840 + ox, 960), fill=(120, 120, 130))
+        d.rectangle((170, 1520, 910, 1550), fill=(6, 4, 4))
+        glow = 0.7 + 0.3 * math.sin(t * 13)
+        d.rectangle((190, 1508, 890, 1520), fill=(255, int(170 * glow + 30), 80))
+        d.polygon([(190, 1520), (890, 1520), (1000, 1700), (80, 1700)], fill=(255, 170, 70, 40))
+        pace = 540 + 230 * math.sin(t * 2.2)
+        for fx in (pace - 60, pace + 60):  # shadows of feet in the gap of light
+            d.polygon([(fx - 24, 1508), (fx + 24, 1508), (fx + 18, 1520), (fx - 18, 1520)], fill=(4, 2, 2))
+        n = sum(1 for kt in knocks if t >= kt)
+        for j in range(n):  # claw marks
+            x = 300 + j * 140
+            for k in range(3):
+                d.line((x + k * 22 + ox, 640 + j * 60, x + k * 22 + 30 + ox, 940 + j * 40), fill=(10, 6, 5), width=7)
+        if t >= knocks[-1] - 0.05:
+            a = min(1, (t - knocks[-1]) / 0.3)
+            d.line((540 + ox, 700, 520 + ox, 1100), fill=(255, 40, 30, int(220 * a)), width=8)
+            d.line((520 + ox, 1100, 580 + ox, 1400), fill=(255, 40, 30, int(220 * a)), width=8)
+            d.polygon([(500 + ox, 700), (580 + ox, 700), (600 + ox, 1400), (480 + ox, 1400)], fill=(255, 30, 24, int(60 * a)))
+        if shake:
+            dim(im, 40)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": knocks}
+
+
+def transform_scene(out, dur, world, sp, cwd=None):
+    """A person stands under the moon. Their body shakes and twists, a bright flash, and the person is gone:
+    the monster stands where they were and roars."""
+    info = {"hits": [dur * 0.52]}
+
+    def paint(im, d, t, u, cam):
+        im2 = im.copy()
+        d2 = ImageDraw.Draw(im2, "RGBA")
+        k = 0.0 if u < 0.38 else min(1.0, (u - 0.38) / 0.22)
+        jit = 0 if u < 0.28 else 14 * math.sin(t * 70) * min(1, (u - 0.28) / 0.1)
+        pulse = 1.0 + (0.1 * math.sin(t * 45) if u > 0.3 else 0)
+        draw_human(d, 540 + jit, GROUND + 20, 0.0, 1, 1.15 * pulse, cast=False)
+        draw_creature(d2, sp, 380 + jit * 0.4, GROUND + 20, 0.0, 1, 1.0, {"t": t, "moving": False, "roar": min(1, max(0, (u - 0.6) * 3))})
+        out_im = Image.blend(im, im2, k)
+        if 0.5 < u < 0.56:
+            return Image.blend(out_im, Image.new("RGB", im.size, (255, 255, 255)), 0.85 * (1 - (u - 0.5) / 0.06))
+        if u > 0.3:
+            return red_wash(out_im, 0.18 * math.sin(t * 7) ** 2)
+        return out_im
+    write_video(out, dur, paint, world, cwd, cam_dir=0.05)
+    return info
+
+
+def chase_scene(out, dur, world, sp, cwd=None):
+    """The person runs for their life and the monster gallops after them, the camera shaking."""
+    def paint(im, d, t, u, cam):
+        ph = t * STEP * 1.05
+        jx, jy = 8 * math.sin(t * 61), 6 * math.cos(t * 53)
+        gap = 900 - 360 * u
+        draw_creature(d, sp, 760 - gap + jx, GROUND + 20 + jy, ph + 1.0, 1, 1.0, {"t": t, "moving": True, "roar": 0.7})
+        draw_companion(d, 760 + 170 + jx + 500 * u, GROUND + 20 + jy, ph * 1.1, 1, 1.0)
+        draw_human(d, 760 + jx, GROUND + 20 + jy, ph, 1, 1.0, cast=False)
+        return red_wash(im, 0.10 + 0.08 * math.sin(t * 11) ** 2)
+    write_video(out, dur, paint, world, cwd, cam_dir=2.4)
+    return {"hits": []}
+
+
+def hide_scene(out, dur, world, sp, cwd=None):
+    """The person crouches behind a rock, wide-eyed. The monster prowls past, stops, sniffs the air and moves on."""
+    def paint(im, d, t, u, cam):
+        if u < 0.42:
+            cx = -520 + 640 * (u / 0.42)
+        elif u < 0.72:
+            cx = 120 + 50 * ((u - 0.42) / 0.3)
+        else:
+            cx = 170 + 1400 * ((u - 0.72) / 0.28) ** 1.6
+        sniff = 0.0 if not (0.42 < u < 0.72) else 0.35 + 0.2 * math.sin(t * 6)
+        draw_creature(d, sp, cx, GROUND - 10, t * STEP * 0.5, 1, 0.9, {"t": t, "moving": not (0.42 < u < 0.74), "roar": sniff})
+        d.polygon([(330, GROUND + 40), (360, GROUND - 190), (470, GROUND - 270), (620, GROUND - 240), (700, GROUND - 120), (720, GROUND + 40)], fill=(5, 7, 14), outline=(50, 70, 120), width=3)
+        d.ellipse((470, GROUND - 330, 560, GROUND - 240), fill=(8, 10, 20))
+        d.ellipse((488, GROUND - 292, 506, GROUND - 270), fill=(240, 240, 235))
+        d.ellipse((524, GROUND - 292, 542, GROUND - 270), fill=(240, 240, 235))
+        if 0.42 < u < 0.72:
+            return red_wash(im, 0.12 + 0.06 * math.sin(t * 8))
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": [dur * 0.45]}
+
+
+def mob_scene(out, dur, world, sp, cwd=None):
+    """Villagers with torches march out to hunt the monster. They stop dead, and two red eyes look back at them."""
+    xs = [150, 300, 450, 600, 750]
+    def paint(im, d, t, u, cam):
+        stop = u > 0.68
+        for i, x in enumerate(xs):
+            draw_human(d, x + (0 if not stop else 0), GROUND + 20 - (i % 2) * 14, 0.0 if stop else t * STEP * 0.5 + i * 0.4, 1, 0.82 + 0.06 * (i % 3), lamp="torch")
+        if u > 0.5:
+            k = min(1, (u - 0.5) / 0.15)
+            for ex in (930, 995):
+                for r, a in ((50, 30), (30, 80), (15, 235)):
+                    d.ellipse((ex - r * k, GROUND - 250 - r * k * 0.6, ex + r * k, GROUND - 250 + r * k * 0.6), fill=(255, 30, 24, a))
+        if stop:
+            return red_wash(im, 0.16 * math.sin(t * 8) ** 2)
+    write_video(out, dur, paint, world, cwd, cam_dir=0.9)
+    return {"hits": [dur * 0.68]}
+
+
+def ground_scene(out, dur, world, sp, cwd=None):
+    """What is left behind, seen from above: a lantern lying on its side with its glass smashed, its flame
+    guttering, shards glinting, and a line of huge clawed prints leading away into the dark.
+    There is no monster in the shot, only its footprints."""
+    tex = _topdown_texture()
+    rnd = random.Random(11)
+    shards = [(rnd.uniform(-170, 170), rnd.uniform(-110, 150), rnd.uniform(8, 22), rnd.uniform(0, 6.28)) for _ in range(16)]
+    prints = [(560 + (150 if i % 2 else -110) + rnd.uniform(-18, 18), 820 - i * 170, i) for i in range(5)]
+    world.push = 0.18
+    world.shake = 0.0
+    LX, LY = 540, 1040
+
+    def paint(im, d, t, u, cam):
+        im.paste(tex, (0, 0))
+        d2 = ImageDraw.Draw(im, "RGBA")
+        fl = 0.55 + 0.25 * math.sin(t * 17) * math.sin(t * 5.3) + 0.2 * (rnd.random() if int(t * 30) % 7 == 0 else 0.5)
+        die = 1.0 if u < 0.7 else max(0.25, 1 - (u - 0.7) / 0.3 * 0.75)  # the flame weakens
+        L = max(0.15, fl * die)
+        for r, a in ((420, 18), (300, 30), (190, 50), (100, 80)):
+            d2.ellipse((LX - r * (0.8 + 0.3 * L), LY - r * (0.8 + 0.3 * L), LX + r * (0.8 + 0.3 * L), LY + r * (0.8 + 0.3 * L)), fill=(255, 150, 60, int(a * L)))
+        # the huge clawed prints leading away from the lantern, only the nearest ones are lit
+        for px, py, i in prints:
+            _claw_print(d2, px, py, 0.0)
+            d2.ellipse((px - 60, py - 30, px + 60, py + 70), outline=(30, 24, 20, 120), width=4)
+        # a few dark drops
+        for k in range(6):
+            bx, by = LX - 90 + k * 34, LY + 120 + (k % 3) * 22
+            d2.ellipse((bx - 7, by - 5, bx + 7, by + 5), fill=(95, 6, 10, 235))
+        # smashed glass
+        for sx, sy, sz, a in shards:
+            x, y = LX + sx, LY + sy
+            pts = [(x + math.cos(a) * sz, y + math.sin(a) * sz), (x + math.cos(a + 2.4) * sz * 0.6, y + math.sin(a + 2.4) * sz * 0.6),
+                   (x + math.cos(a + 4.0) * sz * 0.9, y + math.sin(a + 4.0) * sz * 0.9)]
+            d2.polygon(pts, fill=(200, 225, 235, 140))
+            if int(t * 6 + sx) % 5 == 0:
+                d2.ellipse((x - 3, y - 3, x + 3, y + 3), fill=(255, 255, 255, 230))
+        # the lantern, lying on its side: frame, no glass, a tiny flame
+        d2.rounded_rectangle((LX - 84, LY - 46, LX + 84, LY + 46), radius=8, outline=(24, 20, 18, 255), width=12)
+        d2.rectangle((LX - 96, LY - 52, LX - 76, LY + 52), fill=(28, 24, 22, 255))      # cap
+        d2.rectangle((LX + 80, LY - 52, LX + 100, LY + 52), fill=(28, 24, 22, 255))     # base
+        d2.line((LX - 84, LY - 20, LX + 84, LY - 14), fill=(24, 20, 18, 255), width=6)
+        d2.arc((LX - 50, LY - 190, LX + 70, LY - 30), 190, 350, fill=(24, 20, 18, 255), width=9)   # the bent handle
+        for r, a in ((46, 70), (28, 120), (14, 230)):
+            d2.ellipse((LX - 12 - r * 0.4, LY - r * 0.9 * L, LX - 12 + r * 0.4, LY + r * 0.3), fill=(255, int(190 * L + 40), 70, int(a * L + 20)))
+        # smoke curling off the dying flame
+        for i in range(5):
+            k = (t * 0.45 + i * 0.2) % 1.0
+            d2.ellipse((LX - 14 + 30 * math.sin(k * 6 + i) - 10 * k, LY - 40 - 220 * k - 10, LX - 14 + 30 * math.sin(k * 6 + i) + 14 * k + 8, LY - 40 - 220 * k + 12),
+                       fill=(130, 130, 140, int(60 * (1 - k))))
+        dim(im, 90)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": []}
