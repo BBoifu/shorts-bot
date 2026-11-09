@@ -1320,14 +1320,97 @@ FOLK_PLACE = ("a village at night", "a dark village path under a full moon", "ni
               "cold blue moonlight with a warm lantern glow", "cool")
 
 
+# Every legend follows a different plot shape, opens differently and ends differently, so no two videos feel alike.
+STORY_TYPES = {
+    "follower": ("A traveller walking alone at night realises something is following. Its steps match theirs.",
+                 "pathway, forest, footprints, hide, stalk, attack"),
+    "guest": ("A stranger knocks at night and politely asks to be let in. The household has an old rule about this.",
+              "village, home, door, window, attack"),
+    "return": ("Someone comes home after years away and slowly realises a relative at home is no longer what they were.",
+               "pathway, village, home, window, transform"),
+    "bargain": ("Long ago a village made a deal with the creature. Tonight the price falls due.",
+                "village, mob, graveyard, door, attack"),
+    "neighbour": ("A kind neighbour is the creature by night. Small clues pile up, one by one, until the truth lands.",
+                  "village, home, footprints, window, transform"),
+    "hunter": ("A hunter tracks the creature through the wild, until the tracks quietly start to circle behind him.",
+               "forest, footprints, hide, stalk, attack"),
+    "festival": ("At a festival or wedding a guest is missing, or a guest has no shadow. The party goes quiet.",
+                 "village, mob, door, chase, attack"),
+    "child": ("A child says they saw a figure at the window. The adults laugh, until the night proves the child right.",
+              "home, window, door, hide, attack"),
+    "crossing": ("A river crossing or ferry with a toll. Something older than the village waits under the water.",
+                 "river, pathway, stalk, chase, attack"),
+    "rule": ("A strict old rule (never answer a voice that calls your name, never whistle after dark...) and the story of the one who broke it.",
+             "pathway, field, hide, chase, attack"),
+    "bloodline": ("A family carries the change from one generation to the next, and tonight it is someone's turn.",
+                  "home, village, transform, door, aftermath"),
+    "caravan": ("A group of travellers goes missing and a lone survivor tells what followed them.",
+                "pathway, hills, chase, hide, attack"),
+    "mimic": ("The creature copies the voice of someone you love, calling to you from the dark outside.",
+              "home, door, window, forest, attack"),
+    "harvest": ("Something moves through the fields at night while the crops sway, and the scarecrows are in the wrong place at dawn.",
+                "field, hide, footprints, chase, attack"),
+    "reflection": ("In still water or a mirror the creature appears first, long before it is really there.",
+                   "river, home, window, transform, attack"),
+    "blizzard": ("Lost in snow or fog, a stranger offers warmth and shelter. Their tracks do not match their feet.",
+                 "hills, footprints, hide, stalk, attack"),
+}
+HOOKS = ("Open with a rule: \"Never <do something> after midnight in <place>.\"",
+         "Open with a sound: a sound the listener should dread, repeated, for example \"Three knocks. Always three.\"",
+         "Open with a question: \"Have you ever felt someone <doing something> behind you?\"",
+         "Open with the old people's warning, for example \"In <place>, the elders say...\"",
+         "Open with a scene already under way, one calm detail that feels wrong.",
+         "Open in the classic form \"If <something> follows you at night in <place>... don't look back.\"")
+ENDINGS = ("a tragic ending: the victim is simply never seen again",
+           "a narrow escape: someone survives, but is changed by what they saw",
+           "a twist: it turns out the narrator, or the one who was saved, is the creature",
+           "an unresolved ending: the sound at the door is still there tonight",
+           "a warning ending: the rule that would have saved them")
+PALETTE_NAMES = ("ash", "bone", "rust", "green", "blue", "violet", "charcoal", "yellow", "crimson", "teal")
+BODY_HINT = ("beast = a four-legged hunting predator (dog, wolf, bear or bull-like); stalker = a tall thin antlered forest spirit; "
+             "arachnid = a huge spider-like weaver or trapper; serpent = a giant snake or river creature; "
+             "wraith = a floating ghost, banshee or cloaked spirit; owlman = a winged night bird or bat-thing")
+
+
+def _parse_folk_key(k):
+    """folk:<animal>:<legend>|<body>|<type>|<palette>|<region>  ->  dict (older keys have fewer parts)."""
+    if not k.startswith("folk:"):
+        return None
+    rest = k.split(":", 2)
+    if len(rest) < 3:
+        return None
+    parts = rest[2].split("|")
+    parts += [""] * (5 - len(parts))
+    return {"animal": rest[1], "legend": parts[0], "body": parts[1], "type": parts[2], "palette": parts[3], "region": parts[4]}
+
+
+def folk_variety(history):
+    """Decide the plot shape, hook, ending, region and monster look for the next legend, avoiding recent ones."""
+    past = [p for p in (_parse_folk_key(k) for k in history) if p]
+    def recent(field, n):
+        return [p[field] for p in past[-n:] if p[field]]
+    types = [k for k in STORY_TYPES if k not in recent("type", len(STORY_TYPES) // 2 + 2)] or list(STORY_TYPES)
+    bodies = [b for b in ("beast", "stalker", "arachnid", "serpent", "wraith", "owlman") if b not in recent("body", 3)] or ["beast"]
+    palettes = [c for c in PALETTE_NAMES if c not in recent("palette", 4)] or list(PALETTE_NAMES)
+    regions = [r for r in FOLK_REGIONS if r not in recent("region", 6)] or FOLK_REGIONS
+    return {"type": random.choice(types), "hook": random.choice(HOOKS), "ending": random.choice(ENDINGS),
+            "bodies": bodies, "palettes": palettes, "region": random.choice(regions),
+            "legends": [p["legend"] for p in past if p["legend"]]}
+
+
 def ask_folklore(history):
-    region = random.choice(FOLK_REGIONS)
-    used = [k.split(":", 2)[2] for k in history if k.startswith("folk:") and k.count(":") >= 2]
+    var = folk_variety(history)
+    region = var["region"]
+    used = var["legends"]
+    plot, scene_hint = STORY_TYPES[var["type"]]
     prompt = f"""You write narration for 40-second YouTube Shorts that retell DARK FOLKLORE: old legends about
 people who turn into animals or creatures that follow travellers at night.
 
 Pick one real, well-known legend of shapeshifting or a night creature from: {region}.
 Do not reuse these legends: {used or "none yet"}.
+The story must follow this plot shape: {plot}
+Scenes that tend to fit this shape (use your own judgement): {scene_hint}.
+Ending: {var["ending"]}.
 
 Return ONLY valid JSON, no markdown, in exactly this shape:
 {{
@@ -1336,11 +1419,15 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
   "animal": "ONE word from this list that best matches the creature: {", ".join(FOLK_ANIMALS)}",
   "title": "catchy title under 70 characters, no hashtags",
   "people": "who is in danger: one of alone, child, elder, pair",
+  "monster": {{"body": "ONE of: {", ".join(var["bodies"])}", "palette": "ONE of: {", ".join(var["palettes"])}",
+              "eyes": "one of: red, gold, green, white, violet, orange, blue", "size": "small, medium or huge",
+              "horn": "none, antlers, ram, twin or bull (only matters for body beast)", "spine": "bone, long or none",
+              "eye_count": "a number from 2 to 6"}},
   "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "setting": "one place word from the list below"}}]
 }}
 
 Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken English, no emojis):
-- Sentence 1: a gripping hook in the form "If <something> follows you at night in <place>... don't look back."
+- Sentence 1: a gripping hook. {var["hook"]}
 - Retell the legend as "the old tales say". Never present it as true or as something that really happens.
 - Be respectful of the culture it comes from. Do not mock any people, religion or community.
 - Horror is welcome: dread, screams, attacks and their terrifying aftermath. Show harm through implication and
@@ -1361,7 +1448,9 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
   least 3 different settings. Put "home" and "village" scenes in "village".
 - "people": "alone" if one traveller, "child" if a child walks with them, "elder" if an old person does, "pair" if two adults.
 - The second to last sentence builds to the moment of danger.
-- Last sentence: end with a question for viewers, such as "Would you turn around?"
+- Last sentence: a question for viewers that fits THIS story (not always "Would you turn around?").
+- "monster": design the creature so it matches THIS legend. Body guide: {BODY_HINT}. Choose only from the allowed bodies
+  and colours listed above, because the other ones were used recently.
 """
     url = f"{API_BASE}/models/{GEMINI_MODEL}:generateContent"
     body = {"contents": [{"parts": [{"text": prompt}]}],
@@ -1382,6 +1471,17 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
             if data.get("animal") not in FOLK_ANIMALS:
                 data["animal"] = "wolf"
             data["region"] = str(data.get("region") or region).strip()
+            m = data.get("monster") if isinstance(data.get("monster"), dict) else {}
+            if m.get("body") not in var["bodies"]:
+                m["body"] = random.choice(var["bodies"])
+            if m.get("palette") not in var["palettes"]:
+                m["palette"] = random.choice(var["palettes"])
+            if m.get("eyes") not in ("red", "gold", "green", "white", "violet", "orange", "blue"):
+                m["eyes"] = random.choice(["red", "gold", "green", "white", "violet", "orange"])
+            m["horn"] = m.get("horn") if m.get("horn") in ("antlers", "ram", "twin", "bull") else random.choice([None, None, "antlers", "ram", "twin", "bull"])
+            m["size"] = m.get("size") if m.get("size") in ("small", "medium", "huge") else "medium"
+            data["monster"] = m
+            data["story_type"] = var["type"]
             return data
         except Exception as e:
             last = e
@@ -1581,7 +1681,7 @@ def build_folk_main(plan):
     has_caps = write_captions(words, total, WORK / "captions.ass",
                               card=f"{region.upper()}  \u00b7  DARK FOLKLORE #{episode}")
 
-    creature = toon.folk_creature(animal)
+    creature = toon.folk_creature(animal, story.get("monster"))
     chars = [max(len(s["text"]), 1) for s in sentences]
     durs = [total * c / sum(chars) for c in chars]
     durs[-1] += 0.3
@@ -1663,7 +1763,9 @@ def plan_main():
     if series == "folklore":
         try:
             story = ask_folklore(history)
-            key = f"folk:{story['animal']}:{story['legend_name']}"
+            mo = story.get("monster", {})
+            key = (f"folk:{story['animal']}:{story['legend_name'].replace('|', ' ').replace(':', ' ')}"
+                   f"|{mo.get('body', '')}|{story.get('story_type', '')}|{mo.get('palette', '')}|{story['region'].replace('|', ' ')}")
             plan = {"series": "folklore", "key": key, "episode": episode, "story": story}
             log(f"Folklore #{episode}: {story['legend_name']} ({story['region']})")
             lines = [f"# {story['title']}", "", f"**Dark Folklore #{episode}:** {story['legend_name']} ({story['region']})", "",
