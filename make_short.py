@@ -1335,7 +1335,8 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
   "region": "short place name, for example Kerala, India",
   "animal": "ONE word from this list that best matches the creature: {", ".join(FOLK_ANIMALS)}",
   "title": "catchy title under 70 characters, no hashtags",
-  "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below"}}]
+  "people": "who is in danger: one of alone, child, elder, pair",
+  "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "setting": "one place word from the list below"}}]
 }}
 
 Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken English, no emojis):
@@ -1354,6 +1355,11 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
   "aftermath" (the horrible quiet after).
   Use at least 5 different scene words, never the same one twice in a row, and use "attack" once, followed by "aftermath".
   The first sentence must be "walk"; the last should be "stalk" or "aftermath".
+- Every sentence also gets a "setting", the place where that sentence happens: "pathway" (an eerie road), "forest" (a dark
+  forest), "graveyard", "river" (a misty river bank), "village" (houses and a street), "field" (a moonlit field),
+  "hills" (a stormy hillside). Follow the story's journey, for example pathway, then forest, then village, and use at
+  least 3 different settings. Put "home" and "village" scenes in "village".
+- "people": "alone" if one traveller, "child" if a child walks with them, "elder" if an old person does, "pair" if two adults.
 - The second to last sentence builds to the moment of danger.
 - Last sentence: end with a question for viewers, such as "Would you turn around?"
 """
@@ -1399,6 +1405,47 @@ SCENE_WORDS = (("footprints", ("footstep", "footprint", "steps behind", "tracks"
                ("chase", ("run", "ran ", "flee", "chase", "race")),
                ("hide", ("hide", "hid ", "hiding", "silent", "holds his breath", "holds her breath")),
                ("mob", ("torch", "villagers", "hunt")))
+
+
+SETTING_WORDS = (("forest", ("forest", "wood", "trees", "jungle")),
+                 ("graveyard", ("grave", "cemetery", "tomb", "buried")),
+                 ("river", ("river", "lake", "water", "ford", "stream", "mist")),
+                 ("village", ("village", "home", "house", "hut", "street", "door", "window")),
+                 ("field", ("field", "farm", "paddy", "crop", "meadow")),
+                 ("hills", ("hill", "mountain", "storm", "ridge", "cliff", "thunder")))
+SETTING_CYCLE = ("pathway", "forest", "village", "graveyard", "field", "river", "hills")
+
+
+def assign_settings(sentences, beats):
+    out = []
+    for i, s in enumerate(sentences):
+        st = s.get("setting")
+        if st not in SETTING_CYCLE:
+            st = None
+            low = s["text"].lower()
+            for name, words in SETTING_WORDS:
+                if any(w in low for w in words):
+                    st = name
+                    break
+            if st is None:
+                st = out[-1] if out else "pathway"
+        if beats[i] in ("home", "village", "mob"):
+            st = "village"
+        out.append(st)
+    out[0] = out[0] if out[0] != "village" else "pathway"
+    # make sure the story actually travels: at least 3 places, and never more than 3 scenes in the same one
+    run = 1
+    for i in range(1, len(out)):
+        run = run + 1 if out[i] == out[i - 1] else 1
+        if run > 3 and beats[i] not in ("home", "village", "mob"):
+            out[i] = next(c for c in SETTING_CYCLE if c != out[i - 1])
+            run = 1
+    if len(set(out)) < 3:
+        for i in range(2, len(out) - 1, 2):
+            if beats[i] not in ("home", "village", "mob"):
+                out[i] = next(c for c in SETTING_CYCLE if c not in out)
+                break
+    return out
 
 
 def assign_beats(sentences):
@@ -1521,9 +1568,20 @@ def build_folk_main(plan):
     n = len(durs)
     beats = assign_beats(sentences)
     log("Beats: " + ", ".join(beats))
+    settings = assign_settings(sentences, beats)
+    log("Settings: " + ", ".join(settings))
+    people = story.get("people", "alone")
+    toon.CAST["kind"] = people if people in ("child", "elder", "pair") else None
+    WEATHER = {"stalk": dict(fog=0.55), "attack": dict(fog=0.6, redmoon=True), "aftermath": dict(fog=0.7, redmoon=True),
+               "chase": dict(storm=True), "transform": dict(redmoon=True), "window": dict(storm=True)}
+    PUSH = {"walk": 0.10, "stalk": 0.16, "home": 0.10, "village": 0.08, "hide": 0.10, "footprints": 0.0,
+            "aftermath": 0.06, "mob": 0.08}
+    SHAKE = {"chase": 7.0}
     scenes, impacts, blooded, hits = [], {}, False, {}
     for i, dur in enumerate(durs):
-        w = toon.World(place_name, 5 + (i % 3))
+        w = toon.World(toon.SETTINGS[settings[i]], 5 + (i % 3), WEATHER.get(beats[i]))
+        w.push = PUSH.get(beats[i], 0.0)
+        w.shake = SHAKE.get(beats[i], 0.0)
         out = str(WORK / f"toon_s{i}.mp4")
         cur = dict(creature, bloody=True) if blooded else creature
         g0 = 1300 - 740 * i / n
