@@ -1,69 +1,64 @@
 {
- "series": "hybrid",
- "key": "ant+owl@an icy moon like Europa",
- "a": "ant",
- "b": "owl",
- "place": [
-  "an icy moon like Europa",
-  "cracked blue ice with a huge planet in the sky",
-  "ice cracking wind",
-  "cold pale blue light",
-  "cool"
- ],
+ "series": "folklore",
+ "key": "folk:bat:Tlahuelpuchi|owlman|hunter|charcoal|Tlaxcala, Mexico",
+ "episode": 8,
  "story": {
-  "title": "This Ant Owl Freezes Europa's Dark Oceans",
-  "creature_name": "Glacianth",
-  "prey": "Europa-squid",
-  "signature_move": "It deploys super-strong mandibles to snap the prey in half while performing a silent 180-degree head rotation to scan for threats.",
-  "hybrid_look": "A massive, heavily armored apex predator with razor-sharp chitinous plates, jagged mandibles, a terrifyingly scarred facial disk, and piercing glowing yellow compound eyes.",
+  "legend_name": "Tlahuelpuchi",
+  "region": "Tlaxcala, Mexico",
+  "animal": "bat",
+  "title": "The Bat That Walked the Forest Trails",
+  "people": "alone",
+  "monster": {
+   "body": "owlman",
+   "palette": "charcoal",
+   "eyes": "red",
+   "size": "huge",
+   "horn": "antlers",
+   "spine": "none",
+   "eye_count": 2
+  },
   "sentences": [
    {
-    "text": "This nightmare drags frozen prey into absolute darkness.",
-    "image": "a towering wall of cracked blue ice under a distant dim sun"
+    "text": "The lone hunter walked deeper into the thick woods while a single crow stared silently from a bare branch.",
+    "beat": "walk",
+    "setting": "pathway"
    },
    {
-    "text": "Meet the Glacianth, an imaginary hybrid inheriting the crushing bite of an ant and the silent nocturnal flight of an owl.",
-    "image": "a vast expanse of frozen crust groaning under cosmic radiation"
+    "text": "Old stories from the mountain villages tell of ancient shapeshifters who leave their human skin hidden beneath floorboards.",
+    "beat": "hide",
+    "setting": "forest"
    },
    {
-    "text": "It survives crushing atmospheric pressures by locking its segmented exoskeleton into rigid plates.",
-    "image": "massive underground tectonic fractures venting faint plumes of steam"
+    "text": "Fresh heavy footprints appeared in the mud right beside his own muddy boots.",
+    "beat": "footprints",
+    "setting": "forest"
    },
    {
-    "text": "Navigating total pitch blackness, it uses ultra-sensitive facial feathers to detect microscopic thermal shifts in the ice.",
-    "image": "complete darkness pierced only by faint streaks of radiation"
+    "text": "He paused to listen as heavy breathing drifted down from the canopy above.",
+    "beat": "stalk",
+    "setting": "forest"
    },
    {
-    "text": "It deploys super-strong mandibles to snap the prey in half while performing a silent 180-degree head rotation to scan for threats.",
-    "image": "deep subsurface caverns lined with jagged salt crystal stalactites"
+    "text": "The dark shape dropped from the branches and rushed forward with terrifying speed.",
+    "beat": "chase",
+    "setting": "forest"
    },
    {
-    "text": "Extreme cold usually slows predators down, but ant hemolymph chemistry prevents its bodily fluids from freezing solid.",
-    "image": "shimmering fields of razor-sharp frost crystals stretching endlessly"
+    "text": "A sharp cry echoed through the trees before cutting off into sudden silence.",
+    "beat": "attack",
+    "setting": "forest"
    },
    {
-    "text": "Yet this apex beast melts into vulnerability when exposed to sudden intense heat, fleeing from hydrothermal vent plumes.",
-    "image": "violent underwater volcanic geysers erupting through the icy crust"
+    "text": "Only a discarded hunting knife lay gleaming on the cold dirt pathway.",
+    "beat": "aftermath",
+    "setting": "pathway"
    },
    {
-    "text": "What should I combine next? Tell me in the comments.",
-    "image": "the vast starry void of deep space behind a glowing crescent moon"
+    "text": "Could you survive a night in the woods when something is hunting your footsteps?",
+    "beat": "stalk",
+    "setting": "pathway"
    }
-  ]
- },
- "episode": 10,
- "clips": [
-  {
-   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in an icy moon like Europa: cracked blue ice with a huge planet in the sky. A massive, heavily armored apex predator with razor-sharp chitinous plates, jagged mandibles, a terrifyingly scarred facial disk, and piercing glowing yellow compound eyes. It is menacing and dominant."
-  },
-  {
-   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In cracked blue ice with a huge planet in the sky, the same hybrid creature goes after Europa-squid. It deploys super-strong mandibles to snap the prey in half while performing a silent 180-degree head rotation to scan for threats.. Fast, powerful movement, camera follows the action. A massive, heavily armored apex predator with razor-sharp chitinous plates, jagged mandibles, a terrifyingly scarred facial disk, and piercing glowing yellow compound eyes."
-  },
-  {
-   "title": "Clip 3 - the close-up (plays at the end)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A massive, heavily armored apex predator with razor-sharp chitinous plates, jagged mandibles, a terrifyingly scarred facial disk, and piercing glowing yellow compound eyes."
-  }
- ]
+  ],
+  "story_type": "hunter"
+ }
 }
