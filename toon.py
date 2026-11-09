@@ -681,6 +681,22 @@ PLACES = {
 }
 PLACES["a village at night"] = dict(sky=("#0a1030", "#1b2a55"), far="#101c3a", near="#080f22",
                                     ground="#050914", sil="trees", sun="#d8dcc8", part="fireflies")
+PLACES["an eerie pathway"] = dict(sky=("#1a0f2e", "#3a2548"), far="#241638", near="#120a20", ground="#0a0612",
+                                  sil="dead", sun="#c9c3d8", part="fog", fog=0.35, stars=True)
+PLACES["a dark forest"] = dict(sky=("#08141a", "#1f4440"), far="#173a34", near="#0b211d", ground="#040a09",
+                               sil="pines", sun=None, part="fireflies", fog=0.3, stars=True)
+PLACES["a graveyard at night"] = dict(sky=("#0b1020", "#2a3558"), far="#1a2340", near="#0b1022", ground="#070a14",
+                                      sil="graves", sun="#e6e6d8", part="fog", fog=0.5, stars=True)
+PLACES["a misty river bank"] = dict(sky=("#0e1a2a", "#324a5e"), far="#1f3345", near="#0e1c28", ground="#08121a",
+                                    sil="reeds", sun="#cfd8e0", part="fog", fog=0.6, stars=True)
+PLACES["a moonlit field"] = dict(sky=("#0a1030", "#2a3a68"), far="#16224a", near="#0b1330", ground="#080d20",
+                                 sil="wheat", sun="#f0ecd0", part="leaves", fog=0.1, stars=True)
+PLACES["a stormy hillside"] = dict(sky=("#0b0e1a", "#444e6c"), far="#2a3350", near="#141a2e", ground="#06080f",
+                                   sil="peaks", sun=None, part="rain", fog=0.2, storm=True, stars=False)
+PLACES["a village at night"]["houses"] = True
+SETTINGS = {"pathway": "an eerie pathway", "forest": "a dark forest", "graveyard": "a graveyard at night",
+            "river": "a misty river bank", "village": "a village at night", "field": "a moonlit field",
+            "hills": "a stormy hillside"}
 DEFAULT_PLACE = dict(sky=("#1a2a44", "#0a0f1c"), far="#1f3050", near="#101a30", ground="#0a1020", sil="dunes", sun="#e8e8f0", part="dust")
 
 
@@ -696,8 +712,14 @@ def _hills(rnd, width, base, amp, period_w):
 class World:
     PW = 2160  # the repeating width of the scrolling layers
 
-    def __init__(self, place, seed=0):
-        self.st = PLACES.get(place, DEFAULT_PLACE)
+    def __init__(self, place, seed=0, weather=None):
+        weather = weather or {}
+        self.st = dict(PLACES.get(place, DEFAULT_PLACE))
+        if weather.get("redmoon") and self.st.get("sun"):
+            self.st["sun"] = "#ff4a3a"
+        self.fog = weather.get("fog", self.st.get("fog", 0.0))
+        self.storm = weather.get("storm", self.st.get("storm", False))
+        self.push, self.shake = 0.0, 0.0
         self.rnd = random.Random(seed * 7919 + len(place))
         st, rnd = self.st, self.rnd
         # sky
@@ -726,8 +748,7 @@ class World:
                 r = 80 * k
                 d.ellipse((sx - r, 520 - r, sx + r, 520 + r), fill=mix(st["sky"][0], c, a))
             d.ellipse((sx - 85, 435, sx + 85, 605), fill=rgb(c))
-        stars = st["part"] in ("stars", "snow") or st["sky"][0] in ("#05060f", "#000000", "#0d4468")
-        if st["sky"][0] in ("#05060f", "#000000", "#2f3e25", "#3a0d0d", "#0a1030"):
+        if st.get("stars") or st["sky"][0] in ("#05060f", "#000000", "#2f3e25", "#3a0d0d", "#0a1030"):
             for _ in range(160):
                 x, y = rnd.randint(0, W), rnd.randint(0, 900)
                 d.point((x, y), fill=(230, 230, 255))
@@ -773,6 +794,33 @@ class World:
                     a = k * 1.25
                     shapes.append([(x, hy - h), (x + math.cos(a) * 80 * s, hy - h - 30 * s + math.sin(a) * 30 * s),
                                    (x + math.cos(a + .5) * 60 * s, hy - h + 15 * s)])
+            elif sil == "dead":  # bare, twisted trees
+                h = 300 * s
+                d.polygon([(x - 12 * s, hy + 8), (x - 5 * s, hy - h), (x + 5 * s, hy - h), (x + 14 * s, hy + 8)], fill=col)
+                for k in range(6):
+                    sgn = 1 if k % 2 else -1
+                    by = hy - h * (0.35 + 0.1 * k)
+                    d.line((x, by, x + sgn * 80 * s, by - 55 * s), fill=col, width=max(3, int(8 * s - k)))
+                    d.line((x + sgn * 80 * s, by - 55 * s, x + sgn * 120 * s, by - 100 * s), fill=col, width=max(2, int(5 * s)))
+            elif sil == "pines":  # dense dark pines
+                h = 400 * s
+                for k in range(5):
+                    w = (100 - k * 14) * s
+                    yy = hy - h * (0.2 + 0.18 * k)
+                    shapes.append([(x - w, yy + 70 * s), (x, yy - 90 * s), (x + w, yy + 70 * s)])
+                d.rectangle((x - 8 * s, hy - 60 * s, x + 8 * s, hy + 8), fill=col)
+            elif sil == "graves":
+                for k in range(3):
+                    gx = x + (k - 1) * 70
+                    gh = rnd.uniform(60, 120) * s
+                    if rnd.random() < 0.5:
+                        d.rectangle((gx - 7, hy - gh, gx + 7, hy + 6), fill=col)
+                        d.rectangle((gx - 30 * s, hy - gh * 0.8, gx + 30 * s, hy - gh * 0.8 + 14), fill=col)
+                    else:
+                        d.rounded_rectangle((gx - 30 * s, hy - gh, gx + 30 * s, hy + 6), radius=24, fill=col)
+            elif sil == "wheat":
+                for k in range(9):
+                    d.line((x + k * 9, hy + 6, x + k * 9 + rnd.uniform(-8, 8), hy - rnd.uniform(60, 120) * s), fill=col, width=4)
             elif sil == "reeds":
                 for k in range(4):
                     d.line((x + k * 12, hy + 6, x + k * 12 + rnd.uniform(-14, 14), hy - 110 * s - k * 12), fill=col, width=6)
@@ -819,8 +867,26 @@ class World:
                 d.ellipse((x, y, x + 6, y + 6), fill=(190, 255, 90, a))
             elif p == "stars":
                 pass
+            elif p == "leaves":
+                xx = (q[0] - cam * 0.9 - t * 120 * q[2]) % W
+                yy = (q[1] * 0.5 + 700 + 40 * math.sin(t * 2 + q[3]) + t * 20) % 1000 + 600
+                d.ellipse((xx, yy, xx + 12 * q[2], yy + 6 * q[2]), fill=(120, 80, 40, 190))
             else:
                 d.ellipse((x, y, x + 4 * q[2], y + 3 * q[2]), fill=(255, 230, 200, 80))
+        if self.fog > 0:  # low drifting fog banks
+            for i in range(9):
+                fx = (i * 260 - cam * 0.5 - t * 18 * (1 + i % 3)) % (W + 600) - 300
+                fy = GROUND - 140 + (i % 4) * 55 + 12 * math.sin(t * 0.7 + i)
+                d.ellipse((fx - 330, fy - 70, fx + 330, fy + 70), fill=(190, 205, 225, int(34 * self.fog)))
+        if self.storm:
+            ph = (t * 0.45) % 1.0
+            f = 0.0
+            if ph < 0.03:
+                f = 0.6
+            elif 0.08 < ph < 0.10:
+                f = 0.35
+            if f:
+                im = Image.blend(im.convert("RGB"), Image.new("RGB", im.size, (225, 232, 255)), f)
         return im
 
 
@@ -842,6 +908,14 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1):
             ov = painter(im, d, t, u, cam)
             if ov is not None:
                 im = ov
+            push, shake = getattr(world, "push", 0.0), getattr(world, "shake", 0.0)
+            if push or shake:
+                z = 1.0 + push * (u * u * (3 - 2 * u)) + (0.05 if shake else 0.0)
+                cw, ch = W / z, H / z
+                cx = W / 2 + shake * math.sin(t * 61) * 1.0
+                cy = min(max(H * 0.62 + shake * math.cos(t * 53), ch / 2), H - ch / 2)
+                cx = min(max(cx, cw / 2), W - cw / 2)
+                im = im.crop((int(cx - cw / 2), int(cy - ch / 2), int(cx + cw / 2), int(cy + ch / 2)))
             proc.stdin.write(im.resize((OW, OH), Image.LANCZOS).tobytes())
     finally:
         proc.stdin.close()
@@ -965,8 +1039,25 @@ def folk_creature(name):
     return sp
 
 
-def draw_human(d, cx, gy, phase, facing=1, scale=1.0, lamp="lantern"):
-    """A flat silhouette of a person walking with a lantern."""
+CAST = {"kind": None}   # "child", "elder" or "pair": a second person who travels with the main one
+COMPANION = {"child": 0.6, "elder": 0.88, "pair": 0.96}
+
+
+def draw_companion(d, cx, gy, phase, facing=1, scale=1.0):
+    kind = CAST["kind"]
+    if not kind:
+        return
+    cs = COMPANION[kind]
+    draw_human(d, cx, gy, phase * (1.6 if kind == "child" else 1.0) + 1.3, facing, scale * cs, lamp=None, cast=False)
+    if kind == "elder":  # a walking stick
+        s = 1.35 * scale * cs
+        d.line((cx + facing * 52 * s, gy, cx + facing * 70 * s, gy - 300 * s), fill=(40, 28, 20), width=max(4, int(8 * s)))
+
+
+def draw_human(d, cx, gy, phase, facing=1, scale=1.0, lamp="lantern", cast=True):
+    """A flat silhouette of a person walking with a lantern. With cast=True, a companion walks just ahead."""
+    if cast and CAST["kind"] and lamp == "lantern":
+        draw_companion(d, cx + facing * 170 * scale, gy, phase, facing, scale)
     s = 1.35 * scale
     pen = Pen(d, cx, gy, s, facing, lambda c: (80, 100, 150))
     col = (8, 10, 20)
@@ -1062,37 +1153,62 @@ def red_wash(im, amount):
     return Image.blend(im, Image.new("RGB", im.size, (140, 0, 0)), max(0.0, min(0.7, amount)))
 
 
+def claw_slash(d, cx, cy, k, size=1.0):
+    """Three parallel diagonal claw strokes, white-hot at first and then red."""
+    k = max(0.0, min(1.0, k))
+    for j in range(3):
+        x0, y0 = cx - 150 * size + j * 70 * size, cy - 230 * size
+        x1, y1 = x0 + 190 * size * min(1, k * 2.2), y0 + 460 * size * min(1, k * 2.2)
+        col = (255, 245, 235, 255) if k < 0.3 else (190, 10, 16, int(255 * (1 - (k - 0.3) / 0.9)))
+        d.line((x0, y0, x1, y1), fill=col, width=int(26 * size * (1.2 - k)))
+
+
 def attack_scene(out, dur, world, sp, cwd=None):
-    """A person walks. The creature closes in behind. The person stops and, very slowly, starts to turn.
-    The creature lunges: a flash, a spray of blood across the frame, and the person is gone.
-    Only the lantern is left, dropped on a growing pool of blood."""
+    """The creature closes in. The person turns, sees it and RUNS. It gallops after them, gains on them, leaps,
+    and rakes its claws across their back: a flash, a spray of blood, and the person is gone. Only the lantern
+    is left, dropped on a growing pool of blood. A companion, if there is one, keeps running and escapes."""
     sp2 = dict(sp)
     sp2["bloody"] = False
     sp3 = dict(sp)
     sp3["bloody"] = True
-    t_walk, t_still, t_lunge, t_hit = 0.30, 0.50, 0.60, 0.64
+    t_walk, t_run, t_leap, t_hit = 0.22, 0.32, 0.58, 0.66
     info = {"impact_at": dur * t_hit, "stalk_at": dur * t_walk}
+    world.shake = 0.0
+    hx = 760
 
     def paint(im, d, t, u, cam):
         ph = t * STEP * 0.5
-        hx = 760
-        if u < t_still:
-            gap = 960 - 440 * min(1, u / t_still)
-            moving = u < t_walk
-            draw_creature(d, sp2, hx - gap, GROUND + 20, ph + 0.7, 1, 1.0, {"t": t, "moving": True})
-            if moving:
-                draw_human(d, hx, GROUND + 20, ph, 1, 1.0)
-            else:  # the person stops, frozen, and shakes
-                draw_human(d, hx + 3 * math.sin(t * 40), GROUND + 20, 0.0, 1, 1.0)
-            if u > t_walk:  # a red pulse like a heartbeat
-                beat = max(0.0, math.sin(t * 9)) ** 6 * 0.18 * ((u - t_walk) / (t_still - t_walk))
-                return red_wash(im, beat)
-            return
         if u < t_hit:
-            k = (u - t_still) / (t_hit - t_still)
-            cx = hx - 520 + 200 * k * k
-            draw_creature(d, sp2, cx, GROUND + 20, ph + 0.7, 1, 1.0 + 0.1 * k, {"t": t, "moving": False, "roar": k})
-            draw_human(d, hx, GROUND + 20, 0.0, 1, 1.0)
+            comp_x = hx + 170 + max(0.0, u - t_walk) * 1900
+            running = u >= t_run
+            pph = t * STEP * (1.0 if running else 0.5)
+            if u < t_walk:
+                gap = 960 - 280 * (u / t_walk)
+            elif u < t_run:  # it is right there: the person freezes and looks back
+                gap = 680 - 60 * ((u - t_walk) / (t_run - t_walk))
+            elif u < t_leap:  # the chase: the gap closes while everything speeds past
+                gap = 620 - 440 * ((u - t_run) / (t_leap - t_run))
+            else:
+                gap = 180 - 70 * ((u - t_leap) / (t_hit - t_leap))
+            lift = 0.0
+            if u >= t_leap:
+                kk = (u - t_leap) / (t_hit - t_leap)
+                lift = 190 * math.sin(math.pi * min(1, kk))
+            jx = 6 * math.sin(t * 61) if running else 0
+            draw_companion(d, comp_x, GROUND + 20, pph, 1, 1.0)
+            draw_creature(d, sp2, hx - gap, GROUND + 20 - lift, ph * (2.0 if running else 1.0) + 0.7, 1, 1.0 + 0.08 * (u > t_leap),
+                          {"t": t, "moving": True, "roar": 0.9 if u > t_run else 0.0})
+            if u < t_walk:
+                draw_human(d, hx, GROUND + 20, ph, 1, 1.0, cast=False)
+            elif u < t_run:
+                draw_human(d, hx + 3 * math.sin(t * 40), GROUND + 20, 0.0, 1, 1.0, cast=False)
+            else:
+                draw_human(d, hx + jx, GROUND + 20, pph, 1, 1.0, cast=False)
+            if u >= t_leap:  # the claws rake across the person's back
+                claw_slash(d, hx + 10, GROUND - 200, (u - t_leap) / (t_hit - t_leap) * 0.55)
+            if u > t_walk:
+                beat = max(0.0, math.sin(t * 9 + 3)) ** 6 * 0.2 * min(1, (u - t_walk) / 0.12)
+                return red_wash(im, beat + (0.08 if running else 0.0))
             return
         k = (u - t_hit) / (1 - t_hit)
         if k < 0.07:  # jump-scare: a few frames of the monster's face, blood red, right at the impact
@@ -1104,11 +1220,13 @@ def attack_scene(out, dur, world, sp, cwd=None):
         lantern_on_ground(d, hx + 150, GROUND + 28, t, alive=max(0.0, 1.0 - max(0.0, k - 0.6) * 2.5))
         draw_creature(d, sp3, hx - 330 + sx, GROUND + 20 + sy, ph, 1, 1.05, {"t": t, "moving": False, "roar": min(1, k * 3)})
         blood_burst(d, hx + 20, GROUND - 330, min(1, k * 1.6), seed=7)
+        claw_slash(d, hx + 10, GROUND - 200, 0.55 + k * 1.2)
         if k < 0.14:
             return Image.blend(im, Image.new("RGB", im.size, (255, 255, 255)), 0.6 * (1 - (k - 0.07) / 0.07))
         if k < 0.35:
             return red_wash(im, 0.5 * (1 - k / 0.35))
-    write_video(out, dur, paint, world, cwd, cam_dir=1)
+    world.shake = 7.0
+    write_video(out, dur, paint, world, cwd, cam_dir=2.2)
     return info
 
 
@@ -1410,7 +1528,7 @@ def transform_scene(out, dur, world, sp, cwd=None):
         k = 0.0 if u < 0.38 else min(1.0, (u - 0.38) / 0.22)
         jit = 0 if u < 0.28 else 14 * math.sin(t * 70) * min(1, (u - 0.28) / 0.1)
         pulse = 1.0 + (0.1 * math.sin(t * 45) if u > 0.3 else 0)
-        draw_human(d, 540 + jit, GROUND + 20, 0.0, 1, 1.15 * pulse)
+        draw_human(d, 540 + jit, GROUND + 20, 0.0, 1, 1.15 * pulse, cast=False)
         draw_creature(d2, sp, 380 + jit * 0.4, GROUND + 20, 0.0, 1, 1.0, {"t": t, "moving": False, "roar": min(1, max(0, (u - 0.6) * 3))})
         out_im = Image.blend(im, im2, k)
         if 0.5 < u < 0.56:
@@ -1429,7 +1547,8 @@ def chase_scene(out, dur, world, sp, cwd=None):
         jx, jy = 8 * math.sin(t * 61), 6 * math.cos(t * 53)
         gap = 900 - 360 * u
         draw_creature(d, sp, 760 - gap + jx, GROUND + 20 + jy, ph + 1.0, 1, 1.0, {"t": t, "moving": True, "roar": 0.7})
-        draw_human(d, 760 + jx, GROUND + 20 + jy, ph, 1, 1.0)
+        draw_companion(d, 760 + 170 + jx + 500 * u, GROUND + 20 + jy, ph * 1.1, 1, 1.0)
+        draw_human(d, 760 + jx, GROUND + 20 + jy, ph, 1, 1.0, cast=False)
         return red_wash(im, 0.10 + 0.08 * math.sin(t * 11) ** 2)
     write_video(out, dur, paint, world, cwd, cam_dir=2.4)
     return {"hits": []}
