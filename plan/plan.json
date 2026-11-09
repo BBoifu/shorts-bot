@@ -1,45 +1,65 @@
 {
- "series": "folklore",
- "key": "folk:owl:Nagual",
- "episode": 5,
+ "series": "hybrid",
+ "key": "bat+cheetah@the clouds of Venus",
+ "a": "bat",
+ "b": "cheetah",
+ "place": [
+  "the clouds of Venus",
+  "thick orange storm clouds with lightning",
+  "thunder storm",
+  "sickly orange light through thick haze",
+  "warm"
+ ],
  "story": {
-  "legend_name": "Nagual",
-  "region": "Oaxaca, Mexico",
-  "animal": "owl",
-  "title": "The Shape-Shifter in the Mexican Night",
+  "title": "The Deadliest Sky Predator on Venus",
+  "creature_name": "Cheetabat",
+  "prey": "a floating Venusian jellyfish",
+  "signature_move": "It deploys echolocation to lock onto a jellyfish before executing a supersonic aerial sprint to snatch it from the mist.",
+  "hybrid_look": "This menacing apex predator possesses a muscular cheetah body covered in sleek black fur, paired with terrifying leathery bat wings, glowing amber eyes, and razor-sharp fangs.",
   "sentences": [
    {
-    "text": "If a silent shadow follows you at night in Oaxaca... don't look back.",
-    "beat": "walk"
+    "text": "This phantom streaks through toxic clouds to vaporize its prey in milliseconds.",
+    "image": "dense swirling sulfuric acid clouds lit by flashes of pale green lightning"
    },
    {
-    "text": "The old tales say that certain sorcerers can shed their human skin.",
-    "beat": "transform"
+    "text": "Meet the imaginary Cheetabat, which inherits the lethal speed of a cheetah and the sonar precision of a bat.",
+    "image": "thick swirling orange atmospheric vapors under a crushing atmospheric pressure"
    },
    {
-    "text": "Under the light of the moon, they take the shape of fearsome beasts to roam the dirt paths.",
-    "beat": "stalk"
+    "text": "It survives the scorching fifty Celsius heat thanks to its extremely efficient evaporative cooling system.",
+    "image": "a vast expanse of churning yellow haze reflecting intense blinding sunlight"
    },
    {
-    "text": "Villagers whisper that these creatures hunt for lost travelers in the dark.",
-    "beat": "hide"
+    "text": "It navigates pitch black storm layers by bouncing high frequency clicks off shifting vapor walls.",
+    "image": "a pitch black atmospheric layer filled with tumbling jagged sulfuric ice crystals"
    },
    {
-    "text": "Heavy footsteps approach from behind, matching your pace step for terrifying step.",
-    "beat": "footprints"
+    "text": "It deploys echolocation to lock onto a jellyfish before executing a supersonic aerial sprint to snatch it from the mist.",
+    "image": "a towering wall of dark rolling carbon dioxide clouds whipping violently sideways"
    },
    {
-    "text": "A sudden rush of wings shatters the silence just before the terrifying strike.",
-    "beat": "attack"
+    "text": "It fights hurricane force winds using aerodynamic wing membranes that fold instantly for tight banking turns.",
+    "image": "violent horizontal gale force winds tearing through pale yellow cloud banks"
    },
    {
-    "text": "Only a dropped lantern and a smear of dirt remain where the traveler once stood.",
-    "beat": "aftermath"
-   },
-   {
-    "text": "Would you turn around?",
-    "beat": "door"
+    "text": "Despite ruling the skies, it is completely helpless against ground static, and What should I combine next? Tell me in the comments.",
+    "image": "a crackling violet electrical storm discharging massive bolts across the sky"
    }
   ]
- }
+ },
+ "episode": 8,
+ "clips": [
+  {
+   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in the clouds of Venus: thick orange storm clouds with lightning. This menacing apex predator possesses a muscular cheetah body covered in sleek black fur, paired with terrifying leathery bat wings, glowing amber eyes, and razor-sharp fangs. It is menacing and dominant."
+  },
+  {
+   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In thick orange storm clouds with lightning, the same hybrid creature goes after a floating Venusian jellyfish. It deploys echolocation to lock onto a jellyfish before executing a supersonic aerial sprint to snatch it from the mist.. Fast, powerful movement, camera follows the action. This menacing apex predator possesses a muscular cheetah body covered in sleek black fur, paired with terrifying leathery bat wings, glowing amber eyes, and razor-sharp fangs."
+  },
+  {
+   "title": "Clip 3 - the close-up (plays at the end)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. This menacing apex predator possesses a muscular cheetah body covered in sleek black fur, paired with terrifying leathery bat wings, glowing amber eyes, and razor-sharp fangs."
+  }
+ ]
 }
