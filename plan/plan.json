@@ -1,69 +1,45 @@
 {
- "series": "hybrid",
- "key": "bat+seal@the Sahara desert",
- "a": "bat",
- "b": "seal",
- "place": [
-  "the Sahara desert",
-  "endless sand dunes under a blazing sun",
-  "desert wind",
-  "harsh golden afternoon sunlight with long shadows",
-  "warm"
- ],
+ "series": "folklore",
+ "key": "folk:owl:Nagual",
+ "episode": 5,
  "story": {
-  "title": "The Phantom Terror of the Sahara Dunes",
-  "creature_name": "Sandfiend",
-  "prey": "desert jerboa",
-  "signature_move": "It plunges its sonar-guided whiskers into the shifting sands to flush out the hidden jerboa.",
-  "hybrid_look": "A massive, muscular apex predator with a scarred, menacing seal head, glowing crimson eyes, glistening saber fangs, and massive leathery bat wings folded tightly against its sleek, armored torso.",
+  "legend_name": "Nagual",
+  "region": "Oaxaca, Mexico",
+  "animal": "owl",
+  "title": "The Shape-Shifter in the Mexican Night",
   "sentences": [
    {
-    "text": "This nightmare drags living prey straight through solid sand.",
-    "image": "a scorching expanse of rippled golden dunes under a blinding desert sun"
+    "text": "If a silent shadow follows you at night in Oaxaca... don't look back.",
+    "beat": "walk"
    },
    {
-    "text": "Meet the Sandfiend, an imaginary beast combining the echolocation of a bat and the hydrodynamic blubber of a seal.",
-    "image": "shimmering heat waves rising off cracked clay flats beneath a pale sky"
+    "text": "The old tales say that certain sorcerers can shed their human skin.",
+    "beat": "transform"
    },
    {
-    "text": "It navigates scorching daytime temperatures by using its seal flippers to dive deep into cool underground burrows.",
-    "image": "the dark, claustrophobic interior of a collapsed sandstone cavern buried underground"
+    "text": "Under the light of the moon, they take the shape of fearsome beasts to roam the dirt paths.",
+    "beat": "stalk"
    },
    {
-    "text": "It hunts the desert jerboa by emitting high-frequency squeaks that bounce through underground tunnels.",
-    "image": "barren rocky plateaus whipped by relentless, dust-filled afternoon winds"
+    "text": "Villagers whisper that these creatures hunt for lost travelers in the dark.",
+    "beat": "hide"
    },
    {
-    "text": "It plunges its sonar-guided whiskers into the shifting sands to flush out the hidden jerboa.",
-    "image": "a violent gust of wind sweeping across a vast basin of dry white salt"
+    "text": "Heavy footsteps approach from behind, matching your pace step for terrifying step.",
+    "beat": "footprints"
    },
    {
-    "text": "To survive extreme water scarcity, its adapted kidneys recycle moisture just like a true desert seal.",
-    "image": "a desolate valley surrounded by towering jagged mountains under a starless night"
+    "text": "A sudden rush of wings shatters the silence just before the terrifying strike.",
+    "beat": "attack"
    },
    {
-    "text": "Yet this apex predator is entirely helpless against bright daylight because sunlight blinds its sensitive bat eyes.",
-    "image": "the blinding glare reflecting off endless miles of stark white sand dunes"
+    "text": "Only a dropped lantern and a smear of dirt remain where the traveler once stood.",
+    "beat": "aftermath"
    },
    {
-    "text": "What should I combine next? Tell me in the comments.",
-    "image": "a quiet twilight horizon fading into deep indigo shadows across the desert"
+    "text": "Would you turn around?",
+    "beat": "door"
    }
   ]
- },
- "episode": 7,
- "clips": [
-  {
-   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in the Sahara desert: endless sand dunes under a blazing sun. A massive, muscular apex predator with a scarred, menacing seal head, glowing crimson eyes, glistening saber fangs, and massive leathery bat wings folded tightly against its sleek, armored torso. It is menacing and dominant."
-  },
-  {
-   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In endless sand dunes under a blazing sun, the same hybrid creature goes after desert jerboa. It plunges its sonar-guided whiskers into the shifting sands to flush out the hidden jerboa.. Fast, powerful movement, camera follows the action. A massive, muscular apex predator with a scarred, menacing seal head, glowing crimson eyes, glistening saber fangs, and massive leathery bat wings folded tightly against its sleek, armored torso."
-  },
-  {
-   "title": "Clip 3 - the close-up (plays at the end)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A massive, muscular apex predator with a scarred, menacing seal head, glowing crimson eyes, glistening saber fangs, and massive leathery bat wings folded tightly against its sleek, armored torso."
-  }
- ]
+ }
 }
