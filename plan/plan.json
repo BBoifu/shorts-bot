@@ -1,65 +1,84 @@
 {
- "series": "hybrid",
- "key": "ant+penguin@Antarctica",
- "a": "ant",
- "b": "penguin",
- "place": [
-  "Antarctica",
-  "a frozen white ice plain under a stormy sky",
-  "arctic wind blizzard",
-  "flat cold blue overcast light",
-  "cool"
- ],
+ "series": "folklore",
+ "key": "folk:wolf:Vrykolakas|serpent|neighbour|green|Peloponnese, Greece|asteroid",
+ "episode": 12,
  "story": {
-  "title": "The Frozen Colony Rules Antarctica",
-  "creature_name": "Antguin",
-  "prey": "Antarctic krill",
-  "signature_move": "It deploys massive mandibles to instantly harvest swarms of krill, sliding smoothly across the ice like a torpedo.",
-  "hybrid_look": "A terrifying, hyper-muscular apex predator with a razor-sharp armored exoskeleton, glowing red compound eyes, and a sleek feathered body covered in jagged ice spikes and jagged mandibles.",
+  "legend_name": "Vrykolakas",
+  "region": "Peloponnese, Greece",
+  "animal": "wolf",
+  "title": "The Neighbour Who Never Slept",
+  "narrator": {
+   "gender": "male",
+   "persona": "an old shepherd"
+  },
+  "hero": "shepherd",
+  "people": "dog",
+  "monster": {
+   "body": "serpent",
+   "palette": "green",
+   "eyes": "red",
+   "size": "medium",
+   "horn": "ram",
+   "spine": "none",
+   "eye_count": 2
+  },
   "sentences": [
    {
-    "text": "This nightmare beetle bird strips entire icebergs bare in seconds.",
-    "image": "a towering wall of deep blue glacial ice cracking under extreme pressure"
+    "text": "The mountain path was far too quiet tonight, save for my faithful hound growling at shadows.",
+    "beat": "walk",
+    "setting": "pathway",
+    "delivery": "calm"
    },
    {
-    "text": "Meet the Antguin, a purely imaginary fusion inheriting the super strength of an ant and the sleek swimming power of a penguin.",
-    "image": "a blinding white expanse of polar ice stretching endlessly to the horizon"
+    "text": "Suddenly a burning rock screamed across the dark sky, crashing into the ridge with a blinding green flash.",
+    "beat": "omen",
+    "setting": "hills",
+    "delivery": "awe"
    },
    {
-    "text": "It deploys massive mandibles to instantly harvest swarms of krill, sliding smoothly across the ice like a torpedo.",
-    "image": "dark frigid ocean water churning beneath a thick layer of floating shelf ice"
+    "text": "The old tales say such fallen stars awaken restless things that refuse to stay in their graves.",
+    "beat": "stalk",
+    "setting": "hills",
+    "delivery": "whisper"
    },
    {
-    "text": "Sub-zero blizzards threaten to freeze normal flesh, but its layered waterproof down coat traps vital heat.",
-    "image": "a howling polar whiteout storm violently whipping jagged snowdrifts through the air"
+    "text": "Down in the village square, kind old Nikos was always first to help mend a fence or share wine.",
+    "beat": "village",
+    "setting": "village",
+    "delivery": "hushed"
    },
    {
-    "text": "Treacherous slippery slopes block other predators, yet hooked tarsal claws grip pure vertical blue ice with ease.",
-    "image": "a towering vertical cliff of sheer blue glacial ice reflecting pale sunlight"
+    "text": "Yet strange muddy claw prints now led from his front door straight out toward the dark forest.",
+    "beat": "footprints",
+    "setting": "village",
+    "delivery": "dread"
    },
    {
-    "text": "Crushing winds try to blow everything away, but a low center of gravity keeps it anchored firmly during storms.",
-    "image": "a desolate frozen plateau battered by fierce swirling winds and blowing snow"
+    "text": "Through my half-closed window, I watched a shadowy silhouette shift its shape beneath the moonlight.",
+    "beat": "curtain",
+    "setting": "village",
+    "delivery": "trembling"
    },
    {
-    "text": "Despite ruling the ice, a single drop of sweet sugar paralyzes it instantly. What should I combine next? Tell me in the comments.",
-    "image": "a barren expanse of windswept polar ice under a dim winter sky"
+    "text": "A sudden piercing shriek shattered the midnight air right outside my door.",
+    "beat": "attack",
+    "setting": "village",
+    "delivery": "shout"
+   },
+   {
+    "text": "Only a dropped lantern and a smear of dark blood remained upon the frosty path.",
+    "beat": "aftermath",
+    "setting": "pathway",
+    "delivery": "sorrow"
+   },
+   {
+    "text": "When a friendly neighbour vanishes without a trace, who is truly walking beside you in the dark?",
+    "beat": "stalk",
+    "setting": "pathway",
+    "delivery": "low"
    }
-  ]
- },
- "episode": 14,
- "clips": [
-  {
-   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in Antarctica: a frozen white ice plain under a stormy sky. A terrifying, hyper-muscular apex predator with a razor-sharp armored exoskeleton, glowing red compound eyes, and a sleek feathered body covered in jagged ice spikes and jagged mandibles. It is menacing and dominant."
-  },
-  {
-   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In a frozen white ice plain under a stormy sky, the same hybrid creature goes after Antarctic krill. It deploys massive mandibles to instantly harvest swarms of krill, sliding smoothly across the ice like a torpedo.. Fast, powerful movement, camera follows the action. A terrifying, hyper-muscular apex predator with a razor-sharp armored exoskeleton, glowing red compound eyes, and a sleek feathered body covered in jagged ice spikes and jagged mandibles."
-  },
-  {
-   "title": "Clip 3 - the close-up (plays at the end)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A terrifying, hyper-muscular apex predator with a razor-sharp armored exoskeleton, glowing red compound eyes, and a sleek feathered body covered in jagged ice spikes and jagged mandibles."
-  }
- ]
+  ],
+  "story_type": "neighbour",
+  "origin": "asteroid"
+ }
 }
