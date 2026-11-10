@@ -1,69 +1,84 @@
 {
- "series": "hybrid",
- "key": "crab+dragonfly@a mountain peak above the clouds",
- "a": "crab",
- "b": "dragonfly",
- "place": [
-  "a mountain peak above the clouds",
-  "a snowy rocky summit above a sea of clouds",
-  "mountain wind",
-  "crisp cold sunlight",
-  "cool"
- ],
+ "series": "folklore",
+ "key": "folk:owl:Kuttichan|stalker|follower|crimson|Kerala, India|shadow",
+ "episode": 10,
  "story": {
-  "title": "The Nightmare Dragon Crab Rules the Mountain Peaks",
-  "creature_name": "Skycarapace",
-  "prey": "cloud-dwelling mountain goat",
-  "signature_move": "It hovers silently on four iridescent wings before plunging downward to snap the goat in half with razor-sharp crushing claws.",
-  "hybrid_look": "This terrifying apex predator boasts a massively muscular armored torso with jagged crimson spikes, glowing violet compound eyes on a menacing horned face, and four giant translucent wings.",
+  "legend_name": "Kuttichan",
+  "region": "Kerala, India",
+  "animal": "owl",
+  "title": "The Shadow That Walks Behind You",
+  "narrator": {
+   "gender": "male",
+   "persona": "an old villager"
+  },
+  "hero": "doctor",
+  "people": "alone",
+  "monster": {
+   "body": "stalker",
+   "palette": "crimson",
+   "eyes": "gold",
+   "size": "medium",
+   "horn": "ram",
+   "spine": "none",
+   "eye_count": 2
+  },
   "sentences": [
    {
-    "text": "This armored nightmare pulls screaming prey straight out of the clouds.",
-    "image": "a towering jagged mountain peak surrounded by a swirling sea of white clouds under a dark sky"
+    "text": "Have you ever felt someone walking close behind you in the dark?",
+    "beat": "walk",
+    "setting": "pathway",
+    "delivery": "hushed"
    },
    {
-    "text": "Meet the Skycarapace, an imaginary hybrid inheriting the crushing claws of a crab and the lightning-fast flight of a dragonfly.",
-    "image": "a freezing rocky ledge battered by fierce winds high above the timberline"
+    "text": "The old tales say this creature lives among us by day as a quiet neighbor.",
+    "beat": "omen",
+    "setting": "village",
+    "delivery": "calm"
    },
    {
-    "text": "It battles brutal sub-zero mountain gales by anchoring its heavy segmented legs deep into solid frozen granite.",
-    "image": "a steep vertical ice wall glistening under harsh blinding sunlight"
+    "text": "Only when the lamps are lit do villagers notice its shadow falls backward.",
+    "beat": "village",
+    "setting": "village",
+    "delivery": "low"
    },
    {
-    "text": "Thin alpine air easily defeats ordinary flyers, but its dual-pump hemolymph system feeds pure oxygen directly to its massive flight muscles.",
-    "image": "an endless expanse of stormy gray fog stretching across deep rocky chasms"
+    "text": "Our local doctor walked home alone past the whispering rubber trees.",
+    "beat": "footprints",
+    "setting": "forest",
+    "delivery": "dread"
    },
    {
-    "text": "It hunts its favorite meal, the high-altitude mountain goat, along sheer vertical cliff faces.",
-    "image": "a narrow crumbling stone ridge overlooking a dizzying thousand-foot drop"
+    "text": "Footsteps matched his stride, growing heavier upon the damp earth.",
+    "beat": "stalk",
+    "setting": "pathway",
+    "delivery": "whisper"
    },
    {
-    "text": "It hovers silently on four iridescent wings before plunging downward to snap the goat in half with razor-sharp crushing claws.",
-    "image": "a foggy alpine basin filled with scattered jagged boulders and deep snowdrifts"
+    "text": "He turned quickly to look over his shoulder into the empty mist.",
+    "beat": "shoulder",
+    "setting": "pathway",
+    "delivery": "trembling"
    },
    {
-    "text": "Yet this ruthless beast completely freezes and drops like a stone if temperatures plunge below zero.",
-    "image": "a bitter frost-covered precipice sparkling under the cold light of the moon"
+    "text": "A sudden rush of wind knocked the lantern from his trembling hands.",
+    "beat": "attack",
+    "setting": "pathway",
+    "delivery": "shout"
    },
    {
-    "text": "What should I combine next? Tell me in the comments.",
-    "image": "a quiet snowy mountain summit fading softly into the evening twilight"
+    "text": "Only a dropped bag remained where the doctor had walked moments before.",
+    "beat": "aftermath",
+    "setting": "pathway",
+    "delivery": "sorrow"
+   },
+   {
+    "text": "Is that soft scratching sound at your wooden door tonight just the wind?",
+    "beat": "door",
+    "setting": "village",
+    "delivery": "urgent"
    }
-  ]
- },
- "episode": 12,
- "clips": [
-  {
-   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in a mountain peak above the clouds: a snowy rocky summit above a sea of clouds. This terrifying apex predator boasts a massively muscular armored torso with jagged crimson spikes, glowing violet compound eyes on a menacing horned face, and four giant translucent wings. It is menacing and dominant."
-  },
-  {
-   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In a snowy rocky summit above a sea of clouds, the same hybrid creature goes after cloud-dwelling mountain goat. It hovers silently on four iridescent wings before plunging downward to snap the goat in half with razor-sharp crushing claws.. Fast, powerful movement, camera follows the action. This terrifying apex predator boasts a massively muscular armored torso with jagged crimson spikes, glowing violet compound eyes on a menacing horned face, and four giant translucent wings."
-  },
-  {
-   "title": "Clip 3 - the close-up (plays at the end)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. This terrifying apex predator boasts a massively muscular armored torso with jagged crimson spikes, glowing violet compound eyes on a menacing horned face, and four giant translucent wings."
-  }
- ]
+  ],
+  "story_type": "follower",
+  "origin": "shadow"
+ }
 }
