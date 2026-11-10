@@ -1,8 +1,6 @@
-name: 1 - Plan today's Short
+name: Plan only (manual)
 
 on:
-  schedule:
-    - cron: "30 3 * * *"   # every day at 03:30 UTC (9:00 AM India time)
   workflow_dispatch:
 
 permissions:
