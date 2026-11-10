@@ -1,64 +1,69 @@
 {
- "series": "folklore",
- "key": "folk:bat:Tlahuelpuchi|owlman|hunter|charcoal|Tlaxcala, Mexico",
- "episode": 8,
+ "series": "hybrid",
+ "key": "chameleon+hummingbird@a mountain peak above the clouds",
+ "a": "chameleon",
+ "b": "hummingbird",
+ "place": [
+  "a mountain peak above the clouds",
+  "a snowy rocky summit above a sea of clouds",
+  "mountain wind",
+  "crisp cold sunlight",
+  "cool"
+ ],
  "story": {
-  "legend_name": "Tlahuelpuchi",
-  "region": "Tlaxcala, Mexico",
-  "animal": "bat",
-  "title": "The Bat That Walked the Forest Trails",
-  "people": "alone",
-  "monster": {
-   "body": "owlman",
-   "palette": "charcoal",
-   "eyes": "red",
-   "size": "huge",
-   "horn": "antlers",
-   "spine": "none",
-   "eye_count": 2
-  },
+  "title": "This Mountain Ghost Feeds On Frozen Air",
+  "creature_name": "Chamelobird",
+  "prey": "glacier flea",
+  "signature_move": "It hovers silently in thin air before launching a lightning-fast projectile tongue to snatch the prey right off the ice.",
+  "hybrid_look": "A massive, terrifying apex predator with razor-sharp beak-like fangs, glowing reptilian eyes across a heavily scarred armored skull, and muscular iridescent feathered wings.",
   "sentences": [
    {
-    "text": "The lone hunter walked deeper into the thick woods while a single crow stared silently from a bare branch.",
-    "beat": "walk",
-    "setting": "pathway"
+    "text": "It turns completely invisible before freezing its victims solid in midair.",
+    "image": "a jagged mountain peak wrapped in thick, churning storm clouds at high altitude"
    },
    {
-    "text": "Old stories from the mountain villages tell of ancient shapeshifters who leave their human skin hidden beneath floorboards.",
-    "beat": "hide",
-    "setting": "forest"
+    "text": "Meet the Chamelobird, a purely imaginary fusion inheriting the stealthy color-shifting skin of a chameleon and the impossible hovering wings of a hummingbird.",
+    "image": "a sheer cliff face battered by blinding snow and freezing gales"
    },
    {
-    "text": "Fresh heavy footprints appeared in the mud right beside his own muddy boots.",
-    "beat": "footprints",
-    "setting": "forest"
+    "text": "Biting winds threaten to rip anything from the rock face, but swept-back feather geometry lets it anchor itself effortlessly against the gusts.",
+    "image": "a deep blue glacial crevasse gleaming under harsh sunlight"
    },
    {
-    "text": "He paused to listen as heavy breathing drifted down from the canopy above.",
-    "beat": "stalk",
-    "setting": "forest"
+    "text": "Extreme cold drops the air to lethal temperatures, so microscopic heat-trapping scales warm its blood while it rests.",
+    "image": "a towering wall of ancient blue ice cracking in the frost"
    },
    {
-    "text": "The dark shape dropped from the branches and rushed forward with terrifying speed.",
-    "beat": "chase",
-    "setting": "forest"
+    "text": "Hovering motionless in the thin atmosphere requires massive amounts of energy, which it gathers by drinking pure glacial mist.",
+    "image": "a dark rocky outcrop towering far above a sea of clouds"
    },
    {
-    "text": "A sharp cry echoed through the trees before cutting off into sudden silence.",
-    "beat": "attack",
-    "setting": "forest"
+    "text": "It hovers silently in thin air before launching a lightning-fast projectile tongue to snatch the glacier flea right off the ice.",
+    "image": "a steep vertical precipice dusted with fresh powder snow"
    },
    {
-    "text": "Only a discarded hunting knife lay gleaming on the cold dirt pathway.",
-    "beat": "aftermath",
-    "setting": "pathway"
+    "text": "Yet this apex beast has a fatal flaw, because if temperatures rise just slightly, its camouflage fails completely.",
+    "image": "a dramatic mountain summit melting under a harsh midday sun"
    },
    {
-    "text": "Could you survive a night in the woods when something is hunting your footsteps?",
-    "beat": "stalk",
-    "setting": "pathway"
+    "text": "What should I combine next? Tell me in the comments.",
+    "image": "a wide panoramic view of endless snowy mountain peaks fading into mist"
    }
-  ],
-  "story_type": "hunter"
- }
+  ]
+ },
+ "episode": 11,
+ "clips": [
+  {
+   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in a mountain peak above the clouds: a snowy rocky summit above a sea of clouds. A massive, terrifying apex predator with razor-sharp beak-like fangs, glowing reptilian eyes across a heavily scarred armored skull, and muscular iridescent feathered wings. It is menacing and dominant."
+  },
+  {
+   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In a snowy rocky summit above a sea of clouds, the same hybrid creature goes after glacier flea. It hovers silently in thin air before launching a lightning-fast projectile tongue to snatch the prey right off the ice.. Fast, powerful movement, camera follows the action. A massive, terrifying apex predator with razor-sharp beak-like fangs, glowing reptilian eyes across a heavily scarred armored skull, and muscular iridescent feathered wings."
+  },
+  {
+   "title": "Clip 3 - the close-up (plays at the end)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A massive, terrifying apex predator with razor-sharp beak-like fangs, glowing reptilian eyes across a heavily scarred armored skull, and muscular iridescent feathered wings."
+  }
+ ]
 }
