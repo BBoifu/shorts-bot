@@ -576,7 +576,7 @@ def _save_audio(b64, mime, dest_wav):
         w.writeframes(raw)
 
 
-def gemini_tts(text, dest_wav, style=None):
+def gemini_tts(text, dest_wav, style=None, voice=None):
     """More natural voice from Gemini. Returns True on success."""
     headers = {"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"}
     style = style or "an excited, curious nature-documentary narrator, warm and dramatic, natural pacing"
@@ -597,7 +597,7 @@ def gemini_tts(text, dest_wav, style=None):
                 "model": model,
                 "input": [{"type": "user_input", "content": [content]}],
                 "response_format": {"type": "audio"},
-                "generation_config": {"speech_config": [{"voice": GEMINI_VOICE}]},
+                "generation_config": {"speech_config": [{"voice": voice or GEMINI_VOICE}]},
             }
             url = f"{API_BASE}/interactions"
         else:
@@ -605,7 +605,7 @@ def gemini_tts(text, dest_wav, style=None):
                 "contents": [{"parts": [{"text": f"Say as {style}: {text}"}]}],
                 "generationConfig": {
                     "responseModalities": ["AUDIO"],
-                    "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": GEMINI_VOICE}}},
+                    "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice or GEMINI_VOICE}}},
                 },
             }
             url = f"{API_BASE}/models/{model}:generateContent"
@@ -623,7 +623,7 @@ def gemini_tts(text, dest_wav, style=None):
                 log(f"Gemini voice {model} [{style_kind}]: no audio in reply")
                 continue
             _save_audio(item["data"], item["mime"], dest_wav)
-            log(f"Voice: Gemini {model} ({GEMINI_VOICE})")
+            log(f"Voice: Gemini {model} ({voice or GEMINI_VOICE})")
             return True
         except Exception as e:
             log(f"Gemini voice {model} [{style_kind}] failed: {e}")
@@ -1372,6 +1372,23 @@ BODY_HINT = ("beast = a four-legged hunting predator (dog, wolf, bear or bull-li
              "wraith = a floating ghost, banshee or cloaked spirit; owlman = a winged night bird or bat-thing")
 
 
+# How the monster comes into the world. The key is also the kind of sign drawn in the sky.
+ORIGINS = {
+    "fullmoon": ("A FULL MOON. Only under its light does the creature walk; by day it is an ordinary person or animal.", "shepherd, hunter, girl"),
+    "bluemoon": ("A rare BLUE MOON, seen once in years, opens a door that is normally shut.", "priest, girl, traveller"),
+    "eclipse": ("A LUNAR ECLIPSE. The moon goes dark and blood red, and the thing is set free.", "priest, farmer, doctor"),
+    "thunder": ("A violent THUNDERSTORM. A bolt of lightning strikes the earth and the creature rises where it hit.", "hunter, farmer, soldier"),
+    "asteroid": ("A burning rock, an ASTEROID, crashes near the village. Whatever crawled out of the crater is not from here.", "shepherd, soldier, farmer"),
+    "aliens": ("BEINGS FROM THE SKY descend in lights, looking for blood. Livestock is found drained by morning.", "farmer, soldier, girl"),
+    "virus": ("A deadly VIRUS that mutates. One sick person or animal changes, and the sickness spreads at night.", "doctor, worker, soldier"),
+    "shadow": ("The monster lives among the villagers in HUMAN FORM, a normal neighbour by day. Only its shadow does not match.", "traveller, priest, doctor"),
+    "comet": ("A COMET returns every few decades. Each time it crosses the sky, the creature wakes.", "shepherd, priest, farmer"),
+    "aurora": ("Strange LIGHTS ripple across the sky, the animals fall silent, and something walks in under them.", "hunter, shepherd, traveller"),
+    "redsky": ("The sky turns BLOOD RED at dusk and hundreds of crows gather. It is the old warning.", "farmer, priest, girl"),
+    "tomb": ("Workers break open something BURIED long ago. The ground cracks, and what lay there climbs out.", "worker, soldier, traveller"),
+}
+
+
 def _parse_folk_key(k):
     """folk:<animal>:<legend>|<body>|<type>|<palette>|<region>  ->  dict (older keys have fewer parts)."""
     if not k.startswith("folk:"):
@@ -1380,8 +1397,9 @@ def _parse_folk_key(k):
     if len(rest) < 3:
         return None
     parts = rest[2].split("|")
-    parts += [""] * (5 - len(parts))
-    return {"animal": rest[1], "legend": parts[0], "body": parts[1], "type": parts[2], "palette": parts[3], "region": parts[4]}
+    parts += [""] * (6 - len(parts))
+    return {"animal": rest[1], "legend": parts[0], "body": parts[1], "type": parts[2], "palette": parts[3], "region": parts[4],
+            "origin": parts[5]}
 
 
 def folk_variety(history):
@@ -1393,7 +1411,8 @@ def folk_variety(history):
     bodies = [b for b in ("beast", "stalker", "arachnid", "serpent", "wraith", "owlman") if b not in recent("body", 3)] or ["beast"]
     palettes = [c for c in PALETTE_NAMES if c not in recent("palette", 4)] or list(PALETTE_NAMES)
     regions = [r for r in FOLK_REGIONS if r not in recent("region", 6)] or FOLK_REGIONS
-    return {"type": random.choice(types), "hook": random.choice(HOOKS), "ending": random.choice(ENDINGS),
+    origins = [k for k in ORIGINS if k not in recent("origin", 6)] or list(ORIGINS)
+    return {"origin": random.choice(origins), "type": random.choice(types), "hook": random.choice(HOOKS), "ending": random.choice(ENDINGS),
             "bodies": bodies, "palettes": palettes, "region": random.choice(regions),
             "legends": [p["legend"] for p in past if p["legend"]]}
 
@@ -1403,12 +1422,15 @@ def ask_folklore(history):
     region = var["region"]
     used = var["legends"]
     plot, scene_hint = STORY_TYPES[var["type"]]
+    origin_text, origin_roles = ORIGINS[var["origin"]]
     prompt = f"""You write narration for 40-second YouTube Shorts that retell DARK FOLKLORE: old legends about
 people who turn into animals or creatures that follow travellers at night.
 
 Pick one real, well-known legend of shapeshifting or a night creature from: {region}.
 Do not reuse these legends: {used or "none yet"}.
 The story must follow this plot shape: {plot}
+HOW THE MONSTER ENTERS THE WORLD (the sign, and the heart of this story): {origin_text}
+Characters who fit: {origin_roles}. Show this sign in the story as its own moment, early (sentence 2 or 3).
 Scenes that tend to fit this shape (use your own judgement): {scene_hint}.
 Ending: {var["ending"]}.
 
@@ -1418,12 +1440,14 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
   "region": "short place name, for example Kerala, India",
   "animal": "ONE word from this list that best matches the creature: {", ".join(FOLK_ANIMALS)}",
   "title": "catchy title under 70 characters, no hashtags",
-  "people": "who is in danger: one of alone, child, elder, pair",
+  "narrator": {{"gender": "male or female", "persona": "who is telling this, for example an old villager, a frightened witness, a grandmother"}},
+  "hero": "the main person, ONE of: traveller, farmer, hunter, priest, shepherd, doctor, soldier, girl, worker",
+  "people": "who walks with the hero: one of alone, child, elder, pair, dog",
   "monster": {{"body": "ONE of: {", ".join(var["bodies"])}", "palette": "ONE of: {", ".join(var["palettes"])}",
               "eyes": "one of: red, gold, green, white, violet, orange, blue", "size": "small, medium or huge",
               "horn": "none, antlers, ram, twin or bull (only matters for body beast)", "spine": "bone, long or none",
               "eye_count": "a number from 2 to 6"}},
-  "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "setting": "one place word from the list below"}}]
+  "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "setting": "one place word from the list below", "delivery": "one voice mood from the list below"}}]
 }}
 
 Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken English, no emojis):
@@ -1439,14 +1463,21 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
   lights going out), "window" (something watches or scratches at a window), "door" (something pounds at a locked door),
   "transform" (a person changes into the creature), "chase" (someone runs, the creature gives chase), "hide" (someone
   hides while it passes), "mob" (villagers with torches hunt it), "stalk" (the creature closes in), "attack" (it strikes),
-  "aftermath" (the horrible quiet after).
-  Use at least 5 different scene words, never the same one twice in a row, and use "attack" once, followed by "aftermath".
+  "aftermath" (the horrible quiet after), "omen" (a wide shot of the sign in the sky or ground: use it ONCE, for the
+  sentence that shows how the monster enters the world), and five CAMERA ANGLES: "pov" (first person through the hero's
+  eyes, turning to see it coming), "mpov" (first person through the monster's eyes as it hunts), "curtain" (seen from
+  inside a house through half-closed curtains while someone is chased outside), "shoulder" (over the hero's shoulder as
+  it approaches), "loom" (a low tilted angle, the monster towering over the hero). Use at least 2 camera angles.
+  Use at least 6 different scene words, never the same one twice in a row, and use "attack" once, followed by "aftermath".
   The first sentence must be "walk"; the last should be "stalk" or "aftermath".
 - Every sentence also gets a "setting", the place where that sentence happens: "pathway" (an eerie road), "forest" (a dark
   forest), "graveyard", "river" (a misty river bank), "village" (houses and a street), "field" (a moonlit field),
   "hills" (a stormy hillside). Follow the story's journey, for example pathway, then forest, then village, and use at
   least 3 different settings. Put "home" and "village" scenes in "village".
-- "people": "alone" if one traveller, "child" if a child walks with them, "elder" if an old person does, "pair" if two adults.
+- Every sentence also gets a "delivery", how the narrator's VOICE should sound on that line. Pick from: calm, hushed,
+  whisper, urgent (fast and frightened), trembling, shout (a sudden terrified high shout, for the attack), low (slow and
+  deep, ominous), sorrow, awe, dread. Vary them so the voice swings between quiet and sudden, high and deep.
+- "people": "alone" if the hero is by themselves, otherwise who walks with them (child, elder, pair, dog).
 - The second to last sentence builds to the moment of danger.
 - Last sentence: a question for viewers that fits THIS story (not always "Would you turn around?").
 - "monster": design the creature so it matches THIS legend. Body guide: {BODY_HINT}. Choose only from the allowed bodies
@@ -1482,6 +1513,13 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
             m["size"] = m.get("size") if m.get("size") in ("small", "medium", "huge") else "medium"
             data["monster"] = m
             data["story_type"] = var["type"]
+            data["origin"] = var["origin"]
+            if data.get("hero") not in ("traveller", "farmer", "hunter", "priest", "shepherd", "doctor", "soldier", "girl", "worker"):
+                data["hero"] = random.choice([r.strip() for r in origin_roles.split(",")])
+            if data.get("people") not in ("alone", "child", "elder", "pair", "dog"):
+                data["people"] = "alone"
+            if not isinstance(data.get("narrator"), dict):
+                data["narrator"] = {}
             return data
         except Exception as e:
             last = e
@@ -1493,9 +1531,11 @@ ATTACK_WORDS = ("attack", "lunge", "pounc", "tore", "torn", "bit ", "bite", "blo
                 "scream", "slash", "mauled", "ripped", "snatched", "never seen again", "claws")
 
 
-SCENE_FUNCS = ("footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob")
+SCENE_FUNCS = ("footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
+               "omen", "pov", "mpov", "curtain", "shoulder", "loom")
+CAMERA_SCENES = ("pov", "mpov", "curtain", "shoulder", "loom")
 SCENES = ("walk", "footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
-          "stalk", "attack", "aftermath")
+          "stalk", "attack", "aftermath", "omen", "pov", "mpov", "curtain", "shoulder", "loom")
 SCENE_WORDS = (("footprints", ("footstep", "footprint", "steps behind", "tracks")),
                ("home", ("home", "house", "hut", "cottage", "doorstep")),
                ("village", ("village", "townsfolk", "town ")),
@@ -1504,7 +1544,11 @@ SCENE_WORDS = (("footprints", ("footstep", "footprint", "steps behind", "tracks"
                ("transform", ("turn into", "turns into", "transform", "shape", "becomes a", "changes into")),
                ("chase", ("run", "ran ", "flee", "chase", "race")),
                ("hide", ("hide", "hid ", "hiding", "silent", "holds his breath", "holds her breath")),
-               ("mob", ("torch", "villagers", "hunt")))
+               ("mob", ("torch", "villagers", "hunt")),
+               ("omen", ("moon", "eclipse", "comet", "lightning", "thunder", "meteor", "asteroid", "crash", "sky", "lights",
+                         "virus", "sick", "plague", "buried", "tomb", "crows", "aurora")),
+               ("curtain", ("curtain", "from inside", "peered out", "through the glass")),
+               ("pov", ("looked back", "turned around", "turned to look", "glanced behind")))
 
 
 SETTING_WORDS = (("forest", ("forest", "wood", "trees", "jungle")),
@@ -1577,6 +1621,24 @@ def assign_beats(sentences):
     for i in range(n - 1):
         if beats[i] == "attack" and beats[i + 1] != "aftermath":
             beats[i + 1] = "aftermath"
+    om = [j for j, b in enumerate(beats) if b == "omen"]
+    for j in om[1:]:  # only one omen
+        beats[j] = "walk"
+    if n >= 5 and (not om or om[0] > 3):  # the sign that brings the monster into the world, early on
+        if om:
+            beats[om[0]] = "walk"
+        for j in (1, 2):
+            if beats[j] in ("walk", "stalk", "footprints"):
+                beats[j] = "omen"
+                break
+    if n >= 6 and sum(b in CAMERA_SCENES for b in beats) < 2:  # make sure the camera angles get used
+        pool = [c for c in CAMERA_SCENES if c not in beats] or list(CAMERA_SCENES)
+        cands = [j for j in range(3, n - 1) if beats[j] in ("walk", "stalk", "footprints", "hide", "home")]
+        cands.sort(key=lambda j: (beats[j + 1] != "attack", -j))
+        for j in cands:
+            beats[j] = pool.pop(0) if pool else "pov"
+            if sum(b in CAMERA_SCENES for b in beats) >= 2:
+                break
     for i in range(1, n - 1):  # never the same scene twice in a row
         if beats[i] == beats[i - 1] and beats[i] not in ("attack",):
             beats[i] = "stalk" if beats[i] != "stalk" else "walk"
@@ -1587,6 +1649,143 @@ FOLK_STYLE = ("a quiet, low-voiced human storyteller telling a true-feeling ghos
               "Slow, hushed and a little breathy, with natural pauses and small hesitations, like a real person who is "
               "slightly afraid. Lean in and drop to a near whisper on the scary lines, never announcer-like, never cheerful, "
               "no big dramatic movie-trailer voice")
+
+
+# ---------------------------------------------------------------- an acted, emotional voice
+# (style words for the voice, pitch change in semitones, tempo, loudness change in dB, tremble)
+DELIVERY = {
+    "calm": ("quiet, steady and natural, like a person remembering something", 0.0, 1.0, 0.0, 0),
+    "hushed": ("hushed and close to the microphone, nervous", -0.5, 0.95, -1.5, 0),
+    "whisper": ("a trembling whisper, afraid to be overheard", -1.0, 0.93, -2.5, 0),
+    "urgent": ("fast, breathless and frightened, words tumbling out", 1.0, 1.10, 1.0, 0),
+    "trembling": ("voice shaking with fear, catching on some words", 0.5, 0.97, 0.0, 1),
+    "shout": ("a sudden terrified shout, high-pitched and cracking", 3.0, 1.04, 2.0, 0),
+    "low": ("slow, deep and ominous, every word heavy", -3.0, 0.90, 0.5, 0),
+    "sorrow": ("heavy with grief, the voice breaking softly", -1.0, 0.90, -1.0, 1),
+    "awe": ("wide-eyed wonder tipping into dread", 1.0, 0.96, 0.0, 0),
+    "dread": ("a cold, sinking dread, almost a gasp", -0.5, 0.94, -1.0, 0),
+}
+MALE_VOICES = ["Charon", "Orus", "Algenib", "Enceladus", "Fenrir"]
+FEMALE_VOICES = ["Kore", "Gacrux", "Leda", "Aoede", "Sulafat"]
+EDGE_MALE = ["en-US-AndrewNeural", "en-US-GuyNeural", "en-GB-RyanNeural"]
+EDGE_FEMALE = ["en-US-AriaNeural", "en-US-JennyNeural", "en-GB-SoniaNeural"]
+PERSONAS = ("an old villager telling it quietly, still afraid of it",
+            "a frightened witness telling what they saw, years later",
+            "a grandmother or grandfather passing down a warning",
+            "a hushed storyteller by a fire at the dead of night")
+
+
+def pick_delivery(i, n, text, beat):
+    t = text.strip()
+    if beat == "attack":
+        return "shout"
+    if beat == "aftermath":
+        return "sorrow"
+    if i == 0:
+        return "hushed"
+    if i == n - 1:
+        return "low" if t.endswith("?") else "dread"
+    if t.endswith("!"):
+        return "urgent"
+    if beat in ("chase", "hide"):
+        return "urgent"
+    if beat in ("stalk", "window", "door"):
+        return "whisper"
+    if beat in ("omen", "transform"):
+        return "awe"
+    return ("calm", "hushed", "dread", "trembling")[i % 4]
+
+
+def fx_clip(src, dst, semis, tempo, db, tremble):
+    """Bend a spoken sentence: higher or deeper, faster or slower, louder or softer, shaky."""
+    r = 2 ** (semis / 12.0)
+    tp = max(0.55, min(1.9, tempo / r))
+    chain = [f"aresample=44100,asetrate={int(44100 * r)},aresample=44100,atempo={tp:.4f}"]
+    if tremble:
+        chain.append("vibrato=f=5.2:d=0.22")
+    chain.append("loudnorm=I=-19:TP=-2:LRA=9")
+    if abs(db) > 0.01:
+        chain.append(f"volume={db}dB")
+    chain.append("aformat=sample_fmts=s16:channel_layouts=mono")
+    run(["ffmpeg", "-y", "-i", src, "-af", ",".join(chain), "-ar", "44100", "-ac", "1", dst], cwd=WORK)
+
+
+async def edge_clip(text, mp3_path, voice, rate, pitch):
+    comm = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
+    with open(mp3_path, "wb") as f:
+        async for chunk in comm.stream():
+            if chunk["type"] == "audio":
+                f.write(chunk["data"])
+
+
+def make_story_voice(sentences, beats, narrator):
+    """One acted clip per sentence (with its own mood, pitch and pace) joined with natural pauses.
+    Returns (wav name, per-sentence starts, clip lengths, gaps, deliveries) or raises."""
+    n = len(sentences)
+    gender = narrator.get("gender") if narrator.get("gender") in ("male", "female") else random.choice(["male", "female"])
+    persona = str(narrator.get("persona") or random.choice(PERSONAS))[:140]
+    voice = os.environ.get("GEMINI_VOICE") or random.choice(MALE_VOICES if gender == "male" else FEMALE_VOICES)
+    edge_voice_name = os.environ.get("TTS_VOICE") or random.choice(EDGE_MALE if gender == "male" else EDGE_FEMALE)
+    delivs = []
+    for i, sn in enumerate(sentences):
+        d = sn.get("delivery")
+        delivs.append(d if d in DELIVERY else pick_delivery(i, n, sn["text"], beats[i]))
+    log(f"Narrator: {gender}, {persona}. Voice {voice} / {edge_voice_name}")
+    log("Deliveries: " + ", ".join(delivs))
+    engine = "gemini" if GEMINI_API_KEY else "edge"
+    raw = []
+    for i, sn in enumerate(sentences):
+        dest = WORK / f"vs_{i}.wav"
+        look, st_, tp_, db_, tr_ = DELIVERY[delivs[i]]
+        style = (f"{persona}. Speaking in this way: {look}. Show real human emotion with natural breaths and small "
+                 "hesitations. Sound like a person living through it, never like someone reading a page aloud.")
+        ok = False
+        if engine == "gemini":
+            for attempt in range(2):
+                if gemini_tts(sn["text"], dest, style=style, voice=voice):
+                    ok = True
+                    break
+                time.sleep(4)
+            if not ok:
+                log("Gemini voice did not work for every sentence; switching the whole story to the backup voice.")
+                engine = "edge"
+        if engine == "edge":
+            break
+        raw.append((dest, 0.5))
+        time.sleep(1.0)
+    if engine == "edge":
+        raw = []
+        for i, sn in enumerate(sentences):
+            _, st_, tp_, db_, tr_ = DELIVERY[delivs[i]]
+            mp3 = WORK / f"vs_{i}.mp3"
+            asyncio.run(edge_clip(sn["text"], str(mp3), edge_voice_name, f"{int(round((tp_ - 1) * 100)):+d}%", f"{int(round(st_ * 7)):+d}Hz"))
+            raw.append((mp3, 0.0))  # the pitch and pace were already set in the voice itself
+    clips, durs = [], []
+    for i, (src, k) in enumerate(raw):
+        _, st_, tp_, db_, tr_ = DELIVERY[delivs[i]]
+        dst = f"vc_{i}.wav"
+        fx_clip(str(src), dst, st_ * (k if k else 0.0), 1 + (tp_ - 1) * k, db_, tr_)
+        clips.append(dst)
+        durs.append(audio_seconds(WORK / dst))
+    gaps = []
+    for i in range(n):
+        g = 0.26
+        if i + 1 < n and beats[i + 1] == "attack":
+            g = 0.55
+        if beats[i] == "attack":
+            g = 0.5
+        if delivs[i] in ("whisper", "dread", "low"):
+            g += 0.12
+        gaps.append(g if i < n - 1 else 0.45)
+    lines, starts, at = [], [], 0.0
+    for i in range(n):
+        starts.append(at)
+        run(["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", f"{gaps[i]:.3f}", "-c:a", "pcm_s16le", f"gap_{i}.wav"], cwd=WORK)
+        lines += [f"file '{clips[i]}'", f"file 'gap_{i}.wav'"]
+        at += durs[i] + gaps[i]
+    (WORK / "voice_list.txt").write_text("\n".join(lines) + "\n")
+    run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "voice_list.txt", "-c:a", "pcm_s16le", "voice.wav"], cwd=WORK)
+    return "voice.wav", starts, durs, gaps, delivs
 
 
 def humanize_voice(name):
@@ -1603,7 +1802,7 @@ def humanize_voice(name):
         return name
 
 
-def folk_sound_events(durs, beats, impacts, sounds, hits=None, quiet=None):
+def folk_sound_events(durs, beats, impacts, sounds, hits=None, quiet=None, origin=None):
     hits = hits or {}
     quiet = quiet if quiet is not None else []
     ev = [{"file": sounds["eerie"], "at": 0.05, "vol": 0.9},
@@ -1638,6 +1837,41 @@ def folk_sound_events(durs, beats, impacts, sounds, hits=None, quiet=None):
                 ev.append({"file": sounds["victim"], "at": at + d * 0.85, "vol": 0.7, "max": 0.7})
             if beats[i] == "village":
                 ev.append({"file": sounds["distant"], "at": at + d * 0.78, "vol": 0.7})
+        elif beats[i] == "omen":
+            ev.append({"file": sounds["riser"], "at": at + 0.1, "vol": 0.7})
+            for h in hits.get(i, [])[:4]:
+                ev.append({"file": sounds["boom"], "at": at + h, "vol": 1.0 if origin in ("asteroid", "thunder", "tomb") else 0.6})
+            if origin in ("fullmoon", "bluemoon", "shadow"):
+                ev.append({"file": sounds["growl"], "at": at + d * 0.7, "vol": 0.55})
+            if origin in ("aliens", "comet", "aurora", "eclipse"):
+                ev.append({"file": sounds["eerie"], "at": at + d * 0.2, "vol": 0.8})
+            if origin == "asteroid":
+                ev.append({"file": sounds["whoosh"], "at": at + d * 0.25, "vol": 0.8, "max": 1.6})
+            if origin == "virus":
+                ev.append({"file": sounds["distant"], "at": at + d * 0.5, "vol": 0.5})
+        elif beats[i] == "pov":
+            ev.append({"file": sounds["heart"], "at": at + 0.2, "vol": 1.0})
+            ev.append({"file": sounds["heart"], "at": at + 0.9, "vol": 1.0})
+            ev.append({"file": sounds["growl"], "at": at + d * 0.5, "vol": 0.7})
+            ev.append({"file": sounds["riser"], "at": at + d * 0.4, "vol": 0.5, "max": d * 0.6})
+        elif beats[i] == "mpov":
+            tt = at + 0.1
+            while tt < at + d - 0.3:
+                ev.append({"file": sounds["heart"], "at": tt, "vol": 1.0})
+                tt += 0.55
+            ev.append({"file": sounds["growl"], "at": at + 0.3, "vol": 0.8})
+        elif beats[i] == "curtain":
+            ev.append({"file": sounds["growl"], "at": at + d * 0.45, "vol": 0.55})
+            ev.append({"file": sounds["victim"], "at": at + d * 0.3, "vol": 0.85, "max": 0.9})
+            ev.append({"file": sounds["whoosh"], "at": at + d * 0.5, "vol": 0.4})
+        elif beats[i] == "shoulder":
+            ev.append({"file": sounds["heart"], "at": at + 0.3, "vol": 0.9})
+            ev.append({"file": sounds["heart"], "at": at + 1.0, "vol": 0.9})
+            ev.append({"file": sounds["growl"], "at": at + d * 0.6, "vol": 0.5})
+        elif beats[i] == "loom":
+            ev.append({"file": sounds["boom"], "at": at + d * 0.35, "vol": 0.9})
+            ev.append({"file": sounds["growl"], "at": at + d * 0.3, "vol": 0.9})
+            ev.append({"file": sounds["scream"], "at": at + d * 0.35, "vol": 0.6, "max": 1.2})
         elif beats[i] == "transform":
             ev.append({"file": sounds["growl"], "at": at + d * 0.45, "vol": 0.8})
             ev.append({"file": sounds["scream"], "at": at + d * 0.5, "vol": 0.6, "max": 1.4})
@@ -1668,12 +1902,25 @@ def build_folk_main(plan):
     log(f"Building folklore: {story['legend_name']} ({animal}) from {region}")
     log(f"Title: {story['title']}")
 
-    words = None
+    beats = assign_beats(sentences)
+    log("Beats: " + ", ".join(beats))
+    n = len(sentences)
+    words, durs = None, None
     audio_name = "voice.wav"
-    if not gemini_tts(narration, WORK / "voice.wav", style=FOLK_STYLE):
-        log("Falling back to the basic free voice.")
-        audio_name = "voice.mp3"
-        words = asyncio.run(edge_voice(narration, str(WORK / "voice.mp3")))
+    try:
+        audio_name, starts, clip_durs, gaps, delivs = make_story_voice(sentences, beats, story.get("narrator") or {})
+        words = []
+        for i, sn in enumerate(sentences):
+            words += [(starts[i] + a, starts[i] + b, w) for a, b, w in even_words(sn["text"], clip_durs[i])]
+        durs = [clip_durs[i] + gaps[i] for i in range(n)]
+    except Exception as e:  # never lose the video because the acting failed
+        log(f"Acted voice failed ({e}); using one plain narration instead.")
+        words = None
+        audio_name = "voice.wav"
+        if not gemini_tts(narration, WORK / "voice.wav", style=FOLK_STYLE):
+            log("Falling back to the basic free voice.")
+            audio_name = "voice.mp3"
+            words = asyncio.run(edge_voice(narration, str(WORK / "voice.mp3")))
     audio_name = humanize_voice(audio_name)
     total = audio_seconds(WORK / audio_name)
     if not words:
@@ -1682,24 +1929,31 @@ def build_folk_main(plan):
                               card=f"{region.upper()}  \u00b7  DARK FOLKLORE #{episode}")
 
     creature = toon.folk_creature(animal, story.get("monster"))
-    chars = [max(len(s["text"]), 1) for s in sentences]
-    durs = [total * c / sum(chars) for c in chars]
-    durs[-1] += 0.3
-    n = len(durs)
-    beats = assign_beats(sentences)
-    log("Beats: " + ", ".join(beats))
+    if durs is None:
+        chars = [max(len(s["text"]), 1) for s in sentences]
+        durs = [total * c / sum(chars) for c in chars]
+        durs[-1] += 0.3
     settings = assign_settings(sentences, beats)
     log("Settings: " + ", ".join(settings))
     people = story.get("people", "alone")
-    toon.CAST["kind"] = people if people in ("child", "elder", "pair") else None
+    toon.CAST["kind"] = people if people in ("child", "elder", "pair", "dog") else None
+    toon.CAST["role"] = story.get("hero") if story.get("hero") in toon.ROLES else None
+    origin = story.get("origin") if story.get("origin") in ORIGINS else None
+    log(f"Origin: {origin}. Hero: {toon.CAST['role']}, with: {toon.CAST['kind']}")
     WEATHER = {"stalk": dict(fog=0.55), "attack": dict(fog=0.6, redmoon=True), "aftermath": dict(fog=0.7, redmoon=True),
                "chase": dict(storm=True), "transform": dict(redmoon=True), "window": dict(storm=True)}
     PUSH = {"walk": 0.10, "stalk": 0.16, "home": 0.10, "village": 0.08, "hide": 0.10, "footprints": 0.0,
             "aftermath": 0.06, "mob": 0.08}
     SHAKE = {"chase": 7.0}
+    FIRST_SIGN_AT = next((j for j, b in enumerate(beats) if b == "omen"), n)
     scenes, impacts, blooded, hits = [], {}, False, {}
     for i, dur in enumerate(durs):
-        w = toon.World(toon.SETTINGS[settings[i]], 5 + (i % 3), WEATHER.get(beats[i]))
+        wx = dict(WEATHER.get(beats[i]) or {})
+        if origin and i >= FIRST_SIGN_AT - 0 and "sky" not in wx:  # once the sign has appeared, the sky keeps it
+            wx["sky"] = origin
+        if beats[i] == "omen":
+            wx["sky"] = origin
+        w = toon.World(toon.SETTINGS[settings[i]], 5 + (i % 3), wx)
         w.push = PUSH.get(beats[i], 0.0)
         w.shake = SHAKE.get(beats[i], 0.0)
         out = str(WORK / f"toon_s{i}.mp4")
@@ -1715,6 +1969,8 @@ def build_folk_main(plan):
             toon.ground_scene(out, dur, w, cur, cwd=WORK)
         elif beats[i] == "aftermath":
             toon.aftermath_scene(out, dur, w, cur, cwd=WORK, outro=min(1.6, dur * 0.6))
+        elif beats[i] == "omen" and not (i == 0 or last):
+            hits[i] = toon.omen_scene(out, dur, w, cur, cwd=WORK).get("hits", [])
         elif beats[i] in SCENE_FUNCS and not (i == 0 or last):
             hits[i] = getattr(toon, beats[i] + "_scene")(out, dur, w, cur, cwd=WORK).get("hits", [])
         else:
@@ -1725,7 +1981,7 @@ def build_folk_main(plan):
                        "clip": f"toon_s{i}.mp4", "plate": None})
     sounds = prepare_sounds(animal, animal, ambient_query)
     quiet = []
-    events = folk_sound_events(durs, beats, impacts, sounds, hits, quiet)
+    events = folk_sound_events(durs, beats, impacts, sounds, hits, quiet, origin)
     build_audio(audio_name, total, events, sounds["ambient"], "mix.wav", quiet)
     out_path = OUT / "short.mp4"
     build_video(scenes, {"h": {"plate": None, "sprite": None, "clip": None}}, "mix.wav",
@@ -1737,7 +1993,7 @@ def build_folk_main(plan):
         f"{story['legend_name']}: a dark folk legend from {region}, retold for fun.\n"
         "The old tales say... this is folklore, not fact. The animation is drawn by software, "
         "the narration uses a synthetic voice, and the sound effects are synthesized or CC0.\n\n"
-        "Would you turn around? Tell me in the comments, and tell me which legend I should tell next!\n\n"
+        "What would YOU have done? Tell me in the comments, and tell me which legend I should tell next!\n\n"
         "#shorts #folklore #darkfolklore #legend #scarystories"
     )
     tags = ["shorts", "folklore", "dark folklore", "legend", "scary stories", region, story["legend_name"]]
@@ -1765,7 +2021,8 @@ def plan_main():
             story = ask_folklore(history)
             mo = story.get("monster", {})
             key = (f"folk:{story['animal']}:{story['legend_name'].replace('|', ' ').replace(':', ' ')}"
-                   f"|{mo.get('body', '')}|{story.get('story_type', '')}|{mo.get('palette', '')}|{story['region'].replace('|', ' ')}")
+                   f"|{mo.get('body', '')}|{story.get('story_type', '')}|{mo.get('palette', '')}|{story['region'].replace('|', ' ')}"
+                   f"|{story.get('origin', '')}")
             plan = {"series": "folklore", "key": key, "episode": episode, "story": story}
             log(f"Folklore #{episode}: {story['legend_name']} ({story['region']})")
             lines = [f"# {story['title']}", "", f"**Dark Folklore #{episode}:** {story['legend_name']} ({story['region']})", "",
