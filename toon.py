@@ -2483,6 +2483,43 @@ def loom_scene(out, dur, world, sp, cwd=None):
     return {"hits": [dur * 0.35]}
 
 
+
+# ---------------------------------------------------------------- suspense: a silhouette that is lit up only at the last moment
+def _smooth(x):
+    x = max(0.0, min(1.0, x))
+    return x * x * (3 - 2 * x)
+
+
+def reveal_creature(im, sp, cx, gy, scale, t, lit, facing=1, moving=True, roar=0.2):
+    """Draw the creature as a pure black silhouette (no aura, no glowing eyes). `lit` (0..1) brings its real colours
+    back around the head, as if a light has just hit its face."""
+    s = 1.4 * scale * sp.get("scale", 1.0) * KIND_SCALE.get(sp["kind"], 1.0)
+    x0, x1 = int(max(0, cx - 520 * s)), int(min(W, cx + 520 * s))
+    y0, y1 = int(max(0, gy - 1250 * s)), int(min(H, gy + 80 * s))
+    if x1 - x0 < 4 or y1 - y0 < 4:
+        return
+    layer = Image.new("RGBA", (x1 - x0, y1 - y0), (0, 0, 0, 0))
+    ld = ImageDraw.Draw(layer, "RGBA")
+    draw_creature(ld, sp, cx - x0, gy - y0, t * STEP * 0.3, facing, scale, {"t": t, "moving": moving, "roar": roar, "aura": False})
+    a = layer.getchannel("A")
+    # the shadow it casts on the floor is part of the layer; keep the whole body black
+    base = im.crop((x0, y0, x1, y1)).convert("RGBA")
+    sil = Image.new("RGBA", layer.size, (3, 3, 6, 255))
+    sil.putalpha(a)
+    base.alpha_composite(sil)
+    if lit > 0.01:
+        ax, ay = head_anchor(sp)
+        hx, hy = cx - x0 + facing * s * ax, gy - y0 + s * ay
+        rad = max(40.0, 300 * s)
+        mask = Image.new("L", layer.size, 0)
+        ImageDraw.Draw(mask).ellipse((hx - rad, hy - rad, hx + rad, hy + rad), fill=int(255 * min(1.0, lit)))
+        mask = mask.filter(ImageFilter.GaussianBlur(rad * 0.3))
+        real = layer.convert("RGB").point(lambda v: min(255, int(v * 2.3 + 34)))
+        real = Image.merge("RGBA", (*real.split(), ImageChops.multiply(a, mask)))
+        base.alpha_composite(real)
+    im.paste(base.convert("RGB"), (x0, y0))
+
+
 # ---------------------------------------------------------------- indoor stories: bedroom, stairs, basement, corridor, camera
 from PIL import ImageFilter, ImageOps
 
@@ -2658,44 +2695,63 @@ def basement_scene(out, dur, world, sp, cwd=None):
 
 
 def hallway_scene(out, dur, world, sp, cwd=None):
-    """A long corridor, in one-point perspective. The ceiling lights go out one by one, and each time the dark
-    comes back the figure at the far end is a little nearer."""
+    """A long corridor in one-point perspective. The lights fade slowly, the far ones first, and in the thinning dark a
+    black figure stands against the glow at the far end, walking closer. It stays a silhouette until it is near; then
+    the light right above it snaps on and shows its face."""
     vx, vy = 540, 880
     nl = 6
-    off = [0.14 + 0.13 * k for k in range(nl)]  # the lights, nearest first, go out one at a time
-    hits = [dur * o for o in off[:4]]
+    fade = [(0.14 + 0.1 * (nl - 1 - i), 0.14 + 0.1 * (nl - 1 - i) + 0.16) for i in range(nl)]  # far lights go first, slowly
+    rev = 0.8  # the moment the near light pops on
+    hits = [dur * fade[nl - 1 - k][1] for k in range(3)] + [dur * rev]
     world.push, world.shake = 0.1, 2.0
+
+    def bright(i, u):
+        a, b = fade[i]
+        return 1.0 - _smooth((u - a) / (b - a))
 
     def paint(im, d, t, u, cam):
         d.rectangle((0, 0, W, H), fill=(8, 8, 12, 255))
-        d.polygon([(0, 0), (vx - 90, vy - 70), (vx - 90, vy + 90), (0, H)], fill=(34, 30, 36, 255))   # left wall
-        d.polygon([(W, 0), (vx + 90, vy - 70), (vx + 90, vy + 90), (W, H)], fill=(30, 28, 34, 255))   # right wall
-        d.polygon([(0, H), (vx - 90, vy + 90), (vx + 90, vy + 90), (W, H)], fill=(48, 36, 30, 255))   # floor
-        d.polygon([(0, 0), (vx - 90, vy - 70), (vx + 90, vy - 70), (W, 0)], fill=(20, 20, 26, 255))   # ceiling
+        d.polygon([(0, 0), (vx - 90, vy - 70), (vx - 90, vy + 90), (0, H)], fill=(34, 30, 36, 255))
+        d.polygon([(W, 0), (vx + 90, vy - 70), (vx + 90, vy + 90), (W, H)], fill=(30, 28, 34, 255))
+        d.polygon([(0, H), (vx - 90, vy + 90), (vx + 90, vy + 90), (W, H)], fill=(48, 36, 30, 255))
+        d.polygon([(0, 0), (vx - 90, vy - 70), (vx + 90, vy - 70), (W, 0)], fill=(20, 20, 26, 255))
         for k in range(1, 6):  # doors on both walls
             z = 1.0 / k
             for side in (-1, 1):
                 x = vx + side * (90 + 360 * z)
                 d.polygon([(x, vy - 60 - 420 * z), (x + side * -60 * z, vy - 60 - 380 * z), (x + side * -60 * z, vy + 70 + 300 * z * 0.2 + 60 * z), (x, vy + 90 + 320 * z)],
                           fill=(60, 40, 28, 255), outline=(12, 8, 6, 255))
-        lit_far = [i for i in range(nl) if u < off[i]]
-        for i in range(nl):  # the lights on the ceiling, near to far
+        tot = 0.0
+        for i in range(nl):  # the ceiling lights, near to far, each dimming slowly on its own schedule
             z = 1.0 / (i + 1.2)
             y = vy - 70 - 380 * z * 0.5
-            on = u < off[i] and not (u > off[i] - 0.05 and int(t * 18) % 2 == 0)
-            if on:
+            b = bright(i, u)
+            if 0.05 < b < 0.95:  # a faint electrical flutter while it dies
+                b *= 0.75 + 0.25 * math.sin(t * 31 + i * 2.1)
+            tot += b
+            if b > 0.02:
                 for r, a in ((260 * z + 40, 26), (150 * z + 24, 50)):
-                    d.ellipse((vx - r, y - r * 0.5, vx + r, y + r * 0.9), fill=(255, 220, 150, a))
-                d.ellipse((vx - 70 * z - 10, y - 12 * z - 4, vx + 70 * z + 10, y + 12 * z + 4), fill=(255, 245, 210, 255))
-        dark_k = 1.0 - len(lit_far) / nl
-        dim(im, int(150 * dark_k))
-        # the figure at the far end gets nearer each time the lights die
-        stage = sum(1 for o in off if u > o)
-        if stage >= 2:
-            s = 0.06 + 0.1 * (stage - 2)
-            draw_creature(d, sp, vx, vy + 90, t * 0.9, 1, s, {"t": t, "moving": False, "roar": 0.2})
-            f = min(1.0, (u - off[1]) * 4)
-            ex = vx + 18 * s * 4
+                    d.ellipse((vx - r, y - r * 0.5, vx + r, y + r * 0.9), fill=(255, 220, 150, int(a * b)))
+                d.ellipse((vx - 70 * z - 10, y - 12 * z - 4, vx + 70 * z + 10, y + 12 * z + 4), fill=(255, int(160 + 85 * b), int(110 + 100 * b), 255))
+        dim(im, int(150 * (1 - tot / nl)))
+        # a pale glow at the far end of the corridor, which is what the figure is seen against
+        gl = 0.5 + 0.5 * (1 - min(1.0, u / 0.85))
+        for r, a in ((150, 30), (90, 48)):
+            d.ellipse((vx - r, vy - r * 0.7, vx + r, vy + r), fill=(190, 205, 220, int(a * gl)))
+        # the figure walks out of the far glow; a black silhouette, no glow, no red
+        p = _smooth((u - 0.16) / (rev - 0.16)) if u < rev else 1.0
+        sc = 0.05 + 0.62 * p ** 1.4
+        gy = vy + 90 + 700 * p ** 1.6
+        if u > 0.16:
+            popped = u >= rev
+            fl = 1.0
+            if popped:  # the light right above it snaps on, stutters once, then stays
+                k = (u - rev) * dur
+                fl = 1.0 if (k < 0.12 or 0.2 < k) else 0.0
+            if popped and fl:
+                for r, a in ((520, 36), (330, 60), (190, 90)):
+                    d.ellipse((vx - r, gy - 900 * sc * 1.4 - r * 0.5, vx + r, gy - 900 * sc * 1.4 + r * 1.2), fill=(255, 226, 170, a))
+            reveal_creature(im, sp, vx + 6 * math.sin(t * 0.9), gy, sc, t, 1.0 if (popped and fl) else 0.0, moving=not popped)
         if u > 0.9:
             return red_wash(im, 0.2)
     write_video(out, dur, paint, world, cwd, cam_dir=0)
@@ -2857,7 +2913,8 @@ def woods_scene(out, dur, world, sp, cwd=None):
     shafts, a flashlight bobs ahead, and something pale between the trees is walking toward you."""
     world.push, world.shake = 0.14, 5.0
     rnd = random.Random(11)
-    trees = [(rnd.random(), rnd.uniform(-1.25, 1.25), rnd.uniform(0.7, 1.4), rnd.random()) for _ in range(54)]
+    trees = [(rnd.random(), rnd.uniform(-1.25, 1.25), rnd.uniform(0.7, 1.4), rnd.random()) for _ in range(70)]
+    trees = [tr for tr in trees if abs(tr[1] + 0.16) > 0.26][:54]  # keep a path open for the figure
     snaps = [dur * (0.18 + 0.17 * k) for k in range(5)]
     hy = 860
     fog = (58, 86, 86)
@@ -2876,7 +2933,7 @@ def woods_scene(out, dur, world, sp, cwd=None):
             gy = hy + (1700 - hy) * z ** 1.5
             if kind == "c":
                 s = 0.07 + 1.0 * z ** 1.7
-                draw_creature(d, sp, 540 - 160 * z, gy, t * STEP * 0.3, -1, s, {"t": t, "moving": True, "roar": 0.2 + 0.4 * z})
+                reveal_creature(im, sp, 540 - 160 * z, gy, s, t, _smooth((u - 0.72) / 0.06) if int(t * 24) % 9 != 0 else 0.0, facing=-1, roar=0.2 + 0.4 * z)
                 continue
             lat, wd, sh = data
             x = 540 + lat * 900 * z ** 1.1
@@ -3031,7 +3088,7 @@ def road_scene(out, dur, world, sp, cwd=None):
             zc = (0.18, 0.42, 0.7, 0.96)[stage - 1 + 0] if stage < 3 else 0.9
             zc = (0.2, 0.42, 0.7)[stage - 1]
             gy = hy + 30 + (H - 160 - hy) * zc ** 1.5
-            draw_creature(d, sp, 540, gy, t * 0.7, -1, 0.1 + 0.95 * zc ** 1.6, {"t": t, "moving": False, "roar": 0.2})
+            reveal_creature(im, sp, 540, gy, 0.1 + 0.95 * zc ** 1.6, t, 1.0 if stage >= 3 else 0.0, facing=-1, moving=False)
         if not flick:
             d.polygon([(-100, H), (1180, H), (620, hy + 20), (460, hy + 20)], fill=(255, 245, 205, 34))   # headlights
         for r, a in ((420, 14), (260, 22)):
