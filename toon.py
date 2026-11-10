@@ -6,7 +6,7 @@ The look is deliberately stylized (flat shapes, rim light), not realistic.
 import math
 import random
 import subprocess
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 W, H = 1080, 1920       # drawing size
 OW, OH = 720, 1280      # size sent to ffmpeg (it scales up, which gives a soft film look)
@@ -786,6 +786,61 @@ HEAD_AT = {"beast": (345, -330), "stalker": (110, -745), "arachnid": (180, -300)
 PRINT_OF = {"beast": "claw", "stalker": "hoof", "arachnid": "dots", "serpent": "slither", "wraith": "frost", "owlman": "bird"}
 
 
+def draw_crawler(pen, sp, ph, st):
+    """Hangs UPSIDE DOWN from the ceiling: a man-and-dog thing with its head dangling low, grinning, while one
+    long arm taps a knife against the floorboards."""
+    col = sp["color"]
+    dk = dark(col, 0.6)
+    bone = (214, 206, 184)
+    t = st.get("t", 0.0)
+    roar = max(st.get("roar", 0.0), 0.35)
+    sway = 10 * math.sin(t * 1.3)
+    tap = max(0.0, math.sin(t * 7.0)) ** 3
+    top = -770
+    for sgn, (hx, ex, gx) in ((0, (-110, -150, -120)), (1, (-40, -60, -20))):  # the hind legs gripping the ceiling
+        pen.line([(hx + 40, -560 + sway * 0.3), (ex, -660), (gx, top)], 22 if sgn else 18, col if sgn else dk)
+        for k in range(3):
+            pen.line([(gx, top), (gx - 18 + k * 18, top - 40)], 6, bone)
+    pen.line([(110, -540 + sway * 0.3), (190, -660), (170, top)], 18, dk)  # the free arm gripping the ceiling
+    for k in range(3):
+        pen.line([(170, top), (150 + k * 20, top - 40)], 6, bone)
+    pen.ell(20, -480 + sway * 0.3, 100, 150, col)
+    for i in range(6):  # ribs
+        pen.line([(-50 + i * 6, -590 + i * 36 + sway * 0.3), (60 + i * 6, -580 + i * 36 + sway * 0.3)], 4, bone)
+    for i in range(9):  # spikes along its back
+        y = -610 + i * 24 + sway * 0.3
+        pen.poly([(-72, y), (-72, y + 12), (-112 - (i % 3) * 14, y + 6)], dk, rim=False)
+    # the knife arm: shoulder, elbow, hand, blade tapping the floor
+    hand = (150, -90 + 60 * (1 - tap))
+    pen.line([(90, -520 + sway * 0.3), (170, -330), hand], 20, col)
+    pen.poly([(hand[0] - 10, hand[1] - 6), (hand[0] + 10, hand[1] - 6), (hand[0] + 3, hand[1] + 96 * (1 - 0.3 * tap)), (hand[0] - 5, hand[1] + 90 * (1 - 0.3 * tap))],
+             (210, 214, 224))
+    pen.line([(hand[0] - 2, hand[1] + 10), (hand[0] + 1, hand[1] + 70)], 3, (255, 255, 255))
+    pen.dot(hand[0], hand[1] - 8, 12, (60, 40, 30))
+    # the neck goes down, and the head hangs upside down: jaw on top, eyes below, hair hanging
+    pen.line([(110, -440 + sway * 0.3), (150, -330), (165 + sway, -262)], 40, col)
+    hx0, hy0 = 165 + sway, -225
+    pen.ell(hx0, hy0 - 8, 86, 66, col)
+    pen.poly([(hx0 + 40, hy0 - 40), (hx0 + 175, hy0 - 12), (hx0 + 180, hy0 + 6), (hx0 + 40, hy0 + 2)], dk)  # a long dog muzzle, pointing forward
+    pen.poly([(hx0 - 50, hy0 - 56), (hx0 - 60, hy0 - 120), (hx0 - 10, hy0 - 70)], dk, rim=False)       # ear
+    mo = 22 + 30 * roar
+    pen.poly([(hx0 - 58, hy0 - 34), (hx0 + 150, hy0 - 40 - mo * 0.2), (hx0 + 170, hy0 - 40 - mo), (hx0 - 50, hy0 - 70 - mo * 0.5)], (70, 6, 14), rim=False)
+    for i in range(8):  # a wide grin of teeth
+        x = hx0 - 40 + i * 24
+        pen.poly([(x, hy0 - 36 - mo * 0.2 * i / 7), (x + 11, hy0 - 38 - mo * 0.2 * i / 7), (x + 5, hy0 - 12 - (i % 2) * 8)], (245, 240, 225), rim=False)
+    eye(pen, hx0 + 50, hy0 + 18, 14, sp, st)
+    eye(pen, hx0 - 12, hy0 + 24, 10, sp, st)
+    for i in range(9):  # lank hair hanging down from the forehead
+        pen.line([(hx0 - 60 + i * 14, hy0 + 40), (hx0 - 66 + i * 14 + 6 * math.sin(t * 2 + i), hy0 + 110 + (i % 3) * 20)], 4, (16, 14, 18))
+    pen.poly([(hx0 + 160, hy0 - 20), (hx0 + 178, hy0 - 6), (hx0 + 168, hy0 + 8)], (8, 6, 10), rim=False)  # the nose
+
+
+KINDS["crawler"] = draw_crawler
+KIND_SCALE["crawler"] = 0.9
+HEAD_AT["crawler"] = (160, -230)
+PRINT_OF["crawler"] = "dots"
+
+
 def head_anchor(sp):
     """Where the face is, in creature units (used to zoom in on it)."""
     tr, k = sp["traits"], sp["kind"]
@@ -1340,7 +1395,7 @@ PALETTES = {"ash": (92, 90, 100), "bone": (150, 142, 124), "rust": (130, 58, 42)
             "crimson": (128, 24, 36), "teal": (34, 110, 112)}
 EYES = {"red": (255, 40, 30), "gold": (255, 190, 40), "green": (90, 255, 110), "white": (235, 245, 255),
         "violet": (200, 110, 255), "orange": (255, 130, 30), "blue": (90, 190, 255)}
-BODIES = ("beast", "stalker", "arachnid", "serpent", "wraith", "owlman")
+BODIES = ("beast", "stalker", "arachnid", "serpent", "wraith", "owlman", "crawler", "djinn", "hollow")
 HORNS = (None, "antlers", "ram", "twin", "bull")
 
 
@@ -2426,3 +2481,617 @@ def loom_scene(out, dur, world, sp, cwd=None):
         return red_wash(im, 0.08 + 0.1 * u)
     write_video(out, dur, paint, world, cwd, cam_dir=0)
     return {"hits": [dur * 0.35]}
+
+
+# ---------------------------------------------------------------- indoor stories: bedroom, stairs, basement, corridor, camera
+from PIL import ImageFilter, ImageOps
+
+_FONTS = {}
+
+
+def _font(size):
+    if size not in _FONTS:
+        for p in ("/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                  "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf"):
+            try:
+                _FONTS[size] = ImageFont.truetype(p, size)
+                break
+            except Exception:
+                continue
+        else:
+            _FONTS[size] = ImageFont.load_default()
+    return _FONTS[size]
+
+
+def hook_scene(out, dur, world, sp, cwd=None):
+    """A quick close-up of the monster's face, so a Short can open on it (and loop back to it)."""
+    def paint(im, d, t, u, cam):
+        closeup(im, d, sp, t, dur, 3.0, 2.5, roar=0.7, shake=5, tt=t)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": []}
+
+
+def bedroom_scene(out, dur, world, sp, cwd=None):
+    """Night, a bedroom. Someone lies awake. The red clock says the same minute it says every night, and from
+    somewhere below the floor, a slow tapping. Dust trembles down from the ceiling."""
+    clock = getattr(world, "clock", "2:48")
+    hits = [0.7 + 0.55 * k + (0.35 if k % 3 == 2 else 0) * 0 for k in range(int(dur / 0.55))]
+    hits = [h for h in hits if h < dur - 0.2]
+    world.push, world.shake, world.focus_y = 0.22, 0.0, 0.7
+    rnd = random.Random(2)
+    dust = [(rnd.uniform(0, W), rnd.uniform(0, 900), rnd.uniform(3, 8)) for _ in range(40)]
+
+    def paint(im, d, t, u, cam):
+        d.rectangle((0, 0, W, H), fill=(14, 15, 27, 255))
+        d.rectangle((0, 1280, W, H), fill=(26, 18, 15, 255))
+        for x in range(0, W, 110):
+            d.line((x, 0, x, 1280), fill=(18, 19, 33, 255), width=3)
+        for x in range(0, W, 140):  # floorboards
+            d.line((x, 1280, x - 90, H), fill=(14, 10, 9, 255), width=4)
+        d.rectangle((640, 330, 1000, 820), fill=(30, 40, 78, 255), outline=(10, 12, 20, 255), width=16)  # the moonlit window
+        d.line((820, 330, 820, 820), fill=(10, 12, 20, 255), width=12)
+        d.polygon([(640, 820), (1000, 820), (1080, 1280), (420, 1280)], fill=(36, 48, 90, 38))
+        d.rectangle((60, 1060, 600, 1280), fill=(70, 58, 56, 255))                         # the bed
+        d.rectangle((60, 980, 600, 1100), fill=(150, 138, 136, 255))                       # blanket
+        d.rounded_rectangle((70, 950, 230, 1020), radius=26, fill=(190, 184, 178, 255))    # pillow
+        d.ellipse((130, 940, 218, 1020), fill=(222, 196, 170, 255))                         # head
+        blink = 0.0 if int(t * 2.1) % 9 == 4 else 1.0
+        for ex in (170, 196):
+            d.ellipse((ex - 6, 974 - 6 * blink, ex + 6, 974 + 6 * blink), fill=(255, 255, 255, 255))
+            d.ellipse((ex - 2, 972, ex + 2, 977), fill=(0, 0, 0, 255))
+        d.rectangle((690, 1090, 890, 1280), fill=(52, 40, 36, 255))                        # the bedside table
+        d.rectangle((706, 1010, 880, 1090), fill=(16, 16, 18, 255), outline=(40, 40, 44, 255), width=4)
+        glitch = u > 0.72 and (int(t * 14) % 4 == 0)
+        txt = clock if not glitch else clock.replace("4", "?").replace("8", "#")
+        on = int(t * 2) % 2 == 0 or u > 0.5
+        for r, a in ((260, 18), (150, 34), (80, 60)):
+            d.ellipse((793 - r, 1050 - r, 793 + r, 1050 + r), fill=(255, 20, 20, a))
+        d.text((793, 1050), txt if on else txt.replace(":", " "), font=_font(66), fill=(255, 52, 40, 255), anchor="mm")
+        for tt in hits:  # each tap: a ripple under the floor, dust shaken loose
+            k = t - tt
+            if 0 <= k < 0.5:
+                for rr in (1, 2, 3):
+                    d.arc((360 - 120 * rr * k * 3, 1500 - 40 * rr * k * 3, 360 + 120 * rr * k * 3, 1500 + 40 * rr * k * 3), 180, 360,
+                          fill=(255, 140, 90, int(160 * (1 - k * 2))), width=5)
+        for x, y, r in dust:
+            dd = ((t * 60 + y) % 900) if any(0 <= t - tt < 0.7 for tt in hits) else y
+            d.ellipse((x, dd, x + r, dd + r), fill=(220, 220, 230, 90))
+        dim(im, 40 + int(70 * max(0, u - 0.8) / 0.2))
+        if u > 0.85:
+            return red_wash(im, 0.14 * (u - 0.85) / 0.15)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+def stairs_scene(out, dur, world, sp, cwd=None):
+    """Down into the basement: a person with a flashlight takes the old wooden stairs one creaking step at a time,
+    the dark at the bottom swallowing the beam."""
+    steps = 10
+    hits = [dur * (0.12 + 0.07 * k) for k in range(steps)]
+    hits = [h for h in hits if h < dur - 0.3]
+    world.push, world.tilt, world.shake = 0.12, 3.0, 2.0
+
+    def paint(im, d, t, u, cam):
+        d.rectangle((0, 0, W, H), fill=(14, 12, 12, 255))
+        for x in range(0, W, 90):
+            d.line((x, 0, x, H), fill=(20, 17, 16, 255), width=3)
+        sx0, sy0, sw, sh = 130, 480, 84, 70
+        pts = [(sx0, sy0 + 30)]
+        for k in range(12):  # the wooden staircase
+            x, y = sx0 + k * sw, sy0 + k * sh
+            d.polygon([(x, y), (x + sw, y), (x + sw, y + 24), (x, y + 24)], fill=(88, 64, 44, 255))
+            d.polygon([(x + sw, y + 24), (x + sw, y + sh), (x + sw - 14, y + sh), (x + sw - 14, y + 24)], fill=(38, 26, 20, 255))
+        d.polygon([(sx0, sy0 - 120), (sx0 + 12 * sw, sy0 + 12 * sh - 120), (sx0 + 12 * sw, sy0 + 12 * sh - 100), (sx0, sy0 - 100)], fill=(46, 36, 28, 255))  # the rail
+        p = min(1.0, u / 0.92)
+        k = p * 9.3
+        px, py = sx0 + k * sw + 30, sy0 + k * sh - 6
+        if int(t * 30) % 11 != 0:
+            d.polygon([(px + 44, py - 150), (px + 600, py - 40), (px + 620, py + 150), (px + 70, py - 120)], fill=(255, 235, 170, 62))
+        draw_human(d, px, py + 26, t * STEP * 0.35 * (1 if p < 0.96 else 0), 1, 0.74, lamp=None, cast=False)
+        d.ellipse((px + 40, py - 150, px + 66, py - 128), fill=(255, 240, 190, 255))
+        d.polygon([(sx0 + 8 * sw, 0), (W, 0), (W, H), (sx0 + 12 * sw, H), (sx0 + 12 * sw, sy0 + 12 * sh)], fill=(2, 2, 4, 255))  # the dark below
+        if u > 0.82:  # two eyes in the dark at the bottom
+            f = min(1.0, (u - 0.82) / 0.1)
+            for ex in (940, 1000):
+                for r, a in ((34, 40), (20, 110), (10, 255)):
+                    d.ellipse((ex - r * f, 1500 - r * f * 0.6, ex + r * f, 1500 + r * f * 0.6), fill=(255, 30, 24, a))
+        dim(im, 60)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+def basement_scene(out, dur, world, sp, cwd=None):
+    """FIRST PERSON, flashlight only: the beam sweeps over boxes, a furnace, a bicycle, then catches something
+    hanging from the ceiling, tapping a knife on the floor and staring back."""
+    world.shake = 6.0
+    world.push = 0.15
+    cw, chh = W // 2, H // 2
+    taps = [dur * (0.68 + 0.07 * k) for k in range(5)]
+    taps = [x for x in taps if x < dur - 0.1]
+
+    def room(t, u):
+        r = Image.new("RGB", (W, H), (20, 18, 20))
+        d = ImageDraw.Draw(r, "RGBA")
+        d.rectangle((0, 0, W, 560), fill=(30, 28, 32))
+        d.rectangle((0, 1500, W, H), fill=(46, 34, 26))
+        for x in range(0, W, 120):
+            d.line((x, 1500, x - 160, H), fill=(22, 16, 12), width=5)
+        d.rectangle((60, 1040, 260, 1500), fill=(120, 96, 62), outline=(70, 54, 34), width=6)    # boxes
+        d.rectangle((100, 880, 300, 1040), fill=(138, 112, 72), outline=(70, 54, 34), width=6)
+        d.rectangle((420, 760, 640, 1500), fill=(70, 74, 82), outline=(30, 32, 38), width=8)      # the furnace
+        d.ellipse((470, 940, 590, 1060), fill=(20, 20, 24))
+        d.rectangle((780, 1060, 1040, 1500), fill=(96, 80, 60), outline=(60, 48, 34), width=6)    # shelves
+        for sy in (1160, 1260, 1360):
+            d.line((780, sy, 1040, sy), fill=(50, 40, 30), width=8)
+        d.ellipse((330, 1330, 470, 1500), outline=(150, 150, 160), width=8)                         # a bicycle wheel
+        d.ellipse((560, 1330, 700, 1500), outline=(150, 150, 160), width=8)
+        d.line((400, 1420, 480, 1330, 630, 1420), fill=(150, 150, 160), width=7)
+        if u > 0.6:
+            draw_creature(d, sp, 700, 1500, t * 1.2, 1, 0.86, {"t": t, "moving": False, "roar": 0.3 + 0.5 * math.sin(t * 2) ** 2})
+        return r
+    base = None
+
+    def paint(im, d, t, u, cam):
+        nonlocal base
+        r = room(t, u)
+        ang = 0.0
+        if u < 0.62:
+            ang = -0.6 + 1.3 * (u / 0.62) + 0.05 * math.sin(t * 5)
+        else:
+            ang = 0.14 + 0.012 * math.sin(t * 9)
+        ox, oy = 540, 1900
+        tx = ox + math.tan(ang) * 1300
+        mask = Image.new("L", (cw, chh), 0)
+        md = ImageDraw.Draw(mask)
+        md.polygon([(ox / 2 - 20, oy / 2), (ox / 2 + 20, oy / 2), ((tx + 420) / 2, 520 / 2), ((tx - 420) / 2, 520 / 2)], fill=255)
+        md.ellipse((tx / 2 - 190, 1000 / 2 - 260, tx / 2 + 190, 1000 / 2 + 260), fill=255)
+        mask = mask.filter(ImageFilter.GaussianBlur(26)).resize((W, H), Image.BILINEAR)
+        flick = 0.55 if (u > 0.86 and int(t * 22) % 5 == 0) else 1.0
+        mask = mask.point(lambda v: int(v * flick))
+        out_im = Image.composite(r, Image.new("RGB", (W, H), (2, 2, 4)), mask)
+        for tt in taps:
+            if 0 <= t - tt < 0.18:
+                out_im = red_wash(out_im, 0.12)
+        return out_im
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": taps}
+
+
+def hallway_scene(out, dur, world, sp, cwd=None):
+    """A long corridor, in one-point perspective. The ceiling lights go out one by one, and each time the dark
+    comes back the figure at the far end is a little nearer."""
+    vx, vy = 540, 880
+    nl = 6
+    off = [0.14 + 0.13 * k for k in range(nl)]  # the lights, nearest first, go out one at a time
+    hits = [dur * o for o in off[:4]]
+    world.push, world.shake = 0.1, 2.0
+
+    def paint(im, d, t, u, cam):
+        d.rectangle((0, 0, W, H), fill=(8, 8, 12, 255))
+        d.polygon([(0, 0), (vx - 90, vy - 70), (vx - 90, vy + 90), (0, H)], fill=(34, 30, 36, 255))   # left wall
+        d.polygon([(W, 0), (vx + 90, vy - 70), (vx + 90, vy + 90), (W, H)], fill=(30, 28, 34, 255))   # right wall
+        d.polygon([(0, H), (vx - 90, vy + 90), (vx + 90, vy + 90), (W, H)], fill=(48, 36, 30, 255))   # floor
+        d.polygon([(0, 0), (vx - 90, vy - 70), (vx + 90, vy - 70), (W, 0)], fill=(20, 20, 26, 255))   # ceiling
+        for k in range(1, 6):  # doors on both walls
+            z = 1.0 / k
+            for side in (-1, 1):
+                x = vx + side * (90 + 360 * z)
+                d.polygon([(x, vy - 60 - 420 * z), (x + side * -60 * z, vy - 60 - 380 * z), (x + side * -60 * z, vy + 70 + 300 * z * 0.2 + 60 * z), (x, vy + 90 + 320 * z)],
+                          fill=(60, 40, 28, 255), outline=(12, 8, 6, 255))
+        lit_far = [i for i in range(nl) if u < off[i]]
+        for i in range(nl):  # the lights on the ceiling, near to far
+            z = 1.0 / (i + 1.2)
+            y = vy - 70 - 380 * z * 0.5
+            on = u < off[i] and not (u > off[i] - 0.05 and int(t * 18) % 2 == 0)
+            if on:
+                for r, a in ((260 * z + 40, 26), (150 * z + 24, 50)):
+                    d.ellipse((vx - r, y - r * 0.5, vx + r, y + r * 0.9), fill=(255, 220, 150, a))
+                d.ellipse((vx - 70 * z - 10, y - 12 * z - 4, vx + 70 * z + 10, y + 12 * z + 4), fill=(255, 245, 210, 255))
+        dark_k = 1.0 - len(lit_far) / nl
+        dim(im, int(150 * dark_k))
+        # the figure at the far end gets nearer each time the lights die
+        stage = sum(1 for o in off if u > o)
+        if stage >= 2:
+            s = 0.06 + 0.1 * (stage - 2)
+            draw_creature(d, sp, vx, vy + 90, t * 0.9, 1, s, {"t": t, "moving": False, "roar": 0.2})
+            f = min(1.0, (u - off[1]) * 4)
+            ex = vx + 18 * s * 4
+        if u > 0.9:
+            return red_wash(im, 0.2)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+def cctv_scene(out, dur, world, sp, cwd=None):
+    """A grainy night-vision security camera in the corner of a room. The timestamp ticks. Something crosses the
+    room, stops under the camera, and looks straight up into the lens."""
+    stamp = getattr(world, "clock", "2:48")
+    hh, mm = (stamp.split(":") + ["48"])[:2]
+    world.shake = 1.5
+    rnd = random.Random(8)
+
+    def paint(im, d, t, u, cam):
+        d.rectangle((0, 0, W, H), fill=(60, 60, 56, 255))
+        d.polygon([(0, 0), (W, 0), (W - 160, 520), (160, 520)], fill=(78, 78, 72, 255))             # the back corner
+        d.rectangle((160, 520, W - 160, 1380), fill=(70, 70, 64, 255))
+        d.polygon([(0, H), (160, 1380), (W - 160, 1380), (W, H)], fill=(52, 52, 48, 255))
+        d.rectangle((220, 1000, 560, 1380), fill=(40, 40, 40, 255), outline=(20, 20, 20, 255), width=6)  # a sofa
+        d.rectangle((700, 880, 980, 1380), fill=(50, 50, 46, 255), outline=(20, 20, 20, 255), width=6)   # a cabinet
+        k = (u - 0.15) / 0.55
+        if 0 <= k <= 1:
+            x = 1150 - 700 * k
+            draw_creature(d, sp, x, 1380 + 30, t * STEP * 0.4, -1, 0.7, {"t": t, "moving": k < 1, "roar": 0.2})
+        elif k > 1:
+            draw_creature(d, sp, 450, 1410, t * 0.5, -1, 0.7, {"t": t, "moving": False, "roar": 0.2})
+        g = ImageOps.colorize(im.convert("L"), black=(0, 10, 0), white=(160, 255, 150))
+        gd = ImageDraw.Draw(g, "RGBA")
+        for _ in range(260):  # grain
+            x, y = rnd.randint(0, W), rnd.randint(0, H)
+            gd.rectangle((x, y, x + rnd.randint(2, 18), y + 2), fill=(200, 255, 200, rnd.randint(20, 60)))
+        for y in range(0, H, 8):
+            gd.line((0, y, W, y), fill=(0, 20, 0, 40), width=2)
+        if int(t * 5) % 11 == 0:  # glitch band
+            by = rnd.randint(300, 1500)
+            band = g.crop((0, by, W, by + 60)).transform((W, 60), Image.AFFINE, (1, 0, 40, 0, 1, 0))
+            g.paste(band, (0, by))
+        sec = int(13 + t)
+        gd.text((50, 60), f"CAM 02   0{hh}:{mm}:{sec:02d}", font=_font(48), fill=(190, 255, 190, 255))
+        if int(t * 2) % 2 == 0:
+            gd.ellipse((W - 150, 60, W - 110, 100), fill=(255, 60, 50, 255))
+        gd.text((W - 100, 80), "REC", font=_font(36), fill=(190, 255, 190, 255), anchor="lm")
+        if u > 0.88:  # it looks into the lens
+            f = (u - 0.88) / 0.12
+            c = Image.new("RGB", (W, H), (0, 6, 0))
+            cd = ImageDraw.Draw(c, "RGBA")
+            closeup(c, cd, sp, t, 0.4, 2.2, 2.6, roar=0.9, shake=10 * f, tt=t)
+            c = ImageOps.colorize(c.convert("L"), black=(0, 10, 0), white=(160, 255, 150))
+            g = Image.blend(g, c, min(1.0, f * 2))
+        return g
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": [dur * 0.9]}
+
+
+def jump_scene(out, dur, world, sp, cwd=None):
+    """A dark room. Two red eyes open in the black, slowly, then the face is suddenly right in the lens."""
+    cut = 0.72
+    world.shake = 0.0
+
+    def paint(im, d, t, u, cam):
+        if u < cut:
+            im.paste(Image.new("RGB", im.size, (3, 3, 6)))
+            d = ImageDraw.Draw(im, "RGBA")
+            k = min(1.0, u / 0.35)
+            if int(t * 3) % 7 != 6:
+                for ex in (470, 610):
+                    for r, a in ((40, 40), (24, 100), (12, 255)):
+                        d.ellipse((ex - r * k, 900 - r * k * 0.6, ex + r * k, 900 + r * k * 0.6), fill=(255, 30, 24, a))
+            return
+        k = (u - cut) / (1 - cut)
+        closeup(im, d, sp, t - dur * cut, dur * (1 - cut), 3.4, 4.0, roar=1.0, shake=16, tt=t)
+        if k < 0.12:
+            return Image.blend(im, Image.new("RGB", im.size, (255, 255, 255)), 0.7 * (1 - k / 0.12))
+        return red_wash(im, 0.3)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": [dur * cut]}
+
+
+# ---------------------------------------------------------------- two more monsters: the smoke djinn and the hollow man
+def draw_djinn(pen, sp, ph, st):
+    """A genie gone wrong: a body of black smoke with no legs, huge arms, curled horns and a burning, grinning face."""
+    col = sp["color"]
+    dk = dark(col, 0.55)
+    t = st.get("t", 0.0)
+    roar = max(st.get("roar", 0.0), 0.5)
+    bob = -150 + 24 * math.sin(t * 1.8 + ph * 0.1)
+    for i in range(9):  # the tail of smoke, curling away below
+        k = i / 8
+        x = 40 * math.sin(t * 2.0 + i * 0.9) * (0.4 + k) - 50 * k
+        y = -280 + bob + 330 * k
+        r = 120 - 90 * k
+        pen.ell(x, y, r, r * 0.8, mix(col, (30, 30, 40), k * 0.5), rim=False)
+    pen.ell(0, -440 + bob, 130, 150, col)                                           # chest
+    for sgn in (1, -1):  # arms hanging low with long hands
+        sway = 20 * math.sin(t * 2.3 + sgn)
+        pen.line([(sgn * 110, -520 + bob), (sgn * 190 + 20, -380 + bob + sway), (sgn * 150 + 60, -230 + bob + sway * 1.5)], 38, dk)
+        for k in range(4):
+            pen.line([(sgn * 150 + 60, -230 + bob + sway * 1.5), (sgn * 150 + 60 + k * 14 - 20, -150 + bob + sway * 1.5 + 12 * k)], 8, (225, 215, 195))
+    pen.ell(10, -620 + bob, 78, 88, col)                                             # head
+    for sgn in (1, -1):  # curled horns
+        pen.line([(sgn * 50 + 10, -690 + bob), (sgn * 120 + 10, -780 + bob), (sgn * 90 + 10, -860 + bob)], 22, (50, 40, 36))
+    pen.ell(-24, -635 + bob, 20, 24, (6, 4, 10), rim=False)
+    pen.ell(50, -635 + bob, 20, 24, (6, 4, 10), rim=False)
+    eye(pen, -24, -635 + bob, 10, sp, st)
+    eye(pen, 50, -635 + bob, 10, sp, st)
+    mouth(pen, 14, -575 + bob, 80, roar, sp)
+
+
+def draw_hollow(pen, sp, ph, st):
+    """A far too tall, thin, pale man with arms to his knees, no face but a thin grin cut across it."""
+    col = sp["color"]
+    dk = dark(col, 0.5)
+    skin = (205, 200, 190)
+    t = st.get("t", 0.0)
+    moving = st.get("moving", True)
+    roar = max(st.get("roar", 0.0), 0.3)
+    lean = 22 * math.sin(t * 0.9)
+    for sgn, off in ((1, 0.0), (-1, math.pi)):  # long jointed legs
+        limb(pen, 10 * sgn, -400, ph + off if moving else 0, 215, 215, 20, dk, amp=0.4, lift=0.5)
+    pen.poly([(-34, -380), (46, -380), (36 + lean, -690), (-24 + lean, -690)], dk)  # long thin torso in a dark suit
+    for sgn in (1, -1):  # arms down to the knees, fingers like twigs
+        sw = 18 * math.sin(t * 1.6 + sgn + ph)
+        pen.line([(sgn * 26 + lean, -670), (sgn * 52 + sw, -500), (sgn * 40 + sw * 1.4, -300)], 12, skin)
+        for k in range(4):
+            pen.line([(sgn * 40 + sw * 1.4, -300), (sgn * 40 + sw * 1.4 + (k - 1.5) * 10, -228 + 8 * k)], 4, skin)
+    pen.ell(8 + lean, -770, 46, 74, skin)                                              # the smooth head
+    for sgn in (1, -1):  # pin-prick eyes, no face around them
+        pen.ell(8 + lean + sgn * 18, -792, 6, 6, (10, 8, 12), rim=False)
+        pen.ell(8 + lean + sgn * 18, -792, 3, 3, sp["eye"], rim=False)
+    pen.d.line([(pen.X(-30 + lean), pen.Y(-735)), (pen.X(8 + lean), pen.Y(-718 + 10 * roar)), (pen.X(46 + lean), pen.Y(-735))],
+               fill=(20, 8, 10), width=max(3, int(8 * pen.s)), joint="curve")             # the grin
+    for k in range(7):
+        x = -22 + k * 11 + lean
+        pen.d.line([(pen.X(x), pen.Y(-733 + 4 * abs(k - 3) * 0.4)), (pen.X(x), pen.Y(-722 + 4 * roar))],
+                   fill=(235, 232, 220), width=max(2, int(3 * pen.s)))
+
+
+KINDS["djinn"] = draw_djinn
+KIND_SCALE["djinn"] = 1.0
+HEAD_AT["djinn"] = (10, -620 - 150)
+PRINT_OF["djinn"] = "frost"
+KINDS["hollow"] = draw_hollow
+KIND_SCALE["hollow"] = 1.0
+HEAD_AT["hollow"] = (8, -770)
+PRINT_OF["hollow"] = "dots"
+
+
+# ---------------------------------------------------------------- more places: woods, neighbour's house, magic lamp, road, mirror
+from PIL import ImageChops
+
+
+def _mixc(a, b, k):
+    return tuple(int(a[i] + (b[i] - a[i]) * k) for i in range(3))
+
+
+def woods_scene(out, dur, world, sp, cwd=None):
+    """FIRST PERSON through a dense, dark, misty wood. Trunks crowd in from both sides, moonlight falls in thin
+    shafts, a flashlight bobs ahead, and something pale between the trees is walking toward you."""
+    world.push, world.shake = 0.14, 5.0
+    rnd = random.Random(11)
+    trees = [(rnd.random(), rnd.uniform(-1.25, 1.25), rnd.uniform(0.7, 1.4), rnd.random()) for _ in range(54)]
+    snaps = [dur * (0.18 + 0.17 * k) for k in range(5)]
+    hy = 860
+    fog = (58, 86, 86)
+
+    def paint(im, d, t, u, cam):
+        d.rectangle((0, 0, W, H), fill=(30, 46, 46, 255))
+        d.rectangle((0, 0, W, hy), fill=(46, 72, 80, 255))
+        d.rectangle((0, hy, W, H), fill=(26, 38, 30, 255))
+        for k in range(5):  # moonlight falling through the canopy
+            x = 140 + k * 200 + 30 * math.sin(t * 0.4 + k)
+            d.polygon([(x, 0), (x + 60, 0), (x + 260, hy + 300), (x + 140, hy + 300)], fill=(190, 235, 225, 34))
+        zc = 0.22 + 0.62 * u
+        items = [(((b + u * 0.5) % 1.0), "t", (lat, wd, sh)) for b, lat, wd, sh in trees] + [(zc, "c", None)]
+        items.sort(key=lambda it: it[0])
+        for z, kind, data in items:
+            gy = hy + (1700 - hy) * z ** 1.5
+            if kind == "c":
+                s = 0.07 + 1.0 * z ** 1.7
+                draw_creature(d, sp, 540 - 160 * z, gy, t * STEP * 0.3, -1, s, {"t": t, "moving": True, "roar": 0.2 + 0.4 * z})
+                continue
+            lat, wd, sh = data
+            x = 540 + lat * 900 * z ** 1.1
+            w = (22 + 90 * wd) * z ** 1.25 + 3
+            col = _mixc((4, 7, 6), fog, (1 - z) * 0.85)
+            col = _mixc(col, (28, 40, 34), sh * 0.25 * (1 - z))
+            top = max(gy - 2600 * z ** 1.5 - 40, -10)
+            d.polygon([(x - w * 0.8, top), (x + w * 0.8, top), (x + w, gy), (x - w, gy)], fill=col + (255,))
+            if z > 0.45 and sh > 0.4:  # crooked branches
+                for j in range(3):
+                    by = gy - (500 + 330 * j) * z ** 1.1
+                    d.line([(x, by), (x + (1 if lat < 0 else -1) * (170 + 40 * j) * z, by - 90 * z)], fill=col + (255,), width=max(3, int(w * 0.18)))
+            d.ellipse((x - w * 1.8, gy - 12 * z, x + w * 1.8, gy + 16 * z), fill=(160, 190, 190, int(24 * (1 - z * 0.5))))  # mist at its base
+        for k in range(3):  # drifting ground mist
+            y = hy + 80 + k * 180 + 24 * math.sin(t * 0.6 + k)
+            d.ellipse((-200 + 120 * k, y, W + 200 - 80 * k, y + 220), fill=(150, 180, 180, 22))
+        bob = 12 * math.sin(t * STEP * 0.5)
+        d.polygon([(560, H), (760, H), (620 + 120 * math.sin(t * 0.7), 1000 + bob), (480 + 120 * math.sin(t * 0.7), 1000 + bob)], fill=(255, 245, 200, 32))
+        dim(im, 36)
+        if u > 0.9:
+            return red_wash(im, 0.18 * (u - 0.9) / 0.1)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": snaps}
+
+
+def neighbour_scene(out, dur, world, sp, cwd=None):
+    """Across a hedge, the neighbour's house at night. A figure stands in a lit upstairs window and does not move.
+    The lights go out one by one and the porch light stutters."""
+    hits = [dur * f for f in (0.36, 0.56, 0.66, 0.74)]
+    world.push, world.shake = 0.2, 1.5
+    warm = (255, 208, 112)
+
+    def paint(im, d, t, u, cam):
+        d.rectangle((0, 0, W, H), fill=(9, 11, 28, 255))
+        d.ellipse((780, 160, 900, 280), fill=(225, 230, 245, 255))
+        d.ellipse((700, 80, 1000, 380), fill=(120, 140, 190, 22))
+        d.rectangle((0, 1250, W, H), fill=(12, 18, 16, 255))
+        d.rectangle((160, 640, 920, 1290), fill=(52, 38, 44, 255))                                  # the house
+        d.polygon([(110, 650), (540, 380), (970, 650)], fill=(30, 22, 30, 255))
+        d.rectangle((760, 380, 830, 560), fill=(36, 26, 34, 255))                                  # chimney
+        def win(x0, y0, on, who=False):
+            d.rectangle((x0, y0, x0 + 170, y0 + 190), fill=(18, 16, 22, 255))
+            if on:
+                d.rectangle((x0 + 8, y0 + 8, x0 + 162, y0 + 182), fill=warm + (255,))
+                for r, a in ((160, 22), (100, 40)):
+                    d.ellipse((x0 + 85 - r, y0 + 95 - r, x0 + 85 + r, y0 + 95 + r), fill=warm + (a,))
+                if who:
+                    draw_creature(d, dict(sp, color=(12, 10, 16)), x0 + 95, y0 + 182, 0.0, -1, 0.34, {"t": t, "moving": False, "roar": 0.1})
+            d.line((x0 + 85, y0, x0 + 85, y0 + 190), fill=(18, 16, 22, 255), width=8)
+            d.line((x0, y0 + 95, x0 + 170, y0 + 95), fill=(18, 16, 22, 255), width=8)
+        a_on = u < 0.62 or (u < 0.7 and int(t * 12) % 2 == 0)
+        b_on = u < 0.38
+        win(230, 720, a_on, who=False)
+        win(670, 720, b_on, who=u < 0.36)
+        win(230, 1010, u < 0.5)
+        win(670, 1010, u < 0.45)
+        d.rectangle((470, 1000, 610, 1290), fill=(26, 18, 22, 255))                                 # the door
+        if u > 0.74:  # the door is open a crack, something looking out
+            f = min(1.0, (u - 0.74) / 0.12)
+            d.rectangle((520, 1000, 560, 1290), fill=(4, 2, 6, 255))
+            for ex in (532, 548):
+                for r, a in ((26, 40), (14, 110), (7, 255)):
+                    d.ellipse((ex - r * f, 1090 - r * f * 0.6, ex + r * f, 1090 + r * f * 0.6), fill=(255, 30, 24, a))
+        porch_on = u < 0.64 or (u < 0.8 and int(t * 17) % 3 != 0)
+        if porch_on:
+            d.ellipse((520, 930, 560, 960), fill=warm + (255,))
+            for r, a in ((200, 18), (110, 34)):
+                d.ellipse((540 - r, 945 - r, 540 + r, 945 + r), fill=warm + (a,))
+        for x in range(-20, W, 66):                                                                   # the fence in front
+            d.polygon([(x, 1330), (x + 22, 1300), (x + 44, 1330), (x + 44, 1760), (x, 1760)], fill=(10, 10, 12, 255))
+        d.rectangle((0, 1470, W, 1500), fill=(10, 10, 12, 255))
+        d.rectangle((0, 1640, W, 1670), fill=(10, 10, 12, 255))
+        for k in range(7):  # the hedge
+            d.ellipse((-60 + k * 190, 1640, 160 + k * 190, 1900), fill=(8, 14, 10, 255))
+        dim(im, 40)
+        if u > 0.9:
+            return red_wash(im, 0.16)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+def lamp_scene(out, dur, world, sp, cwd=None):
+    """A tarnished brass lamp on a dark table. Gold light leaks from it, smoke pours out and thickens into something
+    that has been waiting a very long time."""
+    world.push, world.shake = 0.1, 2.0
+    rnd = random.Random(5)
+    puffs = [(rnd.uniform(-1, 1), rnd.random(), rnd.uniform(0.7, 1.3)) for _ in range(46)]
+    hits = [dur * 0.34, dur * 0.5]
+
+    def paint(im, d, t, u, cam):
+        d.rectangle((0, 0, W, H), fill=(14, 8, 8, 255))
+        d.rectangle((0, 1480, W, H), fill=(40, 24, 18, 255))
+        d.rectangle((0, 1480, W, 1500), fill=(70, 44, 30, 255))
+        pulse = 0.6 + 0.4 * math.sin(t * 3)
+        for r, a in ((620, 20), (420, 34), (240, 60)):
+            d.ellipse((540 - r, 1440 - r, 540 + r, 1440 + r), fill=(255, 190, 70, int(a * (0.5 + u) * pulse)))
+        d.ellipse((380, 1380, 700, 1490), fill=(168, 118, 40, 255), outline=(90, 58, 20, 255), width=6)    # the lamp
+        d.polygon([(660, 1400), (780, 1340), (800, 1360), (690, 1450)], fill=(168, 118, 40, 255), outline=(90, 58, 20, 255))
+        d.arc((330, 1380, 440, 1470), 90, 270, fill=(168, 118, 40, 255), width=14)
+        d.ellipse((430, 1390, 620, 1420), fill=(230, 180, 90, 130))
+        for lx, ph, sz in puffs:  # the smoke, rising and widening
+            k = ((t * 0.35 + ph) % 1.0)
+            x = 540 + lx * 60 * (0.3 + k * 3) + 70 * math.sin(t + ph * 9)
+            y = 1370 - k * 1180
+            r = (26 + 100 * k) * sz * min(1.0, 0.4 + u * 1.3)
+            d.ellipse((x - r, y - r, x + r, y + r), fill=(60, 40, 54, int(60 * (1 - k) + 8)))
+        k = (u - 0.4) / 0.5
+        if k > 0:
+            layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+            ld = ImageDraw.Draw(layer)
+            draw_creature(ld, sp, 540, 1560, t * 0.9, 1, 1.2, {"t": t, "moving": False, "roar": 0.3 + 0.6 * k})
+            a = layer.split()[3].point(lambda v: int(v * min(1.0, k)))
+            layer.putalpha(a)
+            im.paste(layer, (0, 0), layer)
+        dim(im, 30)
+        if u > 0.88:
+            return red_wash(im, 0.25 * (u - 0.88) / 0.12)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+def road_scene(out, dur, world, sp, cwd=None):
+    """FIRST PERSON through a windscreen on an empty night road. Headlights cut the fog. Every time the lights flicker,
+    the figure standing in the road is nearer, and in the rear-view mirror something sits in the back seat."""
+    world.push, world.shake = 0.1, 3.0
+    hy = 820
+    stages = (0.24, 0.5, 0.74)
+    rnd = random.Random(4)
+    pines = [(rnd.choice((-1, 1)), rnd.random(), rnd.uniform(0.8, 1.3)) for _ in range(26)]
+    hits = [dur * s for s in stages]
+
+    def paint(im, d, t, u, cam):
+        d.rectangle((0, 0, W, H), fill=(8, 10, 16, 255))
+        d.rectangle((0, 0, W, hy), fill=(16, 22, 34, 255))
+        d.rectangle((0, hy, W, H), fill=(10, 14, 12, 255))
+        for side, b, sz in sorted(pines, key=lambda p: (p[1] + u * 1.6) % 1.0):
+            z = (b + u * 1.6) % 1.0
+            x = 540 + side * (140 + 900 * z ** 1.3)
+            gy = hy + 30 + (1300 - hy) * z ** 1.5
+            h, w = 160 + 1100 * z ** 1.5 * sz, 40 + 260 * z ** 1.3
+            c = _mixc((20, 30, 36), (4, 6, 8), z)
+            d.polygon([(x - w, gy), (x + w, gy), (x, gy - h)], fill=c + (255,))
+        d.polygon([(500, hy), (580, hy), (1100, H - 120), (-20, H - 120)], fill=(34, 34, 40, 255))  # the road
+        for k in range(8):  # the dashed centre line, rushing toward you
+            z = ((k / 8) + u * 3.0) % 1.0
+            y = hy + (H - 120 - hy) * z ** 1.7
+            wd = 3 + 22 * z ** 1.5
+            d.polygon([(540 - wd, y), (540 + wd, y), (540 + wd * 1.4, y + 10 + 90 * z ** 1.7), (540 - wd * 1.4, y + 10 + 90 * z ** 1.7)], fill=(220, 215, 160, 255))
+        stage = sum(1 for s in stages if u > s)
+        flick = any(0 < u - s < 0.035 for s in stages) and int(t * 20) % 2 == 0
+        if stage >= 1 and not flick:
+            zc = (0.18, 0.42, 0.7, 0.96)[stage - 1 + 0] if stage < 3 else 0.9
+            zc = (0.2, 0.42, 0.7)[stage - 1]
+            gy = hy + 30 + (H - 160 - hy) * zc ** 1.5
+            draw_creature(d, sp, 540, gy, t * 0.7, -1, 0.1 + 0.95 * zc ** 1.6, {"t": t, "moving": False, "roar": 0.2})
+        if not flick:
+            d.polygon([(-100, H), (1180, H), (620, hy + 20), (460, hy + 20)], fill=(255, 245, 205, 34))   # headlights
+        for r, a in ((420, 14), (260, 22)):
+            d.ellipse((540 - r, hy - 30 - r * 0.2, 540 + r, hy + 60 + r * 0.2), fill=(170, 190, 200, a))   # fog bank
+        d.rectangle((0, H - 220, W, H), fill=(6, 6, 8, 255))                                          # the dashboard
+        d.arc((120, H - 360, 960, H + 600), 190, 350, fill=(18, 18, 22, 255), width=60)                # the steering wheel
+        d.rounded_rectangle((300, 90, 780, 270), radius=40, fill=(8, 10, 14, 255), outline=(40, 44, 52, 255), width=12)  # the mirror
+        d.rectangle((312, 102, 768, 258), fill=(18, 22, 30, 255))
+        if u > 0.55:
+            f = min(1.0, (u - 0.55) / 0.3)
+            for ex in (500, 580):
+                for r, a in ((30, 40), (18, 120), (8, 255)):
+                    d.ellipse((ex - r * f, 180 - r * f * 0.6, ex + r * f, 180 + r * f * 0.6), fill=(255, 30, 24, a))
+        dim(im, 50)
+        if u > 0.9:
+            return red_wash(im, 0.2 * (u - 0.9) / 0.1)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+def mirror_scene(out, dur, world, sp, cwd=None):
+    """A tall mirror in a dim hall. The person's reflection is perfectly normal, but something is standing behind it,
+    a little nearer each time they blink, and the glass begins to crack."""
+    world.push, world.shake = 0.14, 2.0
+    mask = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(mask).ellipse((250, 430, 830, 1490), fill=255)
+    hits = [dur * 0.82, dur * 0.88]
+
+    def paint(im, d, t, u, cam):
+        d.rectangle((0, 0, W, H), fill=(18, 24, 24, 255))
+        for x in range(0, W, 120):
+            d.line((x, 0, x, H), fill=(22, 30, 30, 255), width=4)
+        d.rectangle((0, 1560, W, H), fill=(26, 18, 14, 255))
+        layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        ld = ImageDraw.Draw(layer)
+        ld.rectangle((0, 0, W, H), fill=(60, 78, 84, 255))                      # the reflected room
+        ld.rectangle((0, 1300, W, H), fill=(30, 22, 18, 255))
+        ld.polygon([(0, 0), (260, 0), (330, 1300), (0, 1300)], fill=(40, 52, 56, 255))
+        k = min(1.0, u / 0.85)
+        draw_creature(ld, sp, 650, 1330, t * 0.7, -1, 0.16 + 0.8 * k * k, {"t": t, "moving": False, "roar": 0.1 + 0.6 * k})
+        draw_human(ld, 430, 1400, 0.0, 1, 0.95, lamp=None, cast=False)
+        for r, a in ((520, 30),):
+            ld.ellipse((540 - r, 960 - r, 540 + r, 960 + r), fill=(200, 230, 235, a))
+        layer.putalpha(ImageChops.multiply(layer.split()[3], mask))
+        im.paste(layer, (0, 0), layer)
+        d.ellipse((250, 430, 830, 1490), outline=(150, 118, 52, 255), width=34)    # the frame
+        d.ellipse((220, 400, 860, 1520), outline=(80, 60, 26, 255), width=14)
+        for k2 in range(5):  # fog and drips on the glass
+            x = 330 + k2 * 100
+            d.line((x, 520, x + 6, 520 + 120 + 90 * k2 % 260), fill=(210, 230, 235, 40), width=6)
+        if u > 0.8:  # the glass cracks
+            f = min(1.0, (u - 0.8) / 0.12)
+            for j in range(9):
+                a = j * 0.7 + 0.3
+                pts = [(540, 940)]
+                for s in range(1, 5):
+                    pts.append((540 + math.cos(a + s * 0.15) * 90 * s * f, 940 + math.sin(a - s * 0.1) * 130 * s * f))
+                d.line(pts, fill=(235, 240, 245, 230), width=4)
+        dim(im, 55)
+        if u > 0.9:
+            return red_wash(im, 0.2)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
