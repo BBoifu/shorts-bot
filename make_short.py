@@ -737,6 +737,12 @@ def synth(kind, dest):
               "anoisesrc=d=1.8:c=pink:a=0.25,bandpass=f=1800:w=700[n];[a][n]amix=inputs=2:normalize=0,"
               "tremolo=f=6:d=0.5,aecho=0.8:0.8:90:0.4,afade=in:d=0.25,afade=out:st=1.1:d=0.7,"
               "alimiter=limit=0.9:level=0")
+    elif kind == "tap":  # a knife-tip knocking on a wooden floor
+        fc = (f"{L}='0.9*sin(2*PI*190*t)*exp(-38*t)+0.45*sin(2*PI*430*t)*exp(-70*t)+0.25*sin(2*PI*900*t)*exp(-110*t)':d=0.4:s=44100[a];"
+              "[a]lowpass=f=2400,aecho=0.7:0.6:45:0.3,alimiter=limit=0.9:level=0")
+    elif kind == "creak":  # an old stair taking weight
+        fc = (f"{L}='0.35*sin(2*PI*(230-90*t)*t)+0.22*sin(2*PI*(470-170*t)*t)+0.12*sin(2*PI*(910-300*t)*t)':d=0.7:s=44100[a];"
+              "[a]tremolo=f=34:d=0.85,lowpass=f=1800,afade=in:d=0.05,afade=out:st=0.4:d=0.3,alimiter=limit=0.9:level=0")
     elif kind == "ambient":
         fc = ("anoisesrc=d=12:c=brown:a=0.6,lowpass=f=700,tremolo=f=0.25:d=0.6,"
               "afade=in:d=1,afade=out:st=11:d=1")
@@ -768,7 +774,7 @@ def make_scream(call_a, call_b, dest):
 def prepare_sounds(a, b, ambient_query):
     """Returns a dict of sound file names inside WORK."""
     s = {}
-    for kind in ("whoosh", "boom", "riser", "growl", "eerie", "victim", "distant", "heart"):
+    for kind in ("whoosh", "boom", "riser", "growl", "eerie", "victim", "distant", "heart", "tap", "creak"):
         synth(kind, f"{kind}.wav")
         s[kind] = f"{kind}.wav"
     queries = lambda x: [f"{x} sound", f"{x} call", f"{x} roar"]
@@ -1369,9 +1375,41 @@ ENDINGS = ("a tragic ending: the victim is simply never seen again",
            "an unresolved ending: the sound at the door is still there tonight",
            "a warning ending: the rule that would have saved them")
 PALETTE_NAMES = ("ash", "bone", "rust", "green", "blue", "violet", "charcoal", "yellow", "crimson", "teal")
+# Modern, first-person horror that happens indoors. Each one: (premise, the scenes that tend to fit it)
+MODERN_TYPES = {
+    "basement": ("Since a break-in two weeks ago that killed the narrator's security guard and his pet dog, a slow tapping starts under the "
+                 "floor at the same minute every night. Curiosity wins, the narrator goes down and sees the creature, which holds the very "
+                 "weapon the investigators found at the murder scene.", "bedroom, stairs, basement, jump"),
+    "camera": ("The narrator's home camera sends a motion alert at the same minute every night. The footage shows something standing "
+               "in the empty living room, a little nearer to the lens each night.", "bedroom, cctv, hallway, jump"),
+    "nightshift": ("The narrator works a lonely night shift in a building that should be empty (a warehouse, a hospital wing, a car park). "
+                   "The security camera shows something walking the aisles that is not on any staff list.", "cctv, hallway, door, jump"),
+    "monitor": ("A baby monitor crackles at the same minute every night and a voice that is not the parent's is whispering to the child. "
+                "The narrator follows the sound.", "bedroom, hallway, door, jump"),
+    "corridor": ("An apartment or hotel corridor where the lights die one by one, and each time they come back something at the "
+                 "far end is nearer. The narrator has to walk it to reach their own door.", "hallway, door, window, jump"),
+    "ceiling": ("The narrator hears scratching from the attic or ceiling at the same minute every night, and one night looks up.",
+                "bedroom, hallway, stairs, jump"),
+    "knock": ("Someone knocks three times on the narrator's front door at the same minute every night. The peephole shows nobody. "
+              "Tonight the knocks come from the inside of the house.", "door, window, curtain, hallway, jump"),
+    "woods": ("Lost in a dense, dark wood at night (a camping trip, a shortcut, a search for someone). Something pale keeps pace between "
+              "the trees, and it knows the narrator's name, or sounds exactly like a friend calling for help.", "woods, hallway, jump"),
+    "nextdoor": ("The new neighbour next door never leaves, never turns lights on, and yet someone stands at their window at the same minute "
+                 "every night. The narrator finally looks closer, or goes over.", "neighbour, bedroom, door, jump"),
+    "lamp": ("The narrator buys an old brass lamp at a flea market or an estate sale. It grants wishes, and every wish takes something "
+             "back, until the last wish and what comes out of the smoke.", "lamp, bedroom, mirror, jump"),
+    "road": ("A late drive home on an empty road. A figure stands in the headlights, and each time the road bends it is closer, "
+             "although the car never stops.", "road, woods, mirror, jump"),
+    "mirror": ("An antique mirror in the house shows the room a little wrong every night: one more thing in the reflection that "
+               "is not in the room.", "mirror, bedroom, hallway, jump"),
+}
+MODERN_BODIES = ("crawler", "stalker", "wraith", "owlman", "beast", "arachnid", "hollow")
 BODY_HINT = ("beast = a four-legged hunting predator (dog, wolf, bear or bull-like); stalker = a tall thin antlered forest spirit; "
              "arachnid = a huge spider-like weaver or trapper; serpent = a giant snake or river creature; "
-             "wraith = a floating ghost, banshee or cloaked spirit; owlman = a winged night bird or bat-thing")
+             "wraith = a floating ghost, banshee or cloaked spirit; owlman = a winged night bird or bat-thing; "
+             "crawler = an upside-down man-dog thing that hangs from ceilings and crawls on walls; "
+             "hollow = a far too tall, faceless pale man in a dark suit with a thin grin; "
+             "djinn = a smoke genie with horns and a burning grin (only for lamp stories)")
 
 
 # How the monster comes into the world. The key is also the kind of sign drawn in the sky.
@@ -1409,12 +1447,25 @@ def folk_variety(history):
     past = [p for p in (_parse_folk_key(k) for k in history) if p]
     def recent(field, n):
         return [p[field] for p in past[-n:] if p[field]]
-    types = [k for k in STORY_TYPES if k not in recent("type", len(STORY_TYPES) // 2 + 2)] or list(STORY_TYPES)
-    bodies = [b for b in ("beast", "stalker", "arachnid", "serpent", "wraith", "owlman") if b not in recent("body", 3)] or ["beast"]
+    # modern, indoor first-person stories take turns with the old legends (never three of the same kind in a row)
+    kinds = ["modern" if p["type"] in MODERN_TYPES else "legend" for p in past[-2:]]
+    if len(kinds) == 2 and kinds[0] == kinds[1]:
+        fmt = "legend" if kinds[0] == "modern" else "modern"
+    else:
+        fmt = "modern" if random.random() < 0.6 else "legend"
+    pool = MODERN_TYPES if fmt == "modern" else STORY_TYPES
+    types = [k for k in pool if k not in recent("type", len(pool) // 2 + 1)] or list(pool)
+    allowed = MODERN_BODIES if fmt == "modern" else ("beast", "stalker", "arachnid", "serpent", "wraith", "owlman")
+    bodies = [b for b in allowed if b not in recent("body", 3)] or [allowed[0]]
     palettes = [c for c in PALETTE_NAMES if c not in recent("palette", 4)] or list(PALETTE_NAMES)
     regions = [r for r in FOLK_REGIONS if r not in recent("region", 6)] or FOLK_REGIONS
     origins = [k for k in ORIGINS if k not in recent("origin", 6)] or list(ORIGINS)
-    return {"origin": random.choice(origins), "type": random.choice(types), "hook": random.choice(HOOKS), "ending": random.choice(ENDINGS),
+    stype = random.choice(types)
+    if stype == "lamp":
+        bodies = ["djinn"]
+    elif "djinn" in bodies:
+        bodies = [b for b in bodies if b != "djinn"] or ["hollow"]
+    return {"format": fmt, "origin": random.choice(origins), "type": stype, "hook": random.choice(HOOKS), "ending": random.choice(ENDINGS),
             "bodies": bodies, "palettes": palettes, "region": random.choice(regions),
             "legends": [p["legend"] for p in past if p["legend"]]}
 
@@ -1423,6 +1474,9 @@ def ask_folklore(history):
     var = folk_variety(history)
     region = var["region"]
     used = var["legends"]
+    modern = var["format"] == "modern"
+    if modern:
+        return ask_modern(var)
     plot, scene_hint = STORY_TYPES[var["type"]]
     origin_text, origin_roles = ORIGINS[var["origin"]]
     prompt = f"""You write narration for 40-second YouTube Shorts that retell DARK FOLKLORE: old legends about
@@ -1529,13 +1583,128 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
     raise RuntimeError(f"Gemini failed 3 times: {last}")
 
 
+def ask_modern(var):
+    used = var["legends"]
+    plot, scene_hint = MODERN_TYPES[var["type"]]
+    times = ["2:48", "3:07", "3:33", "1:14", "4:04", "2:19", "3:51", "12:37"]
+    time_hint = random.choice(times)
+    prompt = f"""You write narration for 40-second YouTube Shorts: original, modern, FIRST-PERSON horror stories told by someone
+who lived through it, set INDOORS in a normal present-day home or building. They are fiction.
+
+Story shape: {plot}
+Use the time {time_hint} as the exact minute when it happens (you may pick another time if it fits better).
+Do not reuse these names or ideas: {used or "none yet"}.
+Ending: {var["ending"]}.
+
+Make it concrete and specific, not generic: a believable narrator (age, job), real small details (what was said by the
+police, the day it started, the sound, an object that does not belong), and one detail that turns cold in the last line.
+
+Return ONLY valid JSON, no markdown, in exactly this shape:
+{{
+  "legend_name": "what the thing is called, 1 to 3 words, for example The Hanging Man",
+  "region": "short place and time, for example A house in Ohio, 2:48 AM",
+  "time": "the minute it happens, like 2:48",
+  "animal": "ONE word from this list that best matches the creature: {", ".join(FOLK_ANIMALS)}",
+  "title": "catchy title under 70 characters, no hashtags",
+  "narrator": {{"gender": "male or female", "persona": "the narrator, for example a night-shift nurse telling it a year later"}},
+  "hero": "traveller",
+  "people": "alone",
+  "monster": {{"body": "ONE of: {", ".join(var["bodies"])}", "palette": "ONE of: {", ".join(var["palettes"])}",
+              "eyes": "one of: red, gold, green, white, violet, orange, blue", "size": "small, medium or huge",
+              "horn": "none", "spine": "bone, long or none", "eye_count": "a number from 2 to 6"}},
+  "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "delivery": "one voice mood from the list below"}}]
+}}
+
+Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken English, first person "I", no emojis):
+- Sentence 1: a gripping hook. {var["hook"]}
+- Horror is welcome: dread, noises, something wrong. Show harm only through implication (a police detail, a stain, a silence).
+  Never describe injuries in explicit detail, and never name real people.
+- Every sentence gets a "beat": the ONE scene that best shows it. Pick from: "bedroom" (lying awake in bed, the red clock
+  showing the time, a tapping from below), "stairs" (creeping down creaking stairs with a flashlight), "basement" (first
+  person, flashlight sweeping a dark basement until it catches the creature), "hallway" (a long corridor where the lights
+  die one by one and a figure comes nearer), "cctv" (night-vision camera footage with a timestamp), "door" (something
+  knocks or pounds at a door), "window" (something watches at a window), "curtain" (seen from behind half-closed
+  curtains), "woods" (first person through a dense, misty, dark wood with trunks crowding in and something pale walking
+  between them), "neighbour" (a night street, the neighbour's house, a figure at the lit window), "lamp" (a glowing old
+  brass lamp on a table, smoke rising and forming the creature), "road" (driving at night, a figure in the headlights
+  nearer every time), "mirror" (an oval antique mirror in a dark room that shows something wrong, then cracks),
+  "jump" (a dark room, two eyes open, then the face is suddenly in the lens). Use at least 4 different scene
+  words and never the same one twice in a row. Scenes that tend to fit this story: {scene_hint}.
+  The LAST sentence should be "jump". The first sentence should open in the story's main place (for example "woods", "road", "neighbour", "lamp",
+  "mirror", "bedroom", "cctv" or "door"), whichever fits.
+- Every sentence also gets a "delivery": calm, hushed, whisper, urgent, trembling, shout, low, sorrow, awe or dread.
+- The second to last sentence builds to the moment of seeing it.
+- Last sentence: a question for viewers that fits THIS story (for example "Would you have gone down there?").
+- "monster": design the creature so it matches the story and the place. Body guide: {BODY_HINT}. Choose only from the
+  allowed bodies and colours listed above. Do NOT make it a man-dog unless the story truly calls for it.
+- Keep the narrator specific and varied: not always a homeowner. It may be a camper, a student, a driver, a nurse, a
+  collector, a new tenant. The story is allowed to take place outdoors or in another person's house, as the story shape says.
+"""
+    url = f"{API_BASE}/models/{GEMINI_MODEL}:generateContent"
+    body = {"contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 1.0, "responseMimeType": "application/json"}}
+    last = None
+    for attempt in range(3):
+        try:
+            r = requests.post(url, params={"key": GEMINI_API_KEY}, json=body, timeout=90)
+            r.raise_for_status()
+            text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+            text = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.M).strip()
+            data = json.loads(text)
+            sents = [x for x in data["sentences"] if isinstance(x, dict) and str(x.get("text", "")).strip()]
+            assert data["title"] and data["legend_name"] and len(sents) >= 5
+            for x in sents:
+                x["text"] = x["text"].strip()
+            data["sentences"] = sents[:9]
+            if data.get("animal") not in FOLK_ANIMALS:
+                data["animal"] = "wolf"
+            data["region"] = str(data.get("region") or "A house at night").strip()
+            tm = str(data.get("time") or "").strip()
+            data["time"] = tm if re.fullmatch(r"\d{1,2}:\d{2}", tm) else time_hint
+            m = data.get("monster") if isinstance(data.get("monster"), dict) else {}
+            if m.get("body") not in var["bodies"]:
+                m["body"] = random.choice(var["bodies"])
+            if m.get("palette") not in var["palettes"]:
+                m["palette"] = random.choice(var["palettes"])
+            if m.get("eyes") not in ("red", "gold", "green", "white", "violet", "orange", "blue"):
+                m["eyes"] = random.choice(["red", "gold", "green", "white", "violet", "orange"])
+            m["horn"] = None
+            m["size"] = m.get("size") if m.get("size") in ("small", "medium", "huge") else "medium"
+            data["monster"] = m
+            data["story_type"] = var["type"]
+            data["format"] = "modern"
+            data["origin"] = ""
+            data["hero"], data["people"] = "traveller", "alone"
+            if not isinstance(data.get("narrator"), dict):
+                data["narrator"] = {}
+            return data
+        except Exception as e:
+            last = e
+            log(f"Gemini modern story attempt {attempt + 1} failed: {e}")
+    raise RuntimeError(f"Gemini failed 3 times: {last}")
+
+
 ATTACK_WORDS = ("attack", "lunge", "pounc", "tore", "torn", "bit ", "bite", "blood", "killed", "dragged", "devour",
                 "scream", "slash", "mauled", "ripped", "snatched", "never seen again", "claws")
 
 
-SCENE_FUNCS = ("footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
+SCENE_FUNCS = ("bedroom", "stairs", "basement", "hallway", "cctv", "jump", "hook", "footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
                "omen", "pov", "mpov", "curtain", "shoulder", "loom")
 CAMERA_SCENES = ("pov", "mpov", "curtain", "shoulder", "loom")
+MODERN_SCENES = ("bedroom", "stairs", "basement", "hallway", "cctv", "door", "window", "curtain", "jump",
+                 "woods", "neighbour", "lamp", "road", "mirror")
+MODERN_WORDS = (("stairs", ("stairs", "steps down", "went down", "creak")), ("basement", ("basement", "cellar", "flashlight")),
+                ("cctv", ("camera", "footage", "screen", "monitor", "recording")), ("hallway", ("hall", "corridor", "lights", "floor")),
+                ("door", ("door", "knock", "peephole")), ("window", ("window", "glass")), ("curtain", ("curtain",)),
+                ("woods", ("wood", "forest", "trees", "trail", "campsite")), ("neighbour", ("neighbor", "neighbour", "next door")),
+                ("lamp", ("lamp", "wish", "genie", "smoke")), ("road", ("drive", "driving", "headlights", "highway", "car ")),
+                ("mirror", ("mirror", "reflection")),
+                ("bedroom", ("bed", "clock", "awake", "sleep", "night", "tapping")))
+MODERN_FILL = ("bedroom", "hallway", "cctv", "door", "stairs", "basement", "window", "curtain")
+# the places a story may use are limited to the ones that fit its type (the fill scenes are only used to repair repeats)
+MODERN_PLACE_SCENES = {"woods": ("woods", "road"), "nextdoor": ("neighbour", "bedroom", "window", "door"),
+                       "lamp": ("lamp", "bedroom", "mirror", "hallway"), "road": ("road", "woods", "mirror"),
+                       "mirror": ("mirror", "bedroom", "hallway", "door")}
 SCENES = ("walk", "footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
           "stalk", "attack", "aftermath", "omen", "pov", "mpov", "curtain", "shoulder", "loom")
 SCENE_WORDS = (("footprints", ("footstep", "footprint", "steps behind", "tracks")),
@@ -1594,7 +1763,46 @@ def assign_settings(sentences, beats):
     return out
 
 
-def assign_beats(sentences):
+def assign_modern_beats(sentences, stype=None):
+    n = len(sentences)
+    beats = []
+    for i, s in enumerate(sentences):
+        b = s.get("beat")
+        if b not in MODERN_SCENES:
+            low = s["text"].lower()
+            b = next((name for name, words in MODERN_WORDS if any(w in low for w in words)), MODERN_FILL[i % len(MODERN_FILL)])
+        beats.append(b)
+    beats[-1] = "jump"
+    place = MODERN_PLACE_SCENES.get(stype or "")
+    fill = tuple(place) if place else MODERN_FILL
+    special = ("woods", "neighbour", "lamp", "road", "mirror")
+    for i, b in enumerate(beats):  # the special places only appear in stories built around them
+        if b in special and (not place or b not in place):
+            beats[i] = fill[i % len(fill)]
+    if place and place[0] not in beats:
+        beats[0] = place[0]
+    for i in range(n - 1):  # a jump scare is only for the end
+        if beats[i] == "jump":
+            beats[i] = "hallway"
+    for _ in range(3):  # never the same scene twice in a row, and no scene more than twice
+        for i in range(1, n - 1):
+            if beats[i - 1] == beats[i] and (beats[i] in ("stairs", "basement") or (place and beats[i] == place[0])):
+                continue  # the descent and the reveal can run over two lines
+            if beats[i] == beats[i - 1] or beats.count(beats[i]) > 3:
+                opts = [c for c in fill if c not in (beats[i - 1], beats[i + 1])]
+                if opts:
+                    beats[i] = next((c for c in opts if beats.count(c) < 2), opts[0])
+    if beats[-2] == "jump" or beats[-1] != "jump":
+        beats[-1] = "jump"
+    if n >= 6 and "cctv" in beats and beats.count("cctv") > 1:
+        j = [k for k, b in enumerate(beats) if b == "cctv"][-1]
+        beats[j] = "hallway" if beats[j - 1] != "hallway" else "door"
+    return beats
+
+
+def assign_beats(sentences, modern=False, stype=None):
+    if modern:
+        return assign_modern_beats(sentences, stype)
     n = len(sentences)
     beats = []
     for i, s in enumerate(sentences):
@@ -1827,6 +2035,69 @@ def folk_sound_events(durs, beats, impacts, sounds, hits=None, quiet=None, origi
             ev.append({"file": sounds["victim"], "at": max(hit - 0.45, at), "vol": 0.95, "max": 0.6})  # the victim screams, cut off at impact
             ev.append({"file": sounds["scream"], "at": hit, "vol": 0.7, "max": 1.4})
             ev.append({"file": sounds["growl"], "at": hit + 0.4, "vol": 0.6})
+        elif beats[i] == "bedroom":
+            for h in hits.get(i, [])[:10]:
+                ev.append({"file": sounds["tap"], "at": at + h, "vol": 0.85})
+            ev.append({"file": sounds["riser"], "at": at + d * 0.55, "vol": 0.45, "max": d * 0.45})
+        elif beats[i] == "stairs":
+            for h in hits.get(i, [])[:10]:
+                ev.append({"file": sounds["creak"], "at": at + h, "vol": 0.8})
+            ev.append({"file": sounds["heart"], "at": at + d * 0.7, "vol": 0.9})
+            ev.append({"file": sounds["heart"], "at": at + d * 0.9, "vol": 1.0})
+        elif beats[i] == "basement":
+            for h in hits.get(i, [])[:6]:
+                ev.append({"file": sounds["tap"], "at": at + h, "vol": 1.0})
+            tt = at + d * 0.55
+            while tt < at + d - 0.3:
+                ev.append({"file": sounds["heart"], "at": tt, "vol": 0.9})
+                tt += 0.6
+            ev.append({"file": sounds["growl"], "at": at + d * 0.8, "vol": 0.55})
+        elif beats[i] == "hallway":
+            for h in hits.get(i, [])[:5]:
+                ev.append({"file": sounds["boom"], "at": at + h, "vol": 0.4})
+            ev.append({"file": sounds["riser"], "at": at + 0.2, "vol": 0.6})
+            ev.append({"file": sounds["heart"], "at": at + d * 0.8, "vol": 0.9})
+        elif beats[i] == "cctv":
+            ev.append({"file": sounds["eerie"], "at": at + 0.1, "vol": 0.6})
+            ev.append({"file": sounds["whoosh"], "at": at + d * 0.3, "vol": 0.35})
+            ev.append({"file": sounds["boom"], "at": at + d * 0.9, "vol": 0.7})
+        elif beats[i] == "jump":
+            cut = at + d * 0.72
+            quiet.append((cut - 1.0, cut - 0.05))
+            ev.append({"file": sounds["riser"], "at": max(at, cut - 1.3), "vol": 0.5, "max": 1.2})
+            ev.append({"file": sounds["boom"], "at": cut, "vol": 1.0})
+            ev.append({"file": sounds["scream"], "at": cut, "vol": 0.85, "max": 1.4})
+            ev.append({"file": sounds["growl"], "at": cut + 0.1, "vol": 0.7})
+        elif beats[i] == "woods":
+            for h in hits.get(i, [])[:5]:
+                ev.append({"file": sounds["tap"], "at": at + h, "vol": 0.7})  # twigs snapping in the dark
+            ev.append({"file": sounds["whoosh"], "at": at + 0.2, "vol": 0.4})
+            ev.append({"file": sounds["distant"], "at": at + d * 0.45, "vol": 0.6})
+            ev.append({"file": sounds["heart"], "at": at + d * 0.8, "vol": 0.9})
+        elif beats[i] == "neighbour":
+            ev.append({"file": sounds["eerie"], "at": at + d * 0.2, "vol": 0.6})
+            for h in hits.get(i, [])[:3]:
+                ev.append({"file": sounds["boom"], "at": at + h, "vol": 0.45})
+            ev.append({"file": sounds["growl"], "at": at + d * 0.75, "vol": 0.45})
+        elif beats[i] == "lamp":
+            ev.append({"file": sounds["riser"], "at": at + 0.1, "vol": 0.55})
+            ev.append({"file": sounds["eerie"], "at": at + d * 0.35, "vol": 0.8})
+            ev.append({"file": sounds["growl"], "at": at + d * 0.7, "vol": 0.75})
+        elif beats[i] == "road":
+            tt = at + 0.2
+            while tt < at + d - 0.3:
+                ev.append({"file": sounds["heart"], "at": tt, "vol": 0.8})
+                tt += 0.7
+            for h in hits.get(i, [])[:4]:
+                ev.append({"file": sounds["boom"], "at": at + h, "vol": 0.55})
+        elif beats[i] == "mirror":
+            ev.append({"file": sounds["eerie"], "at": at + 0.2, "vol": 0.6})
+            for h in hits.get(i, [])[:2]:
+                ev.append({"file": sounds["boom"], "at": at + h, "vol": 0.9})
+                ev.append({"file": sounds["victim"], "at": at + h, "vol": 0.7, "max": 0.5})
+        elif beats[i] == "hook":
+            ev.append({"file": sounds["tap"], "at": at + 0.9, "vol": 0.8})
+            ev.append({"file": sounds["tap"], "at": at + 1.5, "vol": 0.8})
         elif beats[i] == "stalk":
             ev.append({"file": sounds["growl"], "at": at + 0.3, "vol": 0.4})
         elif beats[i] == "aftermath":
@@ -1904,8 +2175,9 @@ def build_folk_main(plan):
     log(f"Building folklore: {story['legend_name']} ({animal}) from {region}")
     log(f"Title: {story['title']}")
 
-    beats = assign_beats(sentences)
-    log("Beats: " + ", ".join(beats))
+    modern = story.get("format") == "modern"
+    beats = assign_beats(sentences, modern, story.get("story_type"))
+    log(("Modern indoor story. " if modern else "") + "Beats: " + ", ".join(beats))
     n = len(sentences)
     words, durs = None, None
     audio_name = "voice.wav"
@@ -1939,7 +2211,7 @@ def build_folk_main(plan):
         chars = [max(len(s["text"]), 1) for s in sentences]
         durs = [total * c / sum(chars) for c in chars]
         durs[-1] += 0.3
-    settings = assign_settings(sentences, beats)
+    settings = ["village"] * n if modern else assign_settings(sentences, beats)
     log("Settings: " + ", ".join(settings))
     people = story.get("people", "alone")
     toon.CAST["kind"] = people if people in ("child", "elder", "pair", "dog") else None
@@ -1963,12 +2235,15 @@ def build_folk_main(plan):
         w.push = PUSH.get(beats[i], 0.0)
         w.shake = SHAKE.get(beats[i], 0.0)
         out = str(WORK / f"toon_s{i}.mp4")
+        w.clock = story.get("time") or "2:48"
         cur = dict(creature, bloody=True) if blooded else creature
         g0 = 1300 - 740 * i / n
         g1 = 1300 - 740 * (i + 1) / n
         intro = (cur, min(1.4, dur * 0.5)) if i == 0 else None
         last = i == n - 1
-        if beats[i] == "attack":
+        if modern:
+            hits[i] = getattr(toon, beats[i] + "_scene")(out, dur, w, cur, cwd=WORK).get("hits", [])
+        elif beats[i] == "attack":
             impacts[i] = toon.attack_scene(out, dur, w, creature, cwd=WORK)["impact_at"]
             blooded = True
         elif beats[i] == "aftermath" and not last:
@@ -1996,8 +2271,10 @@ def build_folk_main(plan):
 
     title = story["title"][:80].rstrip() + " #Shorts"
     description = (
-        f"{story['legend_name']}: a dark folk legend from {region}, retold for fun.\n"
-        "The old tales say... this is folklore, not fact. The animation is drawn by software, "
+        (f"{story['legend_name']}: an original horror story. Fiction, not a true story.\n"
+         "The animation is drawn by software, " if modern else
+         f"{story['legend_name']}: a dark folk legend from {region}, retold for fun.\n"
+         "The old tales say... this is folklore, not fact. The animation is drawn by software, ") +
         "the narration uses a synthetic voice, and the sound effects are synthesized or CC0.\n\n"
         "What would YOU have done? Tell me in the comments, and tell me which legend I should tell next!\n\n"
         "#shorts #folklore #darkfolklore #legend #scarystories"
