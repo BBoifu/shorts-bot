@@ -41,6 +41,8 @@ CF_TOKEN = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
 CF_MODEL = os.environ.get("CF_IMAGE_MODEL", "@cf/black-forest-labs/flux-1-schnell")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
 GEMINI_VOICE = os.environ.get("GEMINI_VOICE", "Charon")
+# "classic" = the original single-take narrator voice (the one you approved); "acted" = a new mood for every sentence
+VOICE_MODE = os.environ.get("VOICE_MODE", "classic").strip().lower()
 EDGE_VOICE = os.environ.get("TTS_VOICE", "en-US-AndrewNeural")
 PRIVACY = os.environ.get("PRIVACY", "private")  # private = you review first
 DRY_RUN = os.environ.get("DRY_RUN", "0") == "1"  # 1 = make video, do not upload
@@ -1908,20 +1910,24 @@ def build_folk_main(plan):
     words, durs = None, None
     audio_name = "voice.wav"
     try:
+        if VOICE_MODE != "acted":
+            raise RuntimeError("classic voice selected")
         audio_name, starts, clip_durs, gaps, delivs = make_story_voice(sentences, beats, story.get("narrator") or {})
         words = []
         for i, sn in enumerate(sentences):
             words += [(starts[i] + a, starts[i] + b, w) for a, b, w in even_words(sn["text"], clip_durs[i])]
         durs = [clip_durs[i] + gaps[i] for i in range(n)]
     except Exception as e:  # never lose the video because the acting failed
-        log(f"Acted voice failed ({e}); using one plain narration instead.")
+        if VOICE_MODE == "acted":
+            log(f"Acted voice failed ({e}); using the classic narration instead.")
         words = None
         audio_name = "voice.wav"
-        if not gemini_tts(narration, WORK / "voice.wav", style=FOLK_STYLE):
+        if not gemini_tts(narration, WORK / "voice.wav"):
             log("Falling back to the basic free voice.")
             audio_name = "voice.mp3"
             words = asyncio.run(edge_voice(narration, str(WORK / "voice.mp3")))
-    audio_name = humanize_voice(audio_name)
+    if VOICE_MODE == "acted":
+        audio_name = humanize_voice(audio_name)
     total = audio_seconds(WORK / audio_name)
     if not words:
         words = even_words(narration, total)
