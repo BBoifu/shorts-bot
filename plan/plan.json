@@ -1,78 +1,69 @@
 {
- "series": "folklore",
- "key": "folk:bear:Hamramr|beast|bloodline|ash|Iceland|fullmoon",
- "episode": 9,
+ "series": "hybrid",
+ "key": "crab+dragonfly@a mountain peak above the clouds",
+ "a": "crab",
+ "b": "dragonfly",
+ "place": [
+  "a mountain peak above the clouds",
+  "a snowy rocky summit above a sea of clouds",
+  "mountain wind",
+  "crisp cold sunlight",
+  "cool"
+ ],
  "story": {
-  "legend_name": "Hamramr",
-  "region": "Iceland",
-  "animal": "bear",
-  "title": "The Shift in the Frost",
-  "narrator": {
-   "gender": "male",
-   "persona": "an old villager"
-  },
-  "hero": "shepherd",
-  "people": "alone",
-  "monster": {
-   "body": "beast",
-   "palette": "ash",
-   "eyes": "gold",
-   "size": "huge",
-   "horn": "antlers",
-   "spine": "bone",
-   "eye_count": 2
-  },
+  "title": "The Nightmare Dragon Crab Rules the Mountain Peaks",
+  "creature_name": "Skycarapace",
+  "prey": "cloud-dwelling mountain goat",
+  "signature_move": "It hovers silently on four iridescent wings before plunging downward to snap the goat in half with razor-sharp crushing claws.",
+  "hybrid_look": "This terrifying apex predator boasts a massively muscular armored torso with jagged crimson spikes, glowing violet compound eyes on a menacing horned face, and four giant translucent wings.",
   "sentences": [
    {
-    "text": "In Iceland, the old tales say the shepherd blood carries a heavy curse from father to son.",
-    "beat": "walk",
-    "setting": "hills",
-    "delivery": "low"
+    "text": "This armored nightmare pulls screaming prey straight out of the clouds.",
+    "image": "a towering jagged mountain peak surrounded by a swirling sea of white clouds under a dark sky"
    },
    {
-    "text": "Tonight, the full moon climbs the sky, and its pale light triggers the ancient change.",
-    "beat": "omen",
-    "setting": "hills",
-    "delivery": "dread"
+    "text": "Meet the Skycarapace, an imaginary hybrid inheriting the crushing claws of a crab and the lightning-fast flight of a dragonfly.",
+    "image": "a freezing rocky ledge battered by fierce winds high above the timberline"
    },
    {
-    "text": "The young shepherd feels his bones cracking as he steps outside the lonely stone hut.",
-    "beat": "transform",
-    "setting": "village",
-    "delivery": "trembling"
+    "text": "It battles brutal sub-zero mountain gales by anchoring its heavy segmented legs deep into solid frozen granite.",
+    "image": "a steep vertical ice wall glistening under harsh blinding sunlight"
    },
    {
-    "text": "A massive, ash-colored bear rises from the snow, shaking heavy frost from its thick fur.",
-    "beat": "loom",
-    "setting": "village",
-    "delivery": "whisper"
+    "text": "Thin alpine air easily defeats ordinary flyers, but its dual-pump hemolymph system feeds pure oxygen directly to its massive flight muscles.",
+    "image": "an endless expanse of stormy gray fog stretching across deep rocky chasms"
    },
    {
-    "text": "The village below sleeps peacefully, unaware of what now roams the frozen path.",
-    "beat": "village",
-    "setting": "village",
-    "delivery": "hushed"
+    "text": "It hunts its favorite meal, the high-altitude mountain goat, along sheer vertical cliff faces.",
+    "image": "a narrow crumbling stone ridge overlooking a dizzying thousand-foot drop"
    },
    {
-    "text": "Through the frosty window, a terrified neighbor watches the beast step closer to the door.",
-    "beat": "curtain",
-    "setting": "village",
-    "delivery": "urgent"
+    "text": "It hovers silently on four iridescent wings before plunging downward to snap the goat in half with razor-sharp crushing claws.",
+    "image": "a foggy alpine basin filled with scattered jagged boulders and deep snowdrifts"
    },
    {
-    "text": "The heavy oak door splinters under a sudden, overwhelming blow from the creature.",
-    "beat": "attack",
-    "setting": "village",
-    "delivery": "shout"
+    "text": "Yet this ruthless beast completely freezes and drops like a stone if temperatures plunge below zero.",
+    "image": "a bitter frost-covered precipice sparkling under the cold light of the moon"
    },
    {
-    "text": "Only a dropped lantern remains in the silent snow, and the shepherd is simply never seen again.",
-    "beat": "aftermath",
-    "setting": "village",
-    "delivery": "sorrow"
+    "text": "What should I combine next? Tell me in the comments.",
+    "image": "a quiet snowy mountain summit fading softly into the evening twilight"
    }
-  ],
-  "story_type": "bloodline",
-  "origin": "fullmoon"
- }
+  ]
+ },
+ "episode": 12,
+ "clips": [
+  {
+   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in a mountain peak above the clouds: a snowy rocky summit above a sea of clouds. This terrifying apex predator boasts a massively muscular armored torso with jagged crimson spikes, glowing violet compound eyes on a menacing horned face, and four giant translucent wings. It is menacing and dominant."
+  },
+  {
+   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In a snowy rocky summit above a sea of clouds, the same hybrid creature goes after cloud-dwelling mountain goat. It hovers silently on four iridescent wings before plunging downward to snap the goat in half with razor-sharp crushing claws.. Fast, powerful movement, camera follows the action. This terrifying apex predator boasts a massively muscular armored torso with jagged crimson spikes, glowing violet compound eyes on a menacing horned face, and four giant translucent wings."
+  },
+  {
+   "title": "Clip 3 - the close-up (plays at the end)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. This terrifying apex predator boasts a massively muscular armored torso with jagged crimson spikes, glowing violet compound eyes on a menacing horned face, and four giant translucent wings."
+  }
+ ]
 }
