@@ -909,17 +909,112 @@ def _hills(rnd, width, base, amp, period_w):
     return pts
 
 
+# ---------------------------------------------------------------- signs in the sky (how the monster arrives)
+def sky_effects(im, fx, t, sun):
+    d = ImageDraw.Draw(im, "RGBA")
+    sx, sy, sr = sun
+    if fx == "meteors":
+        for i in range(4):
+            ph = (t * 0.45 + i * 0.27) % 1.0
+            x0, y0 = 150 + i * 260, 80 + (i * 97) % 200
+            x1, y1 = x0 + 520 * ph, y0 + 300 * ph
+            a = int(230 * max(0.0, 1 - ph) ** 0.5)
+            d.line((x1 - 160, y1 - 92, x1, y1), fill=(255, 235, 200, a), width=4)
+            d.ellipse((x1 - 6, y1 - 6, x1 + 6, y1 + 6), fill=(255, 250, 235, a))
+    elif fx == "comet":
+        cx, cy = 780 + 40 * math.sin(t * 0.3), 300
+        for k in range(14):
+            d.ellipse((cx + k * 34 - 22 + k, cy - k * 11 - 10, cx + k * 34 + 22 + k, cy - k * 11 + 10), fill=(190, 230, 255, max(0, 150 - k * 11)))
+        for r, a in ((60, 40), (36, 90), (18, 230)):
+            d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(235, 250, 255, a))
+    elif fx == "aurora":
+        for j, c in enumerate(((60, 255, 150), (120, 100, 255), (60, 220, 230))):
+            top = [(x, 260 + j * 90 + 60 * math.sin(x * 0.006 + t * 0.7 + j) + 26 * math.sin(x * 0.017 + t * 1.3)) for x in range(0, W + 60, 60)]
+            for x, y in top:
+                d.polygon([(x, y), (x + 60, y), (x + 60, y + 260), (x, y + 260)], fill=c + (26,))
+    elif fx == "ufo":
+        for k, (ux, uy, us) in enumerate(((sx - 80, 330, 1.0), (240, 190, 0.45), (900, 250, 0.4))):
+            uy += 12 * math.sin(t * 1.3 + k)
+            if k == 0:
+                d.polygon([(ux - 28 * us, uy + 38 * us), (ux + 28 * us, uy + 38 * us), (ux + 330 * us, GROUND - 40), (ux - 330 * us, GROUND - 40)],
+                          fill=(150, 255, 190, int(40 + 14 * math.sin(t * 9))))
+            d.ellipse((ux - 140 * us, uy - 30 * us, ux + 140 * us, uy + 44 * us), fill=(60, 70, 90, 255), outline=(150, 170, 200, 255), width=3)
+            d.ellipse((ux - 62 * us, uy - 74 * us, ux + 62 * us, uy + 10 * us), fill=(120, 220, 255, 190))
+            for i in range(7):
+                on = (int(t * 6) + i) % 3 == 0
+                lx = ux - 110 * us + i * 36.6 * us
+                d.ellipse((lx - 7 * us, uy + 8 * us, lx + 7 * us, uy + 22 * us), fill=(255, 235, 120, 255) if on else (120, 110, 70, 255))
+    elif fx == "asteroid":
+        ph = (t * 0.22) % 1.0
+        x, y = 140 + 760 * ph, 90 + 760 * ph
+        for k in range(26):
+            d.ellipse((x - k * 26 - 20, y - k * 26 - 20, x - k * 26 + 20, y - k * 26 + 20), fill=(255, 150 - k * 4, 40, max(0, 190 - k * 8)))
+        for r, a in ((70, 50), (44, 120), (24, 255)):
+            d.ellipse((x - r, y - r, x + r, y + r), fill=(255, 220, 140, a))
+    elif fx == "redsky":
+        for i in range(9):  # crows streaming across the red sky
+            bx = (i * 190 - t * 120) % (W + 200) - 100
+            by = 240 + (i * 83) % 360 + 20 * math.sin(t * 3 + i)
+            wing = 18 * math.sin(t * 9 + i)
+            d.line((bx - 26, by - wing, bx, by, bx + 26, by - wing), fill=(6, 4, 6, 255), width=5)
+    elif fx == "thunder":
+        ph = (t * 0.5) % 1.0
+        if ph < 0.05:
+            x = 300 + 440 * ((int(t * 0.5) * 0.37) % 1)
+            pts, y = [(x, 0)], 0
+            while y < GROUND - 100:
+                y += 90
+                x += random.Random(int(t * 30) + y).randint(-60, 60)
+                pts.append((x, y))
+            d.line(pts, fill=(235, 240, 255, 255), width=8)
+            d.line(pts, fill=(160, 190, 255, 120), width=22)
+
+
+def lightning_bolt(d, x, k, seed=1):
+    """A branching bolt that grows down the sky as k goes from 0 to 1."""
+    rnd = random.Random(seed)
+    pts, y, cx = [(x, 0)], 0, x
+    ymax = int((GROUND - 60) * min(1, k * 1.6))
+    while y < ymax:
+        y += 80
+        cx += rnd.randint(-70, 70)
+        pts.append((cx, y))
+        if rnd.random() < 0.4:
+            d.line([(cx, y), (cx + rnd.randint(-160, 160), y + 120)], fill=(200, 215, 255, 220), width=5)
+    d.line(pts, fill=(160, 190, 255, 120), width=26)
+    d.line(pts, fill=(245, 248, 255, 255), width=9)
+
+
 class World:
     PW = 2160  # the repeating width of the scrolling layers
 
     def __init__(self, place, seed=0, weather=None):
         weather = weather or {}
         self.st = dict(PLACES.get(place, DEFAULT_PLACE))
-        if weather.get("redmoon") and self.st.get("sun"):
-            self.st["sun"] = "#ff4a3a"
         self.fog = weather.get("fog", self.st.get("fog", 0.0))
         self.storm = weather.get("storm", self.st.get("storm", False))
-        self.push, self.shake = 0.0, 0.0
+        self.push, self.shake, self.tilt, self.focus_y = 0.0, 0.0, 0.0, 0.62
+        self.skyfx = weather.get("sky")
+        fx = self.skyfx
+        sr = 85
+        if fx == "fullmoon":
+            self.st["sun"], sr = "#f6f1d6", 125
+        elif fx == "bluemoon":
+            self.st["sun"], sr = "#79b2ff", 120
+        elif fx == "eclipse":
+            self.st["sun"], sr = "eclipse", 100
+            self.st["sky"] = ("#05050c", "#26121c")
+        elif fx == "redsky":
+            self.st["sky"] = ("#2a0606", "#8a1f12")
+        elif fx == "virus":
+            self.st["sky"] = ("#0c1608", "#4a6a2a")
+            self.fog = max(self.fog, 0.75)
+        elif fx == "thunder":
+            self.st["part"], self.storm = "rain", True
+        if weather.get("redmoon") and self.st.get("sun") not in (None, "eclipse"):
+            self.st["sun"] = "#ff4a3a"
+        if fx in ("fullmoon", "bluemoon", "eclipse", "meteors", "aurora", "comet", "ufo", "asteroid", "tomb"):
+            self.st["stars"] = True
         self.rnd = random.Random(seed * 7919 + len(place))
         st, rnd = self.st, self.rnd
         # sky
@@ -942,12 +1037,21 @@ class World:
             for k in range(14, 0, -1):
                 d.ellipse((sx - k * 34, 520 - k * 12, sx + k * 34, 520 + k * 12), fill=mix("#000000", "#ff9a3c", 0.04 * (15 - k)))
             d.ellipse((sx - 120, 400, sx + 120, 640), fill=(0, 0, 0))
+        elif sun == "eclipse":
+            for k, a in ((3.4, 0.10), (2.4, 0.20), (1.6, 0.4), (1.25, 0.7)):
+                r = sr * k
+                d.ellipse((sx - r, 520 - r, sx + r, 520 + r), fill=mix(st["sky"][0], "#d8281c", a))
+            d.ellipse((sx - sr, 520 - sr, sx + sr, 520 + sr), fill=(4, 3, 8))
         elif sun:
             c = sun
             for k, a in ((3.0, 0.08), (2.2, 0.14), (1.5, 0.25)):
-                r = 80 * k
+                r = sr * 0.94 * k
                 d.ellipse((sx - r, 520 - r, sx + r, 520 + r), fill=mix(st["sky"][0], c, a))
-            d.ellipse((sx - 85, 435, sx + 85, 605), fill=rgb(c))
+            d.ellipse((sx - sr, 520 - sr, sx + sr, 520 + sr), fill=rgb(c))
+            if fx in ("fullmoon", "bluemoon"):  # craters
+                for ox, oy, rr in ((-40, -30, 22), (30, 20, 30), (-10, 55, 16), (45, -45, 14)):
+                    d.ellipse((sx + ox - rr, 520 + oy - rr, sx + ox + rr, 520 + oy + rr), fill=mix(c, st["sky"][0], 0.12))
+        self.sun_xy = (sx, 520, sr)
         if st.get("stars") or st["sky"][0] in ("#05060f", "#000000", "#2f3e25", "#3a0d0d", "#0a1030"):
             for _ in range(160):
                 x, y = rnd.randint(0, W), rnd.randint(0, 900)
@@ -1038,6 +1142,8 @@ class World:
     def frame(self, cam, t):
         """The background for one frame: cam is how far the world has scrolled."""
         im = self.sky.copy()
+        if self.skyfx:
+            sky_effects(im, self.skyfx, t, getattr(self, "sun_xy", (700, 520, 85)))
         for layer, k in ((self.far, 0.18), (self.near, 0.6)):
             off = int(cam * k) % self.PW
             for ox in (-off, -off + self.PW):
@@ -1077,7 +1183,7 @@ class World:
             for i in range(9):
                 fx = (i * 260 - cam * 0.5 - t * 18 * (1 + i % 3)) % (W + 600) - 300
                 fy = GROUND - 140 + (i % 4) * 55 + 12 * math.sin(t * 0.7 + i)
-                d.ellipse((fx - 330, fy - 70, fx + 330, fy + 70), fill=(190, 205, 225, int(34 * self.fog)))
+                d.ellipse((fx - 330, fy - 70, fx + 330, fy + 70), fill=((150, 220, 110, int(40 * self.fog)) if self.skyfx == "virus" else (190, 205, 225, int(34 * self.fog))))
         if self.storm:
             ph = (t * 0.45) % 1.0
             f = 0.0
@@ -1113,9 +1219,16 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1):
                 z = 1.0 + push * (u * u * (3 - 2 * u)) + (0.05 if shake else 0.0)
                 cw, ch = W / z, H / z
                 cx = W / 2 + shake * math.sin(t * 61) * 1.0
-                cy = min(max(H * 0.62 + shake * math.cos(t * 53), ch / 2), H - ch / 2)
+                cy = min(max(H * getattr(world, "focus_y", 0.62) + shake * math.cos(t * 53), ch / 2), H - ch / 2)
                 cx = min(max(cx, cw / 2), W - cw / 2)
                 im = im.crop((int(cx - cw / 2), int(cy - ch / 2), int(cx + cw / 2), int(cy + ch / 2)))
+            tilt = getattr(world, "tilt", 0.0)
+            if tilt:
+                a = math.radians(abs(tilt))
+                k = 1.0 / (math.cos(a) + (im.size[1] / im.size[0]) * math.sin(a))
+                im = im.rotate(tilt, resample=Image.BICUBIC)
+                w2, h2 = im.size
+                im = im.crop((int(w2 * (1 - k) / 2), int(h2 * (1 - k) / 2), int(w2 * (1 + k) / 2), int(h2 * (1 + k) / 2)))
             proc.stdin.write(im.resize((OW, OH), Image.LANCZOS).tobytes())
     finally:
         proc.stdin.close()
@@ -1257,8 +1370,61 @@ def folk_creature(name, design=None):
     return sp
 
 
-CAST = {"kind": None}   # "child", "elder" or "pair": a second person who travels with the main one
-COMPANION = {"child": 0.6, "elder": 0.88, "pair": 0.96}
+CAST = {"kind": None, "role": None}   # companion: child, elder, pair, dog.  role: how the main person looks
+COMPANION = {"child": 0.6, "elder": 0.88, "pair": 0.96, "dog": 0.5}
+ROLES = ("traveller", "farmer", "hunter", "priest", "shepherd", "doctor", "soldier", "girl", "worker")
+
+
+def role_gear(pen, role, bob, phase):
+    """What makes this person recognisable: hats, robes, a white coat, a dress."""
+    c = (8, 10, 20)
+    rim = (80, 100, 150)
+    if role == "farmer":  # straw hat
+        pen.ell(0, -398 + bob, 62, 9, (150, 125, 60), rim=False)
+        pen.poly([(-30, -398 + bob), (-24, -438 + bob), (24, -438 + bob), (30, -398 + bob)], (150, 125, 60), rim=False)
+    elif role == "hunter":  # wide hat, long cloak, a bow on the back
+        pen.poly([(-52, -396 + bob), (-30, -430 + bob), (30, -430 + bob), (52, -396 + bob), (30, -388 + bob)], (30, 26, 22), rim=False)
+        pen.poly([(-34, -330 + bob), (-70 - 14 * math.sin(phase), -200 + bob), (-10, -190 + bob), (30, -330 + bob)], (22, 28, 22))
+        pen.line([(-20, -330 + bob), (-44, -420 + bob), (-14, -300 + bob)], 5, (110, 80, 50))
+    elif role == "priest":  # a long dark robe, a hood, a white collar, a cross
+        pen.poly([(-44, -300 + bob), (44, -300 + bob), (62, -8), (-62, -8)], (12, 12, 18))
+        pen.poly([(-40, -372 + bob), (0, -430 + bob), (40, -372 + bob), (30, -330 + bob), (-30, -330 + bob)], (12, 12, 18))
+        pen.line([(0, -320 + bob), (0, -270 + bob)], 5, (235, 235, 225))
+        pen.line([(-14, -300 + bob), (14, -300 + bob)], 5, (235, 235, 225))
+    elif role == "shepherd":  # a shawl and a long staff
+        pen.poly([(-44, -330 + bob), (44, -330 + bob), (60, -230 + bob), (-30, -250 + bob)], (70, 40, 40), rim=False)
+        pen.line([(48, 0), (52, -400)], 7, (95, 70, 45))
+        pen.line([(52, -400), (70, -420), (82, -400)], 7, (95, 70, 45))
+    elif role == "doctor":  # a long white coat, a mask and a head mirror
+        pen.poly([(-40, -300 + bob), (40, -300 + bob), (54, -80), (-54, -80)], (205, 210, 222))
+        pen.poly([(-38, -372 + bob), (38, -372 + bob), (34, -352 + bob), (-34, -352 + bob)], (200, 220, 230), rim=False)
+        pen.ell(0, -395 + bob, 12, 12, (235, 240, 245), rim=False)
+    elif role == "soldier":  # a helmet and shoulder straps
+        pen.poly([(-40, -378 + bob), (-36, -420 + bob), (0, -440 + bob), (36, -420 + bob), (40, -378 + bob)], (58, 70, 52))
+        pen.line([(-30, -320 + bob), (30, -250 + bob)], 8, (58, 70, 52))
+    elif role == "girl":  # a dress, two plaits
+        pen.poly([(-34, -290 + bob), (34, -290 + bob), (66, -70), (-66, -70)], (150, 52, 60))
+        pen.line([(-30, -380 + bob), (-44, -330 + bob), (-40, -300 + bob)], 9, c)
+        pen.line([(30, -380 + bob), (44, -330 + bob), (40, -300 + bob)], 9, c)
+    elif role == "worker":  # a yellow hard hat
+        pen.poly([(-40, -380 + bob), (-34, -424 + bob), (34, -424 + bob), (44, -380 + bob)], (235, 190, 40), rim=False)
+        pen.ell(0, -382 + bob, 48, 8, (235, 190, 40), rim=False)
+
+
+def draw_dog(d, cx, gy, phase, facing=1, scale=1.0):
+    pen = Pen(d, cx, gy, 1.35 * scale, facing, lambda c: (80, 100, 150))
+    col = (14, 14, 22)
+    bob = -abs(math.sin(phase * 2)) * 6
+    limb(pen, 60, -105 + bob, phase * 2 + math.pi, 55, 55, 16, col, 0.7)
+    limb(pen, -60, -105 + bob, phase * 2, 55, 55, 16, col, 0.7)
+    pen.ell(0, -135 + bob, 85, 38, col)
+    limb(pen, 62, -108 + bob, phase * 2, 55, 55, 16, col, 0.7)
+    limb(pen, -58, -108 + bob, phase * 2 + math.pi, 55, 55, 16, col, 0.7)
+    pen.line([(-80, -145 + bob), (-120, -190 + bob + 12 * math.sin(phase * 3))], 10, col)
+    pen.ell(110, -175 + bob, 32, 28, col)
+    pen.poly([(130, -170 + bob), (175, -160 + bob), (132, -150 + bob)], col, rim=False)
+    pen.poly([(98, -196 + bob), (92, -240 + bob), (118, -200 + bob)], col, rim=False)
+    pen.dot(118, -180 + bob, 4, (255, 255, 235))
 
 
 def draw_companion(d, cx, gy, phase, facing=1, scale=1.0):
@@ -1266,13 +1432,16 @@ def draw_companion(d, cx, gy, phase, facing=1, scale=1.0):
     if not kind:
         return
     cs = COMPANION[kind]
+    if kind == "dog":
+        draw_dog(d, cx - facing * 20, gy, phase, facing, scale)
+        return
     draw_human(d, cx, gy, phase * (1.6 if kind == "child" else 1.0) + 1.3, facing, scale * cs, lamp=None, cast=False)
     if kind == "elder":  # a walking stick
         s = 1.35 * scale * cs
         d.line((cx + facing * 52 * s, gy, cx + facing * 70 * s, gy - 300 * s), fill=(40, 28, 20), width=max(4, int(8 * s)))
 
 
-def draw_human(d, cx, gy, phase, facing=1, scale=1.0, lamp="lantern", cast=True):
+def draw_human(d, cx, gy, phase, facing=1, scale=1.0, lamp="lantern", cast=True, role="auto"):
     """A flat silhouette of a person walking with a lantern. With cast=True, a companion walks just ahead."""
     if cast and CAST["kind"] and lamp == "lantern":
         draw_companion(d, cx + facing * 170 * scale, gy, phase, facing, scale)
@@ -1297,6 +1466,10 @@ def draw_human(d, cx, gy, phase, facing=1, scale=1.0, lamp="lantern", cast=True)
         if lamp == "torch":
             pen.line([(ax + 22, ay + 90), (ax + 24, ay + 150)], 8, (60, 40, 25))
     pen.ell(0, -372 + bob, 36, 40, col)
+    if role == "auto":
+        role = CAST.get("role") if lamp == "lantern" else None
+    if role and role != "traveller":
+        role_gear(pen, role, bob, phase)
 
 
 def folk_scene(out, dur, world, sp, gap0, gap1, intro=None, outro=None, roar_end=False, cwd=None):
@@ -1897,3 +2070,359 @@ def ground_scene(out, dur, world, sp, cwd=None):
         dim(im, 90)
     write_video(out, dur, paint, world, cwd, cam_dir=0)
     return {"hits": []}
+
+
+# ---------------------------------------------------------------- the sign: how the monster enters the world
+def _flash(im, amount, col=(255, 255, 255)):
+    return Image.blend(im, Image.new("RGB", im.size, col), max(0.0, min(0.9, amount)))
+
+
+def _look_up(d, x, gy, t, n=1, scale=0.75):
+    for i in range(n):
+        draw_human(d, x + i * 120, gy + 18, 0.0, 1 if i % 2 == 0 else -1, scale, lamp=None, cast=False)
+
+
+def omen_scene(out, dur, world, sp, cwd=None):
+    """The sign that something terrible has arrived: the moon swells, an eclipse, a bolt of lightning that
+    reveals a shape on the hill, an asteroid striking, a ship descending, a sickness spreading, a shadow that
+    does not match its owner, the ground cracking open."""
+    fx = world.skyfx or "fullmoon"
+    sky_type = fx in ("fullmoon", "bluemoon", "eclipse", "thunder", "asteroid", "ufo", "comet", "aurora", "redsky", "meteors")
+    world.focus_y = 0.33 if sky_type else 0.66
+    world.push = 0.28 if sky_type else 0.18
+    world.shake = 0.0
+    hits = []
+    sx, sy, sr = getattr(world, "sun_xy", (700, 520, 85))
+    if fx == "asteroid":
+        hits = [dur * 0.62]
+        world.shake = 0.0
+    if fx == "thunder":
+        hits = [dur * 0.22, dur * 0.5, dur * 0.76]
+    if fx == "virus":
+        hits = [dur * 0.25, dur * 0.5, dur * 0.72]
+    if fx == "tomb":
+        hits = [dur * 0.2, dur * 0.55]
+
+    def paint(im, d, t, u, cam):
+        if fx in ("fullmoon", "bluemoon"):
+            k = u * u * (3 - 2 * u)
+            r = sr * (1.0 + 0.7 * k)
+            col = (246, 241, 214) if fx == "fullmoon" else (121, 178, 255)
+            for kk, a in ((3.4, 30), (2.4, 50), (1.6, 90)):
+                d.ellipse((sx - r * kk, sy - r * kk, sx + r * kk, sy + r * kk), fill=col + (int(a * (0.4 + k)),))
+            d.ellipse((sx - r, sy - r, sx + r, sy + r), fill=col + (255,))
+            _look_up(d, 250, GROUND, t, 2)
+            if u > 0.6 and fx == "fullmoon":
+                return red_wash(im, 0.25 * (u - 0.6) / 0.4)
+        elif fx == "eclipse":
+            r = sr * 1.3
+            for kk, a in ((3.0, 30), (2.0, 55)):
+                d.ellipse((sx - r * kk, sy - r * kk, sx + r * kk, sy + r * kk), fill=(240, 235, 215, a))
+            d.ellipse((sx - r, sy - r, sx + r, sy + r), fill=(240, 235, 215, 255))
+            shift = -2.4 * r * (1 - min(1, u / 0.8))
+            d.ellipse((sx + shift - r * 1.02, sy - r * 1.02, sx + shift + r * 1.02, sy + r * 1.02), fill=(4, 3, 8, 255))
+            if u > 0.8:  # a blood-red ring
+                f = (u - 0.8) / 0.2
+                for kk, a in ((1.45, 120), (1.25, 200)):
+                    d.ellipse((sx - r * kk, sy - r * kk, sx + r * kk, sy + r * kk), outline=(230, 40, 28, int(a * f)), width=10)
+            dim(im, int(150 * u))
+            _look_up(d, 250, GROUND, t, 2)
+        elif fx == "thunder":
+            fl = 0.0
+            for tt, seed in ((0.22, 1), (0.5, 2), (0.76, 3)):
+                kk = (u - tt) / 0.07
+                if 0 <= kk < 1.6:
+                    lightning_bolt(d, 260 + seed * 220, kk, seed)
+                    if kk < 0.5:
+                        fl = max(fl, 0.55 * (1 - kk / 0.5))
+                    if seed == 3 and kk > 0.2:  # lit by the bolt, a shape on the hill
+                        draw_creature(d, {**sp, "color": (6, 4, 10)}, 830, GROUND - 150, t * 2, -1, 0.55, {"t": t, "moving": False, "roar": 0.8})
+            return _flash(im, fl, (225, 232, 255)) if fl else None
+        elif fx == "asteroid":
+            if u < 0.62:
+                p = u / 0.62
+                x, y = 100 + 640 * p, 80 + (GROUND - 220) * p
+                for k in range(30):
+                    d.ellipse((x - k * 24 - 24, y - k * 30 - 24, x - k * 24 + 24, y - k * 30 + 24), fill=(255, max(0, 160 - k * 5), 40, max(0, 200 - k * 6)))
+                for r, a in ((90, 60), (56, 130), (30, 255)):
+                    d.ellipse((x - r, y - r, x + r, y + r), fill=(255, 215, 130, a))
+                world.shake = 3 + 10 * p
+            else:
+                k = (u - 0.62) / 0.38
+                ix, iy = 740, GROUND - 120
+                if k < 0.12:
+                    im = _flash(im, 0.85 * (1 - k / 0.12))
+                d2 = ImageDraw.Draw(im, "RGBA")
+                rr = 80 + 900 * k
+                d2.ellipse((ix - rr, iy - rr * 0.28, ix + rr, iy + rr * 0.28), outline=(255, 210, 150, int(220 * (1 - k))), width=14)
+                for r, a in ((260, 40), (150, 80), (70, 160)):
+                    d2.ellipse((ix - r, iy - r * 0.5, ix + r, iy + r * 0.5), fill=(120, 255, 150, int(a * (1 - 0.4 * k))))
+                for j in range(14):
+                    ang = j * 0.45
+                    d2.ellipse((ix + math.cos(ang) * 300 * k - 6, iy - abs(math.sin(ang)) * 420 * k + 140 * k * k - 6,
+                                ix + math.cos(ang) * 300 * k + 6, iy - abs(math.sin(ang)) * 420 * k + 140 * k * k + 6), fill=(255, 170, 60, 230))
+                world.shake = 16 * (1 - k)
+                return im
+        elif fx == "ufo":
+            k = u * u * (3 - 2 * u)
+            ux, uy, us = 540, 150 + 330 * k, 0.9 + 0.7 * k
+            d.polygon([(ux - 40 * us, uy + 40 * us), (ux + 40 * us, uy + 40 * us), (ux + 420 * us, GROUND), (ux - 420 * us, GROUND)], fill=(150, 255, 190, 55))
+            d.ellipse((ux - 160 * us, uy - 34 * us, ux + 160 * us, uy + 50 * us), fill=(60, 70, 90, 255), outline=(150, 170, 200, 255), width=3)
+            d.ellipse((ux - 70 * us, uy - 82 * us, ux + 70 * us, uy + 10 * us), fill=(120, 220, 255, 200))
+            for i in range(8):
+                lx = ux - 126 * us + i * 36 * us
+                d.ellipse((lx - 8 * us, uy + 8 * us, lx + 8 * us, uy + 24 * us), fill=(255, 235, 120, 255) if (int(t * 8) + i) % 2 else (110, 100, 60, 255))
+            if u > 0.5:  # something comes down the beam
+                q = (u - 0.5) / 0.5
+                draw_creature(d, {**sp, "color": (10, 8, 16)}, ux, uy + 80 + (GROUND - uy - 80) * q, t * 2, 1, 0.5 + 0.3 * q, {"t": t, "moving": False, "roar": 0.3})
+            _look_up(d, 150, GROUND, t, 2)
+            world.shake = 2 + 6 * u
+        elif fx == "virus":
+            for i in range(5):
+                x = 120 + i * 210 + 20 * math.sin(t * 1.5 + i)
+                tw = 0.0 if u < 0.2 + i * 0.1 else min(1.0, (u - 0.2 - i * 0.1) * 4)
+                gy = GROUND + 20 + (80 * tw if i == 2 else 0)  # one of them collapses
+                d.ellipse((x - 120, gy - 330, x + 120, gy + 20), fill=(110, 230, 90, 26))
+                draw_human(d, x, gy, t * 1.2 + i, 1, 0.78, lamp=None, cast=False)
+                if (int(t * 3) + i) % 4 == 0:
+                    for j in range(5):
+                        d.ellipse((x + 40 + j * 16, gy - 300 - j * 10, x + 70 + j * 18, gy - 270 - j * 10), fill=(140, 240, 100, 90))
+            if u > 0.65:
+                ex = 120 + 3 * 210
+                for r, a in ((26, 80), (14, 220)):
+                    d.ellipse((ex - r, GROUND - 330, ex + r, GROUND - 330 + r), fill=(255, 40, 30, a))
+            world.shake = 4 * math.sin(u * 40)
+        elif fx == "shadow":
+            px = 700
+            hero_shadow = {**sp, "color": (2, 2, 6)}
+            draw_creature(d, hero_shadow, px - 480, GROUND + 26, t * 0.7, 1, 1.0 + 0.2 * u, {"t": t, "moving": False, "roar": 0.2 + 0.6 * u})
+            draw_human(d, px, GROUND + 20, 0.0, 1, 1.05, lamp="lantern", cast=False)
+        elif fx == "comet":
+            ph = u
+            cx, cy = 300 + 480 * ph, 260 + 60 * ph
+            for k in range(22):
+                d.ellipse((cx + k * 30 - 30, cy - k * 9 - 14 + k * 0.2, cx + k * 30 + 30, cy - k * 9 + 14), fill=(190, 230, 255, max(0, 170 - k * 8)))
+            for r, a in ((110, 40), (62, 100), (30, 255)):
+                d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(240, 250, 255, a))
+            _look_up(d, 200, GROUND, t, 3)
+            if u > 0.7:
+                return red_wash(im, 0.3 * (u - 0.7) / 0.3)
+        elif fx == "aurora":
+            for j, c in enumerate(((60, 255, 150), (160, 100, 255), (60, 220, 230))):
+                for x in range(0, W + 60, 60):
+                    y = 220 + j * 110 + 70 * math.sin(x * 0.006 + t * 1.1 + j) + 30 * math.sin(x * 0.017 + t * 2)
+                    d.polygon([(x, y), (x + 60, y), (x + 60, y + 420), (x, y + 420)], fill=c + (int(24 + 30 * u),))
+            if u > 0.55:  # a tall figure stands on the far hill
+                draw_creature(d, {**sp, "color": (5, 4, 9)}, 760, GROUND - 190, t * 2, 1, 0.4, {"t": t, "moving": False, "roar": 0.2})
+            _look_up(d, 200, GROUND, t, 2)
+        elif fx == "redsky":
+            for i in range(26):
+                a = i * 0.8 + t * (0.8 + (i % 3) * 0.3)
+                bx, by = 540 + 480 * math.cos(a) * (0.5 + 0.5 * math.sin(i)), 330 + 150 * math.sin(a * 1.3)
+                wing = 20 * math.sin(t * 10 + i)
+                d.line((bx - 30, by - wing, bx, by, bx + 30, by - wing), fill=(5, 3, 5, 255), width=6)
+            _look_up(d, 250, GROUND, t, 2)
+            return red_wash(im, 0.12 + 0.1 * math.sin(t * 3) ** 2)
+        elif fx == "meteors":
+            _look_up(d, 250, GROUND, t, 2)
+            for i in range(6):
+                ph = (t * 0.8 + i * 0.17) % 1.0
+                x0, y0 = 100 + i * 170, 60 + (i * 71) % 160
+                x1, y1 = x0 + 600 * ph, y0 + 340 * ph
+                d.line((x1 - 200, y1 - 113, x1, y1), fill=(255, 235, 200, int(230 * (1 - ph))), width=5)
+        elif fx == "tomb":
+            k = min(1.0, u / 0.75)
+            rnd = random.Random(4)
+            for j in range(11):
+                x, y, ang = 540, GROUND + 120, -math.pi / 2 + (j - 5) * 0.38
+                pts = [(x, y)]
+                for s_ in range(int(2 + 7 * k)):
+                    ang += rnd.uniform(-0.45, 0.45)
+                    x += math.cos(ang) * 70
+                    y += math.sin(ang) * 36 + 22
+                    pts.append((x, y))
+                d.line(pts, fill=(255, 90, 30, 90), width=24)
+                d.line(pts, fill=(255, 190, 90, 255), width=7)
+            for r, a in ((340, 30), (220, 60), (110, 110)):
+                d.ellipse((540 - r, GROUND + 120 - r * 0.35, 540 + r, GROUND + 120 + r * 0.35), fill=(255, 100, 30, int(a * k)))
+            if u > 0.6:  # a clawed hand claws its way out
+                q = min(1.0, (u - 0.6) / 0.3)
+                for f in range(4):
+                    fx0 = 470 + f * 46
+                    d.line((fx0, GROUND + 130, fx0 - 6 + f * 4, GROUND + 130 - 150 * q - f % 2 * 22), fill=(18, 14, 18, 255), width=17)
+                    d.polygon([(fx0 - 9 + f * 4 - 6, GROUND + 130 - 150 * q - f % 2 * 22), (fx0 - 3 + f * 4 + 6, GROUND + 130 - 150 * q - f % 2 * 22),
+                               (fx0 + f * 4 - 2, GROUND + 130 - 150 * q - f % 2 * 22 - 56)], fill=(228, 220, 198, 255))
+            _look_up(d, 150, GROUND, t, 2, 0.6)
+            world.shake = 12 * (1 - 0.4 * u)
+        if fx in ("fullmoon", "bluemoon", "eclipse", "thunder", "ufo", "comet", "aurora", "redsky", "meteors", "asteroid", "virus", "shadow", "tomb"):
+            dim(im, 20)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+# ---------------------------------------------------------------- camera angles
+def _vignette(im, strength=170, tint=None):
+    """Dark tunnel vision around the edges (made once per size and cached)."""
+    key = ("vig", im.size, strength)
+    if key not in _TOP:
+        m = Image.new("L", (64, 114), 0)
+        px = m.load()
+        for y in range(114):
+            for x in range(64):
+                r = math.hypot((x - 32) / 32, (y - 57) / 57)
+                px[x, y] = int(min(1.0, max(0.0, (r - 0.45) / 0.75)) * strength)
+        _TOP[key] = m.resize(im.size, Image.BICUBIC)
+    im.paste(Image.new("RGB", im.size, tint or (0, 0, 0)), mask=_TOP[key])
+
+
+def pov_scene(out, dur, world, sp, cwd=None):
+    """FIRST PERSON, through the eyes of the person: the lantern swinging in your own hand, the path bobbing
+    with your steps, your breath fogging. You turn your head, and something is coming through the mist."""
+    world.push, world.shake = 0.22, 5.0
+    turn = 0.4
+
+    def paint(im, d, t, u, cam):
+        bob = 10 * math.sin(t * STEP * 0.5)
+        if u < turn:
+            sc = ImageDraw.Draw(im, "RGBA")
+            sc.polygon([(540 - 120, GROUND + 40), (540 + 120, GROUND + 40), (540 + 420, H), (540 - 420, H)], fill=(40, 34, 30, 120))  # the path
+        else:
+            k = (u - turn) / (1 - turn)
+            gap = 1.0 - k
+            if u < turn + 0.04:
+                return Image.blend(im, im.transform(im.size, Image.AFFINE, (1, 0, -240, 0, 1, 0)), 0.6)  # the head whips round
+            cxm = 540 - 120 * gap
+            draw_creature(d, sp, cxm, GROUND + 20, t * STEP * (1.1 if k > 0.35 else 0.6), -1, 0.45 + 1.25 * k * k,
+                          {"t": t, "moving": True, "roar": 0.2 + 0.8 * k})
+            world.shake = 5 + 16 * k
+        # the lantern in your own hand, low in the frame
+        lx, ly = 860 + 24 * math.sin(t * STEP * 0.5), 1640 + bob * 3
+        for r, a in ((520, 22), (330, 40), (190, 70)):
+            d.ellipse((lx - r, ly - r - 100, lx + r, ly + r - 100), fill=(255, 170, 70, a))
+        d.rounded_rectangle((lx - 56, ly - 150, lx + 56, ly + 20), radius=10, fill=(40, 30, 22, 255), outline=(14, 10, 8, 255), width=8)
+        d.ellipse((lx - 30, ly - 120, lx + 30, ly - 20), fill=(255, 215, 130, 255))
+        d.polygon([(lx + 40, ly + 30), (lx + 200, ly + 380), (lx - 140, ly + 380), (lx - 60, ly + 30)], fill=(10, 10, 16, 255))  # your arm
+        # your breath
+        for i in range(5):
+            k2 = (t * 0.9 + i * 0.2) % 1.0
+            d.ellipse((540 - 80 + 90 * k2, H - 380 - 280 * k2, 540 + 80 + 90 * k2, H - 300 - 280 * k2), fill=(220, 230, 240, int(55 * (1 - k2))))
+        _vignette(im, 190)
+        if u >= turn:
+            return red_wash(im, 0.04 + 0.12 * ((u - turn) / (1 - turn)))
+    write_video(out, dur, paint, world, cwd, cam_dir=1.6)
+    return {"hits": [dur * (turn + 0.02)]}
+
+
+def mpov_scene(out, dur, world, sp, cwd=None):
+    """THROUGH THE MONSTER'S EYES: a red tunnel, a pounding view and a tiny glowing lantern ahead that is
+    getting closer with every stride."""
+    world.push, world.shake = 0.3, 9.0
+
+    def paint(im, d, t, u, cam):
+        k = u * u
+        sc = 0.5 + 1.35 * k
+        px = 560 + 40 * math.sin(t * 2.0)
+        draw_human(d, px, GROUND + 20 + 80 * k, t * STEP * 0.5, 1, sc, cast=False)
+        # the world lurches with the creature's stride
+        out_im = im.transform(im.size, Image.AFFINE, (1, 0, 0, 0, 1, 14 * math.sin(t * STEP * 0.5 * 2)))
+        _vignette(out_im, 235, (50, 0, 0))
+        out_im = red_wash(out_im, 0.18 + 0.1 * math.sin(t * 9) ** 2)
+        o = ImageDraw.Draw(out_im, "RGBA")
+        for y in range(0, H, 6):  # grainy, hunting view
+            o.line((0, y, W, y), fill=(0, 0, 0, 38))
+        # the fangs at the edge of the frame
+        for i in range(6):
+            x = 140 + i * 160
+            o.polygon([(x, H), (x + 46, H), (x + 22, H - 90 - (i % 2) * 40)], fill=(235, 225, 205, 220))
+        return out_im
+    write_video(out, dur, paint, world, cwd, cam_dir=2.2)
+    return {"hits": []}
+
+
+def curtain_scene(out, dur, world, sp, cwd=None):
+    """From INSIDE A HOUSE: through a window half closed by curtains, a person runs for their life in the night
+    and the monster gallops after them. A candle burns in the foreground, the curtains sway."""
+    world.shake = 3.0
+    world.push = 0.1
+    key = "curtain_wall"
+    if key not in _WALL:
+        wall = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        wd = ImageDraw.Draw(wall)
+        wd.rectangle((0, 0, W, H), fill=(26, 16, 12, 255))
+        for x in range(0, W, 80):
+            wd.line((x, 0, x, H), fill=(15, 10, 8, 255), width=4)
+        wd.rectangle((150, 380, 930, 1300), fill=(0, 0, 0, 0))
+        wd.rectangle((126, 356, 954, 1324), outline=(70, 46, 30, 255), width=34)
+        wd.line((540, 380, 540, 1300), fill=(70, 46, 30, 255), width=20)
+        wd.line((150, 840, 930, 840), fill=(70, 46, 30, 255), width=20)
+        wd.rectangle((90, 1324, 990, 1390), fill=(54, 36, 24, 255))
+        _WALL[key] = wall
+    wall = _WALL[key]
+
+    def paint(im, d, t, u, cam):
+        d.rectangle((150, 1150, 930, 1300), fill=(6, 8, 14, 255))  # the ground outside
+        k = (u - 0.12) / 0.76
+        if 0 <= k <= 1:
+            px = 1000 - 1000 * k
+            ph = t * STEP * 1.1
+            draw_creature(d, sp, px + 330 * (1 - k * 0.5) + 160, 1260, ph + 1.0, -1, 0.42, {"t": t, "moving": True, "roar": 0.7})
+            draw_human(d, px, 1262, ph, -1, 0.42, cast=False)
+        im.paste(wall, (0, 0), wall)
+        d = ImageDraw.Draw(im, "RGBA")
+        sway = 10 * math.sin(t * 1.7)
+        # the curtains, drawn open just a slit in the middle
+        for side in (-1, 1):
+            x_edge = 150 if side < 0 else 930
+            reach = 420 + sway * side if side < 0 else 330 - sway
+            xs = [x_edge + side * i * reach / 14 for i in range(15)]
+            for i in range(14):
+                a, b = sorted((xs[i], xs[i + 1]))
+                shade = 60 + 22 * math.sin(i * 1.7 + 1.0)
+                d.rectangle((a, 330, b + 1, 1420), fill=(int(shade + 40), 14, 20, 255))
+            d.line((x_edge, 330, x_edge + side * reach, 330), fill=(40, 28, 20, 255), width=16)
+        d.line((90, 330, 990, 330), fill=(60, 40, 26, 255), width=16)
+        # the candle on the sill in the foreground
+        fl = 0.8 + 0.2 * math.sin(t * 17)
+        for r, a in ((260, 20), (150, 36), (70, 80)):
+            d.ellipse((260 - r, 1290 - r, 260 + r, 1290 + r), fill=(255, 170, 70, int(a * fl)))
+        d.rectangle((246, 1300, 274, 1390), fill=(225, 214, 190, 255))
+        d.ellipse((251, 1250, 269, 1300), fill=(255, 225, 150, 255))
+        dim(im, 70)
+        _vignette(im, 150)
+        if 0.6 < u < 0.78:
+            return red_wash(im, 0.12)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": [dur * 0.55]}
+
+
+def shoulder_scene(out, dur, world, sp, cwd=None):
+    """OVER THE SHOULDER: the person's back fills the foreground while, far ahead in the mist, the creature
+    comes closer and closer."""
+    world.push, world.shake = 0.12, 4.0
+
+    def paint(im, d, t, u, cam):
+        k = u * u * (3 - 2 * u)
+        draw_creature(d, sp, 760 + 90 * (1 - k), GROUND - 40, t * STEP * 0.5, -1, 0.35 + 0.65 * k,
+                      {"t": t, "moving": True, "roar": 0.1 + 0.8 * k})
+        dim(im, int(60 * (1 - k)))
+        draw_human(d, 190 + 6 * math.sin(t * 2.0), GROUND + 360, t * STEP * 0.3, 1, 2.3, cast=False)
+        _vignette(im, 170)
+        return red_wash(im, 0.03 + 0.12 * k)
+    write_video(out, dur, paint, world, cwd, cam_dir=0.5)
+    return {"hits": []}
+
+
+def loom_scene(out, dur, world, sp, cwd=None):
+    """A LOW, TILTED ANGLE from the ground: the monster towers over the camera and the tiny person below it."""
+    world.tilt, world.push, world.shake = -7.0, 0.10, 5.0
+
+    def paint(im, d, t, u, cam):
+        im.paste(Image.new("RGB", im.size, (4, 4, 8)), (0, GROUND + 120), None)
+        ax, ay = head_anchor(sp)
+        draw_creature(d, sp, 0, 0, t * 0.8, 1, 1.7 + 0.25 * u, {"t": t, "moving": False, "roar": 0.35 + 0.65 * math.sin(u * 3.0) ** 2},
+                      focus=(ax, ay, 640, 560 - 30 * u))
+        draw_human(d, 230, GROUND + 330, 0.0, 1, 0.55, cast=False)
+        _vignette(im, 150)
+        return red_wash(im, 0.08 + 0.1 * u)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": [dur * 0.35]}
