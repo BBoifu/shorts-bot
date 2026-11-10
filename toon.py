@@ -860,6 +860,11 @@ def head_anchor(sp):
             "bug": (140, -100), "crab": (0, -210)}.get(k, (100, -250))
 
 
+_BOXES = []          # where the creature was drawn in the current frame (for captions to stay out of its way)
+_REC_OFF = [0, 0]
+LAST_TRACK = []      # [(time, (x0, y0, x1, y1) or None)] of the last video written
+
+
 def draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=None, focus=None):
     st = st or {}
     s = 1.4 * (scale if scale is not None else 1.0) * sp.get("scale", 1.0) * KIND_SCALE.get(sp["kind"], 1.0)
@@ -869,6 +874,8 @@ def draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=None, fo
     if sp["hybrid"] and st.get("aura", True):
         for k, a in ((1.0, 22), (0.78, 26), (0.56, 30)):
             img_draw.ellipse((cx - 380 * s * k, gy - 640 * s * k, cx + 380 * s * k, gy + 40 * s * k), fill=(170, 10, 14, a))
+    ox, oy = _REC_OFF
+    _BOXES.append((cx + ox - 330 * s, gy + oy - 1050 * s, cx + ox + 330 * s, gy + oy + 40 * s))
     pen = Pen(img_draw, cx, gy, s, facing, rimfn)
     if sp["kind"] not in ("swim", "float", "wraith") and sp["kind"] != "bird" or (sp["kind"] == "bird" and "flying" not in sp["traits"]):
         shadow(img_draw, cx, gy, 150 * s)
@@ -1259,6 +1266,7 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1):
            "-r", str(FPS), "-i", "-", "-vf", "scale=1080:1920:flags=bicubic", "-c:v", "libx264",
            "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-an", out]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, cwd=cwd)
+    track = []
     try:
         for i in range(n):
             t = i / FPS
@@ -1266,9 +1274,13 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1):
             cam = t * 260 * cam_dir
             im = world.frame(cam, t)
             d = ImageDraw.Draw(im, "RGBA")
+            _BOXES.clear()
             ov = painter(im, d, t, u, cam)
             if ov is not None:
                 im = ov
+            box = None
+            if _BOXES:
+                box = [min(b[0] for b in _BOXES), min(b[1] for b in _BOXES), max(b[2] for b in _BOXES), max(b[3] for b in _BOXES)]
             push, shake = getattr(world, "push", 0.0), getattr(world, "shake", 0.0)
             if push or shake:
                 z = 1.0 + push * (u * u * (3 - 2 * u)) + (0.05 if shake else 0.0)
@@ -1276,7 +1288,11 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1):
                 cx = W / 2 + shake * math.sin(t * 61) * 1.0
                 cy = min(max(H * getattr(world, "focus_y", 0.62) + shake * math.cos(t * 53), ch / 2), H - ch / 2)
                 cx = min(max(cx, cw / 2), W - cw / 2)
+                if box:  # where that box ends up after the zoom
+                    ax, ay = cx - cw / 2, cy - ch / 2
+                    box = [(box[0] - ax) * z, (box[1] - ay) * z, (box[2] - ax) * z, (box[3] - ay) * z]
                 im = im.crop((int(cx - cw / 2), int(cy - ch / 2), int(cx + cw / 2), int(cy + ch / 2)))
+            track.append((t, box))
             tilt = getattr(world, "tilt", 0.0)
             if tilt:
                 a = math.radians(abs(tilt))
@@ -1290,6 +1306,7 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1):
         rc = proc.wait()
     if rc != 0:
         raise RuntimeError(f"toon render failed (ffmpeg code {rc})")
+    LAST_TRACK[:] = track
 
 
 STEP = 1.9 * 2 * math.pi
@@ -2500,7 +2517,11 @@ def reveal_creature(im, sp, cx, gy, scale, t, lit, facing=1, moving=True, roar=0
         return
     layer = Image.new("RGBA", (x1 - x0, y1 - y0), (0, 0, 0, 0))
     ld = ImageDraw.Draw(layer, "RGBA")
-    draw_creature(ld, sp, cx - x0, gy - y0, t * STEP * 0.3, facing, scale, {"t": t, "moving": moving, "roar": roar, "aura": False})
+    _REC_OFF[0], _REC_OFF[1] = x0, y0
+    try:
+        draw_creature(ld, sp, cx - x0, gy - y0, t * STEP * 0.3, facing, scale, {"t": t, "moving": moving, "roar": roar, "aura": False})
+    finally:
+        _REC_OFF[0], _REC_OFF[1] = 0, 0
     a = layer.getchannel("A")
     # the shadow it casts on the floor is part of the layer; keep the whole body black
     base = im.crop((x0, y0, x1, y1)).convert("RGBA")
