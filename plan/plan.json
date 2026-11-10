@@ -1,69 +1,67 @@
 {
- "series": "hybrid",
- "key": "lion+lizard@the Sahara desert",
- "a": "lion",
- "b": "lizard",
- "place": [
-  "the Sahara desert",
-  "endless sand dunes under a blazing sun",
-  "desert wind",
-  "harsh golden afternoon sunlight with long shadows",
-  "warm"
- ],
+ "series": "folklore",
+ "key": "folk:wolf:The Ceiling Crawler|crawler|ceiling|bone|A rented flat in Chicago, 1:14 AM|",
+ "episode": 11,
  "story": {
-  "title": "The Sahara Predator That Basks on Hot Dunes",
-  "creature_name": "Scorpiolion",
-  "prey": "fennec fox",
-  "signature_move": "It sprints on scorching sand with massive feline paws and sweeps its heavy scaly tail to stun the fleeing fennec fox.",
-  "hybrid_look": "A terrifying apex predator featuring a muscular golden lion body covered in iridescent desert-green lizard scales, glowing amber eyes, and sharp venomous spikes along its spine.",
+  "legend_name": "The Ceiling Crawler",
+  "region": "A rented flat in Chicago, 1:14 AM",
+  "time": "1:14",
+  "animal": "wolf",
+  "title": "It Drops At 1:14",
+  "narrator": {
+   "gender": "female",
+   "persona": "a freelance graphic designer speaking six months after her roommate vanished"
+  },
+  "hero": "traveller",
+  "people": "alone",
+  "monster": {
+   "body": "crawler",
+   "palette": "bone",
+   "eyes": "red",
+   "size": "medium",
+   "horn": null,
+   "spine": "bone",
+   "eye_count": "2"
+  },
   "sentences": [
    {
-    "text": "This desert beast melts through solid rock to trap its prey.",
-    "image": "a scorching salt pan radiating extreme heat waves under a blazing white sun"
+    "text": "Soft scratching right above my pillow. Exactly at one-fourteen every single night.",
+    "beat": "bedroom",
+    "delivery": "hushed"
    },
    {
-    "text": "Meet the imaginary Scorpiolion, blending pure lion muscle with desert lizard survival.",
-    "image": "endless towering sand dunes glowing orange in the harsh afternoon glare"
+    "text": "The police found my roommate's phone on the kitchen floor, completely untouched.",
+    "beat": "hallway",
+    "delivery": "trembling"
    },
    {
-    "text": "It stalks the fennec fox across the baking flats.",
-    "image": "a barren rocky plateau cracking open beneath relentless drought conditions"
+    "text": "I crept out of bed and tiptoed down the creaking wooden stairs with my flashlight.",
+    "beat": "stairs",
+    "delivery": "urgent"
    },
    {
-    "text": "It sprints on scorching sand with massive feline paws and sweeps its heavy scaly tail to stun the fleeing fennec fox.",
-    "image": "a violent whirlwind whipping fine golden dust across the open horizon"
+    "text": "The scraping noise stopped, replaced by a wet, heavy breathing sound from the dark ceiling.",
+    "beat": "hallway",
+    "delivery": "dread"
    },
    {
-    "text": "Saharan heat threatens to cook normal hunters alive.",
-    "image": "shimmering mirages twisting the distant landscape into surreal distorted shapes"
+    "text": "I forced myself to tilt my head straight up and shine the beam into the corner.",
+    "beat": "bedroom",
+    "delivery": "low"
    },
    {
-    "text": "Lizard scales deflect the blistering sun while lion stamina keeps it moving.",
-    "image": "a dry riverbed baking under a cloudless and unforgiving deep blue sky"
+    "text": "Two glowing red eyes stared down at me from a pale, elongated face pressed against the plaster.",
+    "beat": "jump",
+    "delivery": "shout"
    },
    {
-    "text": "Freezing night temperatures slow its blood down like cold molasses.",
-    "image": "a dark rocky canyon floor gripped by a sudden and bitter desert freeze"
-   },
-   {
-    "text": "Yet despite ruling the dunes, it cannot swim a single stroke, and What should I combine next? Tell me in the comments.",
-    "image": "a steep sand cliff edge dropping sharply into a vast empty valley"
+    "text": "Would you still be living here if your front door was left unlocked from the inside?",
+    "beat": "door",
+    "delivery": "calm"
    }
-  ]
- },
- "episode": 13,
- "clips": [
-  {
-   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in the Sahara desert: endless sand dunes under a blazing sun. A terrifying apex predator featuring a muscular golden lion body covered in iridescent desert-green lizard scales, glowing amber eyes, and sharp venomous spikes along its spine. It is menacing and dominant."
-  },
-  {
-   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In endless sand dunes under a blazing sun, the same hybrid creature goes after fennec fox. It sprints on scorching sand with massive feline paws and sweeps its heavy scaly tail to stun the fleeing fennec fox.. Fast, powerful movement, camera follows the action. A terrifying apex predator featuring a muscular golden lion body covered in iridescent desert-green lizard scales, glowing amber eyes, and sharp venomous spikes along its spine."
-  },
-  {
-   "title": "Clip 3 - the close-up (plays at the end)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A terrifying apex predator featuring a muscular golden lion body covered in iridescent desert-green lizard scales, glowing amber eyes, and sharp venomous spikes along its spine."
-  }
- ]
+  ],
+  "story_type": "ceiling",
+  "format": "modern",
+  "origin": ""
+ }
 }
