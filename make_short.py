@@ -838,7 +838,28 @@ def even_words(text, total):
     return out
 
 
-def write_captions(words, total, path, card=None):
+CAPTION_SPOTS = (1400, 1540, 640, 880)   # where the bottom edge of the caption can sit, in order of preference
+CAPTION_H, CAPTION_X0, CAPTION_X1 = 190, 200, 880
+
+
+def _cap_overlap(track, t0, t1, bottom):
+    """How much of the caption's box the creature covers at its worst moment in [t0, t1] (0..1)."""
+    worst = 0.0
+    top = bottom - CAPTION_H
+    area = (CAPTION_X1 - CAPTION_X0) * CAPTION_H
+    for t, box in track:
+        if t < t0 - 0.1 or t > t1 + 0.1 or not box:
+            continue
+        # the video is zoomed 5% and shifted a little before the subtitles are drawn
+        x0, y0, x1, y1 = box[0] * 1.05 - 27, box[1] * 1.05 - 48, box[2] * 1.05 - 27, box[3] * 1.05 - 48
+        w = min(x1, CAPTION_X1) - max(x0, CAPTION_X0)
+        h = min(y1, bottom) - max(y0, top)
+        if w > 0 and h > 0:
+            worst = max(worst, w * h / area)
+    return worst
+
+
+def write_captions(words, total, path, card=None, track=None):
     if not words:
         return False
     header = (
@@ -855,6 +876,7 @@ def write_captions(words, total, path, card=None):
     )
     lines = []
     group = 2
+    prev_y, prev_end = CAPTION_SPOTS[0], -9.0
     for i in range(0, len(words), group):
         chunk = words[i:i + group]
         start = chunk[0][0]
@@ -864,7 +886,19 @@ def write_captions(words, total, path, card=None):
         key = max(range(len(toks)), key=lambda j: len(toks[j]))  # the longest word is shown in orange
         toks[key] = "{\\c&H001E9BFF&}" + toks[key] + "{\\c&H00FFFFFF&}"
         text = " ".join(toks)
-        lines.append(f"Dialogue: 0,{ass_time(start)},{ass_time(end)},Default,,0,0,0,,{text}")
+        y = CAPTION_SPOTS[0]
+        if track:
+            # keep the last spot if it is still clear, otherwise take the first free one (or the least covered one)
+            cands = [prev_y] + [c for c in CAPTION_SPOTS if c != prev_y]
+            scores = [(_cap_overlap(track, start, end, c), k) for k, c in enumerate(cands)]
+            clear = [c for (sc, k), c in zip(scores, cands) if sc < 0.04]
+            y = clear[0] if clear else cands[min(scores)[1]]
+        if y != prev_y and start - prev_end < 0.6:  # a quick, smooth slide from where the last caption was
+            tag = f"{{\\an2\\move(540,{prev_y},540,{y},0,170)}}"
+        else:
+            tag = f"{{\\an2\\pos(540,{y})}}"
+        prev_y, prev_end = y, end
+        lines.append(f"Dialogue: 0,{ass_time(start)},{ass_time(end)},Default,,0,0,0,,{tag}{text}")
     if card:
         lines.append(f"Dialogue: 1,{ass_time(1.5)},{ass_time(3.9)},Card,,0,0,0,,{{\\fad(300,450)}}{card}")
     path.write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
@@ -2200,17 +2234,30 @@ def build_folk_main(plan):
             words = asyncio.run(edge_voice(narration, str(WORK / "voice.mp3")))
     if VOICE_MODE == "acted":
         audio_name = humanize_voice(audio_name)
+    lead = 0.0
+    if VOICE_MODE != "acted":
+        # breathing room: a short silence before the first word, a slightly slower voice, and a long hold at the end
+        speech = audio_seconds(WORK / audio_name)
+        rate = 0.95 if speech / 0.95 + 0.8 + 1.9 < 57 else 1.0
+        lead, tail = 0.8, 1.9
+        run(["ffmpeg", "-y", "-i", audio_name, "-af",
+             f"atempo={rate},adelay={int(lead * 1000)}|{int(lead * 1000)},apad=pad_dur={tail}", "-ar", "44100", "voice_paced.wav"], cwd=WORK)
+        audio_name = "voice_paced.wav"
+        if words:
+            words = [(a / rate + lead, b / rate + lead, w) for a, b, w in words]
+        else:
+            words = [(a + lead, b + lead, w) for a, b, w in even_words(narration, speech / rate)]
     total = audio_seconds(WORK / audio_name)
     if not words:
         words = even_words(narration, total)
-    has_caps = write_captions(words, total, WORK / "captions.ass",
-                              card=f"{region.upper()}  \u00b7  DARK FOLKLORE #{episode}")
 
     creature = toon.folk_creature(animal, story.get("monster"))
     if durs is None:
         chars = [max(len(s["text"]), 1) for s in sentences]
-        durs = [total * c / sum(chars) for c in chars]
-        durs[-1] += 0.3
+        speech_len = total - lead - (tail if lead else 0.0)
+        durs = [speech_len * c / sum(chars) for c in chars]
+        durs[0] += lead
+        durs[-1] += (tail if lead else 0.3)
     settings = ["village"] * n if modern else assign_settings(sentences, beats)
     log("Settings: " + ", ".join(settings))
     people = story.get("people", "alone")
@@ -2225,6 +2272,7 @@ def build_folk_main(plan):
     SHAKE = {"chase": 7.0}
     FIRST_SIGN_AT = next((j for j, b in enumerate(beats) if b == "omen"), n)
     scenes, impacts, blooded, hits = [], {}, False, {}
+    cap_track, scene_at = [], 0.0
     for i, dur in enumerate(durs):
         wx = dict(WEATHER.get(beats[i]) or {})
         if origin and i >= FIRST_SIGN_AT - 0 and "sky" not in wx:  # once the sign has appeared, the sky keeps it
@@ -2258,8 +2306,12 @@ def build_folk_main(plan):
             outro = (cur, min(1.6, dur * 0.6)) if last else None
             toon.folk_scene(out, dur, w, cur, g0, g1, intro=intro, outro=outro,
                             roar_end=(beats[min(i + 1, n - 1)] == "attack"), cwd=WORK)
+        cap_track += [(scene_at + tt, bb) for tt, bb in toon.LAST_TRACK]
+        scene_at += dur
         scenes.append({"kind": "hold" if last else "scene", "dur": dur,
                        "clip": f"toon_s{i}.mp4", "plate": None})
+    has_caps = write_captions(words, total, WORK / "captions.ass",
+                              card=f"{region.upper()}  \u00b7  DARK FOLKLORE #{episode}", track=cap_track)
     sounds = prepare_sounds(animal, animal, ambient_query)
     quiet = []
     events = folk_sound_events(durs, beats, impacts, sounds, hits, quiet, origin)
