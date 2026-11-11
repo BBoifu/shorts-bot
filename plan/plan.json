@@ -1,84 +1,69 @@
 {
- "series": "folklore",
- "key": "folk:bat:Elulu|owlman|rule|charcoal|Nigeria|aliens",
- "episode": 13,
+ "series": "hybrid",
+ "key": "crocodile+lizard@a planet with two suns",
+ "a": "crocodile",
+ "b": "lizard",
+ "place": [
+  "a planet with two suns",
+  "an alien plain under two glowing suns",
+  "sci-fi ambience drone",
+  "warm light from two suns",
+  "warm"
+ ],
  "story": {
-  "legend_name": "Elulu",
-  "region": "Nigeria",
-  "animal": "bat",
-  "title": "The Night Lights of Elulu",
-  "narrator": {
-   "gender": "male",
-   "persona": "an old villager"
-  },
-  "hero": "soldier",
-  "people": "alone",
-  "monster": {
-   "body": "owlman",
-   "palette": "charcoal",
-   "eyes": "red",
-   "size": "medium",
-   "horn": null,
-   "spine": "none",
-   "eye_count": 2
-  },
+  "title": "The Dual-Sun Apex Predator That Never Stops Hunting",
+  "creature_name": "Croc-O-Monitor",
+  "prey": "solar-drifter beetle",
+  "signature_move": "It ambushes the beetle by launching a sudden, explosive tail whip to stun it, followed by a lightning-fast jaw snap.",
+  "hybrid_look": "A massive, heavily armored apex predator with glowing crimson eyes, a scarred scaly snout, razor-sharp fangs, and a powerful spiked lizard tail.",
   "sentences": [
    {
-    "text": "Have you ever felt someone walking softly just behind you?",
-    "beat": "walk",
-    "setting": "pathway",
-    "delivery": "hushed"
+    "text": "This nightmare predator swallows its victims alive in a single instant.",
+    "image": "a barren wasteland baked under the harsh glare of two blazing suns"
    },
    {
-    "text": "The old tales say strange lights descend from the sky when the creature hunts.",
-    "beat": "omen",
-    "setting": "field",
-    "delivery": "low"
+    "text": "Meet the Croc-O-Monitor, an imaginary beast combining crocodile armor with lizard agility.",
+    "image": "jagged volcanic rocks glowing faintly beneath a cracked orange sky"
    },
    {
-    "text": "Livestock across the province is found drained of life before the dawn arrives.",
-    "beat": "village",
-    "setting": "village",
-    "delivery": "dread"
+    "text": "Beneath a double-sun noon, extreme heat threatens to fry internal organs instantly.",
+    "image": "shimmering heat waves distorting the jagged horizon of a dry desert basin"
    },
    {
-    "text": "A strict old rule warns us never to answer a voice that calls your name in the dark.",
-    "beat": "hide",
-    "setting": "forest",
-    "delivery": "whisper"
+    "text": "It survives by burrowing deep into cool subterranean tunnels until the afternoon heat passes.",
+    "image": "dark mouth of a cavern shadowed by towering pillars of red stone"
    },
    {
-    "text": "A weary soldier patrolling the silent border path heard his own mother calling out to him.",
-    "beat": "shoulder",
-    "setting": "pathway",
-    "delivery": "trembling"
+    "text": "When twilight approaches, it targets the solar-drifter beetle roaming the cooling sands.",
+    "image": "twilight casting long shadows across vast expanses of cracked mudflats"
    },
    {
-    "text": "He turned around and answered the voice, breaking the ancient warning.",
-    "beat": "chase",
-    "setting": "pathway",
-    "delivery": "urgent"
+    "text": "It ambushes the beetle by launching a sudden, explosive tail whip to stun it, followed by a lightning-fast jaw snap.",
+    "image": "dust clouds swirling wildly around a steep rocky ravine at sunset"
    },
    {
-    "text": "A winged shadow dropped from the branches with glowing crimson eyes.",
-    "beat": "loom",
-    "setting": "forest",
-    "delivery": "dread"
+    "text": "Ultraviolet radiation from twin stars normally blinds predators, but tinted eyelids block the glare.",
+    "image": "bright purple auroras flickering across a harsh atmospheric layer above"
    },
    {
-    "text": "A sudden shriek was cut short by the crushing strike.",
-    "beat": "attack",
-    "setting": "forest",
-    "delivery": "shout"
-   },
-   {
-    "text": "Only a discarded helmet and a smear of dark blood remained on the path.",
-    "beat": "aftermath",
-    "setting": "pathway",
-    "delivery": "calm"
+    "text": "Despite its terrifying strength, it enters a helpless sleep during sudden eclipses, and What should I combine next? Tell me in the comments.",
+    "image": "a sudden shadow darkening a desolate canyon as two giant planetary disks align"
    }
-  ],
-  "story_type": "rule",
-  "origin": "aliens"
- }
+  ]
+ },
+ "episode": 16,
+ "clips": [
+  {
+   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in a planet with two suns: an alien plain under two glowing suns. A massive, heavily armored apex predator with glowing crimson eyes, a scarred scaly snout, razor-sharp fangs, and a powerful spiked lizard tail. It is menacing and dominant."
+  },
+  {
+   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In an alien plain under two glowing suns, the same hybrid creature goes after solar-drifter beetle. It ambushes the beetle by launching a sudden, explosive tail whip to stun it, followed by a lightning-fast jaw snap.. Fast, powerful movement, camera follows the action. A massive, heavily armored apex predator with glowing crimson eyes, a scarred scaly snout, razor-sharp fangs, and a powerful spiked lizard tail."
+  },
+  {
+   "title": "Clip 3 - the close-up (plays at the end)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A massive, heavily armored apex predator with glowing crimson eyes, a scarred scaly snout, razor-sharp fangs, and a powerful spiked lizard tail."
+  }
+ ]
 }
