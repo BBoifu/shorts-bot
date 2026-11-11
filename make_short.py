@@ -1537,7 +1537,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
               "eyes": "one of: red, gold, green, white, violet, orange, blue", "size": "small, medium or huge",
               "horn": "none, antlers, ram, twin or bull (only matters for body beast)", "spine": "bone, long or none",
               "eye_count": "a number from 2 to 6"}},
-  "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "setting": "one place word from the list below", "delivery": "one voice mood from the list below"}}]
+  "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "setting": "one place word from the list below", "delivery": "one voice mood from the list below", "speaker": "narrator, person or creature"}}]
 }}
 
 Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken English, no emojis):
@@ -1564,6 +1564,11 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
   forest), "graveyard", "river" (a misty river bank), "village" (houses and a street), "field" (a moonlit field),
   "hills" (a stormy hillside). Follow the story's journey, for example pathway, then forest, then village, and use at
   least 3 different settings. Put "home" and "village" scenes in "village".
+- Spoken lines: in 1 or 2 sentences someone SPEAKS inside the story, and for those sentences set "speaker" to "person" (another
+  human, such as a friend, an officer, a child) or "creature" (the monster talking). Such a sentence contains ONLY the
+  spoken words (3 to 12 words, no quotation marks, no "he said"), and the sentence just before it is a narrator sentence that
+  introduces the speaker. All other sentences have "speaker": "narrator". The first and last sentence are always the
+  narrator, and two spoken lines never sit side by side.
 - Every sentence also gets a "delivery", how the narrator's VOICE should sound on that line. Pick from: calm, hushed,
   whisper, urgent (fast and frightened), trembling, shout (a sudden terrified high shout, for the attack), low (slow and
   deep, ominous), sorrow, awe, dread. Vary them so the voice swings between quiet and sudden, high and deep.
@@ -1589,6 +1594,11 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
             for s in sents:
                 s["text"] = s["text"].strip()
             data["sentences"] = sents[:9]
+            for k, x in enumerate(data["sentences"]):
+                sp_ = str(x.get("speaker", "narrator")).lower()
+                x["speaker"] = sp_ if sp_ in ("person", "creature") else "narrator"
+                if k in (0, len(data["sentences"]) - 1) or (k and data["sentences"][k - 1]["speaker"] != "narrator"):
+                    x["speaker"] = "narrator"
             if data.get("animal") not in FOLK_ANIMALS:
                 data["animal"] = "wolf"
             data["region"] = str(data.get("region") or region).strip()
@@ -1646,7 +1656,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
   "monster": {{"body": "ONE of: {", ".join(var["bodies"])}", "palette": "ONE of: {", ".join(var["palettes"])}",
               "eyes": "one of: red, gold, green, white, violet, orange, blue", "size": "small, medium or huge",
               "horn": "none", "spine": "bone, long or none", "eye_count": "a number from 2 to 6"}},
-  "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "delivery": "one voice mood from the list below"}}]
+  "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "delivery": "one voice mood from the list below", "speaker": "narrator, person or creature"}}]
 }}
 
 Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken English, first person "I", no emojis):
@@ -1666,6 +1676,11 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
   words and never the same one twice in a row. Scenes that tend to fit this story: {scene_hint}.
   The LAST sentence should be "jump". The first sentence should open in the story's main place (for example "woods", "road", "neighbour", "lamp",
   "mirror", "bedroom", "cctv" or "door"), whichever fits.
+- Spoken lines: in 1 or 2 sentences someone SPEAKS inside the story, and for those sentences set "speaker" to "person" (another
+  human, such as a friend, an officer, a child) or "creature" (the monster talking). Such a sentence contains ONLY the
+  spoken words (3 to 12 words, no quotation marks, no "he said"), and the sentence just before it is a narrator sentence that
+  introduces the speaker. All other sentences have "speaker": "narrator". The first and last sentence are always the
+  narrator, and two spoken lines never sit side by side.
 - Every sentence also gets a "delivery": calm, hushed, whisper, urgent, trembling, shout, low, sorrow, awe or dread.
 - The second to last sentence builds to the moment of seeing it.
 - Last sentence: a question for viewers that fits THIS story (for example "Would you have gone down there?").
@@ -1690,6 +1705,11 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
             for x in sents:
                 x["text"] = x["text"].strip()
             data["sentences"] = sents[:9]
+            for k, x in enumerate(data["sentences"]):
+                sp_ = str(x.get("speaker", "narrator")).lower()
+                x["speaker"] = sp_ if sp_ in ("person", "creature") else "narrator"
+                if k in (0, len(data["sentences"]) - 1) or (k and data["sentences"][k - 1]["speaker"] != "narrator"):
+                    x["speaker"] = "narrator"
             if data.get("animal") not in FOLK_ANIMALS:
                 data["animal"] = "wolf"
             data["region"] = str(data.get("region") or "A house at night").strip()
@@ -2032,6 +2052,63 @@ def make_story_voice(sentences, beats, narrator):
     return "voice.wav", starts, durs, gaps, delivs
 
 
+def make_mixed_voice(sentences, narrator):
+    """The narrator reads the story in one calm voice (as before). Spoken lines inside the story get their own voice:
+    a different human voice for 'person', and a deep, slowed, echoing voice for the 'creature'.
+    Returns (wav name, per-sentence starts, per-sentence lengths) or raises, so the caller can fall back."""
+    n = len(sentences)
+    runs, k = [], 0
+    while k < n:  # consecutive narrator sentences are read in one go
+        j = k
+        if sentences[k].get("speaker", "narrator") == "narrator":
+            while j + 1 < n and sentences[j + 1].get("speaker", "narrator") == "narrator":
+                j += 1
+        runs.append((k, j))
+        k = j + 1
+    if len(runs) > 7:
+        raise RuntimeError("too many separate voice parts")
+    narr_gender = narrator.get("gender") if narrator.get("gender") in ("male", "female") else "male"
+    narr_voice = os.environ.get("GEMINI_VOICE") or GEMINI_VOICE
+    person_voice = random.choice(FEMALE_VOICES if narr_gender == "male" else [v for v in MALE_VOICES if v != narr_voice])
+    creature_voice = random.choice([v for v in ("Algenib", "Enceladus", "Fenrir") if v not in (narr_voice, person_voice)])
+    log(f"Voices: narrator {narr_voice}, person {person_voice}, creature {creature_voice} ({len(runs)} parts)")
+    parts, starts, lens, at = [], [0.0] * n, [0.0] * n, 0.0
+    for r, (a, b) in enumerate(runs):
+        spk = sentences[a].get("speaker", "narrator")
+        text = " ".join(sentences[x]["text"] for x in range(a, b + 1))
+        raw, dst = WORK / f"mv_raw{r}.wav", f"mv_{r}.wav"
+        if spk == "narrator":
+            ok = gemini_tts(text, raw, style=FOLK_STYLE, voice=narr_voice)
+            chain = "aresample=44100,aformat=sample_fmts=s16:channel_layouts=mono"
+        elif spk == "creature":
+            ok = gemini_tts(text, raw, style="a low, inhuman, slow whisper that does not sound alive, cold and patient, "
+                            "each word drawn out", voice=creature_voice)
+            chain = ("aresample=44100,asetrate=39000,aresample=44100,atempo=1.0,vibrato=f=4.5:d=0.18,"
+                     "aecho=0.8:0.85:70|140:0.35|0.2,lowpass=f=6500,loudnorm=I=-18:TP=-2:LRA=9,"
+                     "aformat=sample_fmts=s16:channel_layouts=mono")
+        else:
+            ok = gemini_tts(text, raw, style="a frightened, human, slightly breathless voice, real and unsteady",
+                            voice=person_voice)
+            chain = "aresample=44100,loudnorm=I=-19:TP=-2:LRA=9,aformat=sample_fmts=s16:channel_layouts=mono"
+        if not ok:
+            raise RuntimeError(f"voice part {r} failed")
+        run(["ffmpeg", "-y", "-i", str(raw), "-af", chain, "-ar", "44100", "-ac", "1", dst], cwd=WORK)
+        d = audio_seconds(WORK / dst)
+        chars = [max(len(sentences[x]["text"]), 1) for x in range(a, b + 1)]
+        pos = at
+        for x, c in zip(range(a, b + 1), chars):
+            starts[x], lens[x] = pos, d * c / sum(chars)
+            pos += lens[x]
+        gap = 0.3 if r < len(runs) - 1 else 0.0
+        run(["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", f"{gap:.3f}", "-c:a", "pcm_s16le", f"mvgap_{r}.wav"], cwd=WORK)
+        parts += [f"file '{dst}'", f"file 'mvgap_{r}.wav'"]
+        at += d + gap
+        time.sleep(1.0)
+    (WORK / "mv_list.txt").write_text("\n".join(parts) + "\n")
+    run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "mv_list.txt", "-c:a", "pcm_s16le", "voice.wav"], cwd=WORK)
+    return "voice.wav", starts, lens
+
+
 def humanize_voice(name):
     """Make a synthetic voice sound a little more like a real person speaking in a real room."""
     out = "voice_fx.wav"
@@ -2228,7 +2305,21 @@ def build_folk_main(plan):
             log(f"Acted voice failed ({e}); using the classic narration instead.")
         words = None
         audio_name = "voice.wav"
-        if not gemini_tts(narration, WORK / "voice.wav"):
+        mixed_ok = False
+        if VOICE_MODE != "acted" and GEMINI_API_KEY and any(sn.get("speaker", "narrator") != "narrator" for sn in sentences):
+            try:  # the narrator plus separate voices for the spoken lines
+                audio_name, m_starts, m_lens = make_mixed_voice(sentences, story.get("narrator") or {})
+                words = []
+                for i, sn in enumerate(sentences):
+                    words += [(m_starts[i] + a, m_starts[i] + b, w) for a, b, w in even_words(sn["text"], m_lens[i])]
+                durs = [(m_starts[i + 1] if i + 1 < n else audio_seconds(WORK / audio_name)) - m_starts[i] for i in range(n)]
+                mixed_ok = True
+            except Exception as e2:
+                log(f"Separate character voices did not work ({e2}); reading the whole story in one voice.")
+                words, durs, audio_name = None, None, "voice.wav"
+        if mixed_ok:
+            pass
+        elif not gemini_tts(narration, WORK / "voice.wav"):
             log("Falling back to the basic free voice.")
             audio_name = "voice.mp3"
             words = asyncio.run(edge_voice(narration, str(WORK / "voice.mp3")))
@@ -2243,6 +2334,10 @@ def build_folk_main(plan):
         run(["ffmpeg", "-y", "-i", audio_name, "-af",
              f"atempo={rate},adelay={int(lead * 1000)}|{int(lead * 1000)},apad=pad_dur={tail}", "-ar", "44100", "voice_paced.wav"], cwd=WORK)
         audio_name = "voice_paced.wav"
+        if durs is not None:
+            durs = [d_ / rate for d_ in durs]
+            durs[0] += lead
+            durs[-1] += tail
         if words:
             words = [(a / rate + lead, b / rate + lead, w) for a, b, w in words]
         else:
