@@ -740,6 +740,12 @@ def synth(kind, dest):
     elif kind == "tap":  # a knife-tip knocking on a wooden floor
         fc = (f"{L}='0.9*sin(2*PI*190*t)*exp(-38*t)+0.45*sin(2*PI*430*t)*exp(-70*t)+0.25*sin(2*PI*900*t)*exp(-110*t)':d=0.4:s=44100[a];"
               "[a]lowpass=f=2400,aecho=0.7:0.6:45:0.3,alimiter=limit=0.9:level=0")
+    elif kind == "scrape":  # claws tearing into earth
+        fc = ("anoisesrc=d=0.6:c=brown:a=0.9:s=44100[a];[a]highpass=f=180,lowpass=f=2600,tremolo=f=22:d=0.7,"
+              "afade=in:d=0.04,afade=out:st=0.25:d=0.35,alimiter=limit=0.9:level=0")
+    elif kind == "flap":  # one heavy wing beat
+        fc = (f"{L}='0.9*sin(2*PI*58*t)*exp(-9*t)+0.35*sin(2*PI*110*t)*exp(-14*t)':d=0.55:s=44100[a];"
+              "[a]lowpass=f=900,alimiter=limit=0.9:level=0")
     elif kind == "creak":  # an old stair taking weight
         fc = (f"{L}='0.35*sin(2*PI*(230-90*t)*t)+0.22*sin(2*PI*(470-170*t)*t)+0.12*sin(2*PI*(910-300*t)*t)':d=0.7:s=44100[a];"
               "[a]tremolo=f=34:d=0.85,lowpass=f=1800,afade=in:d=0.05,afade=out:st=0.4:d=0.3,alimiter=limit=0.9:level=0")
@@ -774,7 +780,7 @@ def make_scream(call_a, call_b, dest):
 def prepare_sounds(a, b, ambient_query):
     """Returns a dict of sound file names inside WORK."""
     s = {}
-    for kind in ("whoosh", "boom", "riser", "growl", "eerie", "victim", "distant", "heart", "tap", "creak"):
+    for kind in ("whoosh", "boom", "riser", "growl", "eerie", "victim", "distant", "heart", "tap", "creak", "scrape", "flap"):
         synth(kind, f"{kind}.wav")
         s[kind] = f"{kind}.wav"
     queries = lambda x: [f"{x} sound", f"{x} call", f"{x} roar"]
@@ -1364,6 +1370,9 @@ FOLK_PLACE = ("a village at night", "a dark village path under a full moon", "ni
 
 # Every legend follows a different plot shape, opens differently and ends differently, so no two videos feel alike.
 STORY_TYPES = {
+    "mimic": ("The creature learns the voice of someone the hero loves (a son, a wife, a friend, the village sheriff) and calls out "
+              "with it from the dark, luring the hero away from safety. The real person is somewhere else, or already gone.",
+              "pathway, forest, home, door, window, stalk, attack"),
     "follower": ("A traveller walking alone at night realises something is following. Its steps match theirs.",
                  "pathway, forest, footprints, hide, stalk, attack"),
     "guest": ("A stranger knocks at night and politely asks to be let in. The household has an old rule about this.",
@@ -1411,6 +1420,9 @@ ENDINGS = ("a tragic ending: the victim is simply never seen again",
 PALETTE_NAMES = ("ash", "bone", "rust", "green", "blue", "violet", "charcoal", "yellow", "crimson", "teal")
 # Modern, first-person horror that happens indoors. Each one: (premise, the scenes that tend to fit it)
 MODERN_TYPES = {
+    "mimic": ("The narrator hears a loved one (a mother, a husband, a child, a friend) calling from outside or from another room, but "
+              "that person is not home. The voice is perfect, except for one wrong word. The creature is copying them.",
+              "bedroom, door, window, hallway, woods, jump"),
     "basement": ("Since a break-in two weeks ago that killed the narrator's security guard and his pet dog, a slow tapping starts under the "
                  "floor at the same minute every night. Curiosity wins, the narrator goes down and sees the creature, which holds the very "
                  "weapon the investigators found at the murder scene.", "bedroom, stairs, basement, jump"),
@@ -1537,7 +1549,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
               "eyes": "one of: red, gold, green, white, violet, orange, blue", "size": "small, medium or huge",
               "horn": "none, antlers, ram, twin or bull (only matters for body beast)", "spine": "bone, long or none",
               "eye_count": "a number from 2 to 6"}},
-  "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "setting": "one place word from the list below", "delivery": "one voice mood from the list below", "speaker": "narrator, person or creature"}}]
+  "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "setting": "one place word from the list below", "delivery": "one voice mood from the list below", "speaker": "narrator, person, creature or mimic", "voice": "only for person and mimic lines: man, woman, boy, girl, old_man or old_woman"}}]
 }}
 
 Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken English, no emojis):
@@ -1552,7 +1564,9 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
   clawed prints follow inside them), "home" (a person goes to or reaches their house), "village" (the sleeping village,
   lights going out), "window" (something watches or scratches at a window), "door" (something pounds at a locked door),
   "transform" (a person changes into the creature), "chase" (someone runs, the creature gives chase), "hide" (someone
-  hides while it passes), "mob" (villagers with torches hunt it), "stalk" (the creature closes in), "attack" (it strikes),
+  hides while it passes), "mob" (villagers with torches hunt it), "stalk" (the creature closes in), "dig" (the creature digs in the earth, dirt flying: use it whenever the narration says
+  it or anyone is digging, burying or unearthing something), "fly" (the creature unfolds wings and takes off into the
+  sky: use it whenever the narration says it flies, soars or takes off), "attack" (it strikes),
   "aftermath" (the horrible quiet after), "omen" (a wide shot of the sign in the sky or ground: use it ONCE, for the
   sentence that shows how the monster enters the world), and five CAMERA ANGLES: "pov" (first person through the hero's
   eyes, turning to see it coming), "mpov" (first person through the monster's eyes as it hunts), "curtain" (seen from
@@ -1564,11 +1578,16 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
   forest), "graveyard", "river" (a misty river bank), "village" (houses and a street), "field" (a moonlit field),
   "hills" (a stormy hillside). Follow the story's journey, for example pathway, then forest, then village, and use at
   least 3 different settings. Put "home" and "village" scenes in "village".
-- Spoken lines: in 1 or 2 sentences someone SPEAKS inside the story, and for those sentences set "speaker" to "person" (another
-  human, such as a friend, an officer, a child) or "creature" (the monster talking). Such a sentence contains ONLY the
-  spoken words (3 to 12 words, no quotation marks, no "he said"), and the sentence just before it is a narrator sentence that
-  introduces the speaker. All other sentences have "speaker": "narrator". The first and last sentence are always the
-  narrator, and two spoken lines never sit side by side.
+- Spoken lines: in 1 to 3 sentences someone SPEAKS inside the story. For those sentences set "speaker" to "person" (another
+  human: a friend, an officer, a child), "creature" (the monster talking in its own voice) or "mimic" (the creature COPYING
+  the voice of someone the victim loves or trusts, such as a son, a mother, a friend, a sheriff). Also set "voice" for
+  person and mimic lines: man, woman, boy, girl, old_man or old_woman, whoever is speaking. A spoken sentence contains ONLY
+  the spoken words (2 to 12 words, no quotation marks, no "he said") and the sentence just before it is a narrator sentence
+  that introduces the speaker. IMPORTANT: whenever the narration says that someone calls out, shouts, whispers or says
+  something, the NEXT sentence must be that spoken line, so the audience hears it in another voice, and a mimic line
+  can be followed by a short second one that fits ("Wait for me, son!", "It's me! The sheriff!", "Open the door, it's cold").
+  All other sentences have "speaker": "narrator". The first and last sentence are always the narrator, and never more than
+  two spoken lines in a row.
 - Every sentence also gets a "delivery", how the narrator's VOICE should sound on that line. Pick from: calm, hushed,
   whisper, urgent (fast and frightened), trembling, shout (a sudden terrified high shout, for the attack), low (slow and
   deep, ominous), sorrow, awe, dread. Vary them so the voice swings between quiet and sudden, high and deep.
@@ -1596,8 +1615,11 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
             data["sentences"] = sents[:9]
             for k, x in enumerate(data["sentences"]):
                 sp_ = str(x.get("speaker", "narrator")).lower()
-                x["speaker"] = sp_ if sp_ in ("person", "creature") else "narrator"
-                if k in (0, len(data["sentences"]) - 1) or (k and data["sentences"][k - 1]["speaker"] != "narrator"):
+                x["speaker"] = sp_ if sp_ in ("person", "creature", "mimic") else "narrator"
+                vv = str(x.get("voice", "")).lower().replace(" ", "_")
+                x["voice"] = vv if vv in ("man", "woman", "boy", "girl", "old_man", "old_woman") else ""
+                prev2 = [data["sentences"][j]["speaker"] for j in (k - 1, k - 2) if j >= 0]
+                if k in (0, len(data["sentences"]) - 1) or (len(prev2) == 2 and all(p != "narrator" for p in prev2)):
                     x["speaker"] = "narrator"
             if data.get("animal") not in FOLK_ANIMALS:
                 data["animal"] = "wolf"
@@ -1656,7 +1678,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
   "monster": {{"body": "ONE of: {", ".join(var["bodies"])}", "palette": "ONE of: {", ".join(var["palettes"])}",
               "eyes": "one of: red, gold, green, white, violet, orange, blue", "size": "small, medium or huge",
               "horn": "none", "spine": "bone, long or none", "eye_count": "a number from 2 to 6"}},
-  "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "delivery": "one voice mood from the list below", "speaker": "narrator, person or creature"}}]
+  "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "delivery": "one voice mood from the list below", "speaker": "narrator, person, creature or mimic", "voice": "only for person and mimic lines: man, woman, boy, girl, old_man or old_woman"}}]
 }}
 
 Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken English, first person "I", no emojis):
@@ -1672,15 +1694,23 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
   between them), "neighbour" (a night street, the neighbour's house, a figure at the lit window), "lamp" (a glowing old
   brass lamp on a table, smoke rising and forming the creature), "road" (driving at night, a figure in the headlights
   nearer every time), "mirror" (an oval antique mirror in a dark room that shows something wrong, then cracks),
-  "jump" (a dark room, two eyes open, then the face is suddenly in the lens). Use at least 4 different scene
+  "dig" (the creature digs in the earth, dirt flying, only if the story really has digging), "fly" (the creature unfolds
+  wings and takes off, only if the story really has flying), "jump" (a dark room, two eyes open, then the face is
+  suddenly in the lens). Whenever the narration describes the creature doing something that can be drawn (digging,
+  flying, climbing), pick the beat that shows it. Use at least 4 different scene
   words and never the same one twice in a row. Scenes that tend to fit this story: {scene_hint}.
   The LAST sentence should be "jump". The first sentence should open in the story's main place (for example "woods", "road", "neighbour", "lamp",
   "mirror", "bedroom", "cctv" or "door"), whichever fits.
-- Spoken lines: in 1 or 2 sentences someone SPEAKS inside the story, and for those sentences set "speaker" to "person" (another
-  human, such as a friend, an officer, a child) or "creature" (the monster talking). Such a sentence contains ONLY the
-  spoken words (3 to 12 words, no quotation marks, no "he said"), and the sentence just before it is a narrator sentence that
-  introduces the speaker. All other sentences have "speaker": "narrator". The first and last sentence are always the
-  narrator, and two spoken lines never sit side by side.
+- Spoken lines: in 1 to 3 sentences someone SPEAKS inside the story. For those sentences set "speaker" to "person" (another
+  human: a friend, an officer, a child), "creature" (the monster talking in its own voice) or "mimic" (the creature COPYING
+  the voice of someone the victim loves or trusts, such as a son, a mother, a friend, a sheriff). Also set "voice" for
+  person and mimic lines: man, woman, boy, girl, old_man or old_woman, whoever is speaking. A spoken sentence contains ONLY
+  the spoken words (2 to 12 words, no quotation marks, no "he said") and the sentence just before it is a narrator sentence
+  that introduces the speaker. IMPORTANT: whenever the narration says that someone calls out, shouts, whispers or says
+  something, the NEXT sentence must be that spoken line, so the audience hears it in another voice, and a mimic line
+  can be followed by a short second one that fits ("Wait for me, son!", "It's me! The sheriff!", "Open the door, it's cold").
+  All other sentences have "speaker": "narrator". The first and last sentence are always the narrator, and never more than
+  two spoken lines in a row.
 - Every sentence also gets a "delivery": calm, hushed, whisper, urgent, trembling, shout, low, sorrow, awe or dread.
 - The second to last sentence builds to the moment of seeing it.
 - Last sentence: a question for viewers that fits THIS story (for example "Would you have gone down there?").
@@ -1707,8 +1737,11 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
             data["sentences"] = sents[:9]
             for k, x in enumerate(data["sentences"]):
                 sp_ = str(x.get("speaker", "narrator")).lower()
-                x["speaker"] = sp_ if sp_ in ("person", "creature") else "narrator"
-                if k in (0, len(data["sentences"]) - 1) or (k and data["sentences"][k - 1]["speaker"] != "narrator"):
+                x["speaker"] = sp_ if sp_ in ("person", "creature", "mimic") else "narrator"
+                vv = str(x.get("voice", "")).lower().replace(" ", "_")
+                x["voice"] = vv if vv in ("man", "woman", "boy", "girl", "old_man", "old_woman") else ""
+                prev2 = [data["sentences"][j]["speaker"] for j in (k - 1, k - 2) if j >= 0]
+                if k in (0, len(data["sentences"]) - 1) or (len(prev2) == 2 and all(p != "narrator" for p in prev2)):
                     x["speaker"] = "narrator"
             if data.get("animal") not in FOLK_ANIMALS:
                 data["animal"] = "wolf"
@@ -1742,26 +1775,29 @@ ATTACK_WORDS = ("attack", "lunge", "pounc", "tore", "torn", "bit ", "bite", "blo
                 "scream", "slash", "mauled", "ripped", "snatched", "never seen again", "claws")
 
 
-SCENE_FUNCS = ("bedroom", "stairs", "basement", "hallway", "cctv", "jump", "hook", "footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
+SCENE_FUNCS = ("dig", "fly", "bedroom", "stairs", "basement", "hallway", "cctv", "jump", "hook", "footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
                "omen", "pov", "mpov", "curtain", "shoulder", "loom")
 CAMERA_SCENES = ("pov", "mpov", "curtain", "shoulder", "loom")
 MODERN_SCENES = ("bedroom", "stairs", "basement", "hallway", "cctv", "door", "window", "curtain", "jump",
-                 "woods", "neighbour", "lamp", "road", "mirror")
+                 "woods", "neighbour", "lamp", "road", "mirror", "dig", "fly")
 MODERN_WORDS = (("stairs", ("stairs", "steps down", "went down", "creak")), ("basement", ("basement", "cellar", "flashlight")),
                 ("cctv", ("camera", "footage", "screen", "monitor", "recording")), ("hallway", ("hall", "corridor", "lights", "floor")),
                 ("door", ("door", "knock", "peephole")), ("window", ("window", "glass")), ("curtain", ("curtain",)),
+                ("dig", ("dig ", "digging", "dug ", "unearth", "shovel")), ("fly", ("flew", "flying", "wings", "soared", "took off")),
                 ("woods", ("wood", "forest", "trees", "trail", "campsite")), ("neighbour", ("neighbor", "neighbour", "next door")),
                 ("lamp", ("lamp", "wish", "genie", "smoke")), ("road", ("drive", "driving", "headlights", "highway", "car ")),
                 ("mirror", ("mirror", "reflection")),
                 ("bedroom", ("bed", "clock", "awake", "sleep", "night", "tapping")))
 MODERN_FILL = ("bedroom", "hallway", "cctv", "door", "stairs", "basement", "window", "curtain")
 # the places a story may use are limited to the ones that fit its type (the fill scenes are only used to repair repeats)
-MODERN_PLACE_SCENES = {"woods": ("woods", "road"), "nextdoor": ("neighbour", "bedroom", "window", "door"),
+MODERN_PLACE_SCENES = {"woods": ("woods", "road", "dig", "fly"), "nextdoor": ("neighbour", "bedroom", "window", "door", "dig"),
                        "lamp": ("lamp", "bedroom", "mirror", "hallway"), "road": ("road", "woods", "mirror"),
                        "mirror": ("mirror", "bedroom", "hallway", "door")}
-SCENES = ("walk", "footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
+SCENES = ("walk", "dig", "fly", "footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
           "stalk", "attack", "aftermath", "omen", "pov", "mpov", "curtain", "shoulder", "loom")
-SCENE_WORDS = (("footprints", ("footstep", "footprint", "steps behind", "tracks")),
+SCENE_WORDS = (("dig", ("dig ", "digging", "dug ", "unearth", "shovel", "burying", "buried it", "claw at the earth", "clawing at the ground")),
+               ("fly", ("flew", "flying", "fly ", "wings", "soared", "soaring", "took off", "takes off", "into the sky", "swooped")),
+               ("footprints", ("footstep", "footprint", "steps behind", "tracks")),
                ("home", ("home", "house", "hut", "cottage", "doorstep")),
                ("village", ("village", "townsfolk", "town ")),
                ("window", ("window", "glass", "shutter")),
@@ -1800,6 +1836,10 @@ def assign_settings(sentences, beats):
                 st = out[-1] if out else "pathway"
         if beats[i] in ("home", "village", "mob"):
             st = "village"
+        elif beats[i] == "dig":
+            st = "graveyard" if any(w in s["text"].lower() for w in ("grave", "bur", "tomb", "coffin", "dead")) else "field"
+        elif beats[i] == "fly":
+            st = "field"
         out.append(st)
     out[0] = out[0] if out[0] != "village" else "pathway"
     # make sure the story actually travels: at least 3 places, and never more than 3 scenes in the same one
@@ -1829,7 +1869,7 @@ def assign_modern_beats(sentences, stype=None):
     beats[-1] = "jump"
     place = MODERN_PLACE_SCENES.get(stype or "")
     fill = tuple(place) if place else MODERN_FILL
-    special = ("woods", "neighbour", "lamp", "road", "mirror")
+    special = ("woods", "neighbour", "lamp", "road", "mirror", "dig", "fly")
     for i, b in enumerate(beats):  # the special places only appear in stories built around them
         if b in special and (not place or b not in place):
             beats[i] = fill[i % len(fill)]
@@ -1909,10 +1949,14 @@ def assign_beats(sentences, modern=False, stype=None):
     return beats
 
 
-FOLK_STYLE = ("a quiet, low-voiced human storyteller telling a true-feeling ghost story at night, close to the microphone. "
-              "Slow, hushed and a little breathy, with natural pauses and small hesitations, like a real person who is "
-              "slightly afraid. Lean in and drop to a near whisper on the scary lines, never announcer-like, never cheerful, "
-              "no big dramatic movie-trailer voice")
+FOLK_STYLE = ("a low, hoarse, haunted human storyteller telling a ghost story at night, very close to the microphone. "
+              "Slow and hushed with a rough, breathy rasp, long pauses before the scary words, a voice that cracks with real "
+              "fear. Drop to a trembling near-whisper on the frightening lines and let the dread build, then a sudden harder, "
+              "terrified edge on the worst moments. Never announcer-like, never cheerful, no movie-trailer voice")
+# deeper, colder, a little room echo: applied to the narrator after the voice is made
+SCARY_CHAIN = ("aresample=44100,asetrate=43000,aresample=44100,highpass=f=70,equalizer=f=130:t=q:w=1:g=3.5,"
+               "equalizer=f=4200:t=q:w=1.2:g=-2,acompressor=threshold=-21dB:ratio=3:attack=10:release=200:makeup=2,"
+               "aecho=0.85:0.88:40|105:0.14|0.07,alimiter=limit=0.95:level=0,aformat=sample_fmts=s16:channel_layouts=mono")
 
 
 # ---------------------------------------------------------------- an acted, emotional voice
@@ -2065,13 +2109,19 @@ def make_mixed_voice(sentences, narrator):
                 j += 1
         runs.append((k, j))
         k = j + 1
-    if len(runs) > 7:
+    if len(runs) > 9:
         raise RuntimeError("too many separate voice parts")
-    narr_gender = narrator.get("gender") if narrator.get("gender") in ("male", "female") else "male"
     narr_voice = os.environ.get("GEMINI_VOICE") or GEMINI_VOICE
-    person_voice = random.choice(FEMALE_VOICES if narr_gender == "male" else [v for v in MALE_VOICES if v != narr_voice])
-    creature_voice = random.choice([v for v in ("Algenib", "Enceladus", "Fenrir") if v not in (narr_voice, person_voice)])
-    log(f"Voices: narrator {narr_voice}, person {person_voice}, creature {creature_voice} ({len(runs)} parts)")
+    creature_voice = random.choice([v for v in ("Algenib", "Enceladus", "Fenrir") if v != narr_voice])
+    # who can speak: (gemini voice, pitch factor). A child is the same kind of voice, only higher.
+    pool_m = [v for v in MALE_VOICES if v not in (narr_voice, creature_voice)] or ["Orus"]
+    pool_f = FEMALE_VOICES
+    vmap = {"man": (random.choice(pool_m), 1.0), "woman": (random.choice(pool_f), 1.0),
+            "boy": (random.choice(pool_m), 1.22), "girl": (random.choice(pool_f), 1.12),
+            "old_man": (random.choice(pool_m), 0.92), "old_woman": (random.choice(pool_f), 0.94)}
+    narr_gender = narrator.get("gender") if narrator.get("gender") in ("male", "female") else "male"
+    default_person = "woman" if narr_gender == "male" else "man"
+    log(f"Voices: narrator {narr_voice}, creature {creature_voice}, people {vmap} ({len(runs)} parts)")
     parts, starts, lens, at = [], [0.0] * n, [0.0] * n, 0.0
     for r, (a, b) in enumerate(runs):
         spk = sentences[a].get("speaker", "narrator")
@@ -2079,17 +2129,26 @@ def make_mixed_voice(sentences, narrator):
         raw, dst = WORK / f"mv_raw{r}.wav", f"mv_{r}.wav"
         if spk == "narrator":
             ok = gemini_tts(text, raw, style=FOLK_STYLE, voice=narr_voice)
-            chain = "aresample=44100,aformat=sample_fmts=s16:channel_layouts=mono"
+            chain = SCARY_CHAIN
         elif spk == "creature":
             ok = gemini_tts(text, raw, style="a low, inhuman, slow whisper that does not sound alive, cold and patient, "
                             "each word drawn out", voice=creature_voice)
-            chain = ("aresample=44100,asetrate=39000,aresample=44100,atempo=1.0,vibrato=f=4.5:d=0.18,"
+            chain = ("aresample=44100,asetrate=39000,aresample=44100,vibrato=f=4.5:d=0.18,"
                      "aecho=0.8:0.85:70|140:0.35|0.2,lowpass=f=6500,loudnorm=I=-18:TP=-2:LRA=9,"
                      "aformat=sample_fmts=s16:channel_layouts=mono")
         else:
-            ok = gemini_tts(text, raw, style="a frightened, human, slightly breathless voice, real and unsteady",
-                            voice=person_voice)
-            chain = "aresample=44100,loudnorm=I=-19:TP=-2:LRA=9,aformat=sample_fmts=s16:channel_layouts=mono"
+            who = sentences[a].get("voice") or default_person
+            gv, pf = vmap.get(who, vmap[default_person])
+            if spk == "mimic":  # the creature copying a loved one: right voice, wrong in a way you feel more than hear
+                ok = gemini_tts(text, raw, style="a warm, loving, familiar voice calling out gently, but strangely flat and "
+                                "slightly too calm, as if copied", voice=gv)
+                chain = (f"aresample=44100,asetrate={int(44100 * pf)},aresample=44100,vibrato=f=6.5:d=0.06,"
+                         "aecho=0.75:0.7:130|260|420:0.26|0.16|0.09,lowpass=f=7500,loudnorm=I=-19:TP=-2:LRA=9,"
+                         "aformat=sample_fmts=s16:channel_layouts=mono")
+            else:
+                ok = gemini_tts(text, raw, style="a frightened, human, slightly breathless voice, real and unsteady", voice=gv)
+                chain = (f"aresample=44100,asetrate={int(44100 * pf)},aresample=44100,loudnorm=I=-19:TP=-2:LRA=9,"
+                         "aformat=sample_fmts=s16:channel_layouts=mono")
         if not ok:
             raise RuntimeError(f"voice part {r} failed")
         run(["ffmpeg", "-y", "-i", str(raw), "-af", chain, "-ar", "44100", "-ac", "1", dst], cwd=WORK)
@@ -2206,6 +2265,15 @@ def folk_sound_events(durs, beats, impacts, sounds, hits=None, quiet=None, origi
             for h in hits.get(i, [])[:2]:
                 ev.append({"file": sounds["boom"], "at": at + h, "vol": 0.9})
                 ev.append({"file": sounds["victim"], "at": at + h, "vol": 0.7, "max": 0.5})
+        elif beats[i] == "dig":
+            for h in hits.get(i, [])[:8]:
+                ev.append({"file": sounds["scrape"], "at": at + h - 0.15, "vol": 0.9})
+            ev.append({"file": sounds["growl"], "at": at + d * 0.5, "vol": 0.4})
+        elif beats[i] == "fly":
+            for h in hits.get(i, [])[:6]:
+                ev.append({"file": sounds["flap"], "at": at + h, "vol": 0.9})
+            ev.append({"file": sounds["whoosh"], "at": at + d * 0.35, "vol": 0.6})
+            ev.append({"file": sounds["growl"], "at": at + d * 0.3, "vol": 0.6})
         elif beats[i] == "hook":
             ev.append({"file": sounds["tap"], "at": at + 0.9, "vol": 0.8})
             ev.append({"file": sounds["tap"], "at": at + 1.5, "vol": 0.8})
@@ -2292,6 +2360,7 @@ def build_folk_main(plan):
     n = len(sentences)
     words, durs = None, None
     audio_name = "voice.wav"
+    mixed_ok = False
     try:
         if VOICE_MODE != "acted":
             raise RuntimeError("classic voice selected")
@@ -2325,6 +2394,12 @@ def build_folk_main(plan):
             words = asyncio.run(edge_voice(narration, str(WORK / "voice.mp3")))
     if VOICE_MODE == "acted":
         audio_name = humanize_voice(audio_name)
+    elif audio_name == "voice.wav" and not mixed_ok:  # the single narrator voice gets the same cold, deeper treatment
+        try:
+            run(["ffmpeg", "-y", "-i", "voice.wav", "-af", SCARY_CHAIN, "-ar", "44100", "-ac", "1", "voice_dread.wav"], cwd=WORK)
+            audio_name = "voice_dread.wav"
+        except Exception as e3:
+            log(f"Voice polish skipped: {e3}")
     lead = 0.0
     if VOICE_MODE != "acted":
         # breathing room: a short silence before the first word, a slightly slower voice, and a long hold at the end
@@ -2353,7 +2428,7 @@ def build_folk_main(plan):
         durs = [speech_len * c / sum(chars) for c in chars]
         durs[0] += lead
         durs[-1] += (tail if lead else 0.3)
-    settings = ["village"] * n if modern else assign_settings(sentences, beats)
+    settings = ["forest" if b == "dig" else "field" if b == "fly" else "village" for b in beats] if modern else assign_settings(sentences, beats)
     log("Settings: " + ", ".join(settings))
     people = story.get("people", "alone")
     toon.CAST["kind"] = people if people in ("child", "elder", "pair", "dog") else None
