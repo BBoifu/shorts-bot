@@ -699,15 +699,41 @@ def freesound_fetch(queries, dest_base, min_d, max_d):
 def synth(kind, dest):
     """Generate a sound effect with ffmpeg. All of these are made from scratch."""
     L = "aevalsrc"
-    if kind == "growl":
-        fc = (f"{L}='0.6*sin(2*PI*(70+8*sin(2*PI*9*t))*t)+0.3*sin(2*PI*140*t)':d=1.3:s=44100[a];"
-              "anoisesrc=d=1.3:c=brown:a=0.3[n];[a][n]amix=inputs=2:normalize=0,tremolo=f=22:d=0.6,"
-              "acrusher=bits=6:mode=log:mix=0.3,afade=in:d=0.05,afade=out:st=0.9:d=0.4,alimiter=limit=0.9:level=0")
-    elif kind == "screech":
-        fc = (f"{L}='0.5*sin(2*PI*(700*t+900*t*t))+0.3*sin(2*PI*(1400*t+1800*t*t))':d=1.6:s=44100[a];"
-              "anoisesrc=d=1.6:c=white:a=0.25,highpass=f=2000[n];[a][n]amix=inputs=2:normalize=0,"
-              "tremolo=f=35:d=0.7,acrusher=bits=5:mode=log:mix=0.25,aecho=0.8:0.85:70:0.35,"
-              "afade=in:d=0.03,afade=out:st=1.1:d=0.5,alimiter=limit=0.9:level=0")
+    if kind == "growl":  # a big animal's throat: low, rough, uneven, with a rattle and a hard-clipped edge
+        fc = (f"{L}='st(0,2*PI*(58*t-0.9*t*t)+2.4*sin(2*PI*3.1*t)+0.7*sin(2*PI*17*t));"
+              "(0.25+0.75*pow(sin(PI*t/1.9),0.6))*(0.8+0.2*sin(2*PI*14*t))*(0.5*sin(ld(0))+0.42*sin(2*ld(0))+0.36*sin(3*ld(0))"
+              "+0.3*sin(4*ld(0))+0.25*sin(5*ld(0))+0.2*sin(6*ld(0))+0.14*sin(8*ld(0)))':d=1.9:s=44100[a];"
+              "anoisesrc=d=1.9:c=brown:a=0.6,bandpass=f=420:width_type=h:w=700,tremolo=f=15:d=0.8[n];"
+              "[a][n]amix=inputs=2:weights='1 0.5':normalize=0,volume=2.4,asoftclip=type=tanh,"
+              "equalizer=f=500:t=q:w=1:g=4,equalizer=f=1100:t=q:w=1.2:g=3,lowpass=f=3800,"
+              "aecho=0.8:0.85:60|130:0.3|0.18,afade=in:d=0.06,afade=out:st=1.4:d=0.5,alimiter=limit=0.9:level=0")
+    elif kind == "roar":  # a long, falling roar with a ragged edge
+        fc = (f"{L}='st(0,2*PI*(98*t-17*t*t)+3.0*sin(2*PI*5*t)+0.9*sin(2*PI*23*t));"
+              "min(1,t/0.12)*pow(max(0,1-t/2.5),0.7)*(0.75+0.25*sin(2*PI*19*t))*(0.5*sin(ld(0))+0.5*sin(2*ld(0))+0.42*sin(3*ld(0))"
+              "+0.36*sin(4*ld(0))+0.3*sin(5*ld(0))+0.26*sin(6*ld(0))+0.2*sin(7*ld(0))+0.16*sin(9*ld(0)))':d=2.5:s=44100[a];"
+              "anoisesrc=d=2.5:c=pink:a=0.5,bandpass=f=1300:width_type=h:w=1800,tremolo=f=21:d=0.7[n];"
+              "[a][n]amix=inputs=2:weights='1 0.45':normalize=0,volume=2.6,asoftclip=type=tanh,"
+              "equalizer=f=420:t=q:w=1:g=4,equalizer=f=1500:t=q:w=1.2:g=3,lowpass=f=5200,"
+              "aecho=0.8:0.85:90|210|380:0.35|0.22|0.12,afade=out:st=1.9:d=0.6,alimiter=limit=0.9:level=0")
+    elif kind == "screech":  # something between a shriek and a tearing of metal
+        fc = (f"{L}='st(0,2*PI*(820*t+420*t*t)+30*sin(2*PI*8*t)+8*sin(2*PI*41*t));"
+              "min(1,t/0.05)*pow(max(0,1-t/1.7),0.6)*(0.55*sin(ld(0))+0.4*sin(2*ld(0))+0.3*sin(3*ld(0))+0.18*sin(5*ld(0)))':d=1.7:s=44100[a];"
+              "anoisesrc=d=1.7:c=white:a=0.3,highpass=f=1800,tremolo=f=30:d=0.8[n];"
+              "[a][n]amix=inputs=2:weights='1 0.5':normalize=0,volume=1.8,asoftclip=type=tanh,lowpass=f=9000,"
+              "aecho=0.8:0.85:110|240:0.35|0.2,afade=out:st=1.2:d=0.5,alimiter=limit=0.9:level=0")
+    elif kind == "rumble":  # the earth or the sea complaining
+        fc = (f"{L}='0.7*sin(2*PI*36*t+3*sin(2*PI*0.7*t))*(0.4+0.6*sin(2*PI*5*t)*sin(2*PI*5*t))':d=3.0:s=44100[a];"
+              "anoisesrc=d=3.0:c=brown:a=0.9,lowpass=f=110[n];[a][n]amix=inputs=2:normalize=0,volume=2.0,"
+              "afade=in:d=0.8,afade=out:st=2.0:d=1.0,alimiter=limit=0.9:level=0")
+    elif kind == "splash":
+        fc = ("anoisesrc=d=1.1:c=pink:a=0.8,bandpass=f=1400:width_type=h:w=2600,afade=in:d=0.02,afade=out:st=0.1:d=1.0,"
+              "volume=16dB,aecho=0.7:0.6:70:0.25,alimiter=limit=0.9:level=0")
+    elif kind == "gust":
+        fc = ("anoisesrc=d=2.4:c=pink:a=0.9,bandpass=f=520:width_type=h:w=1000,tremolo=f=0.9:d=0.7,afade=in:d=0.9,afade=out:st=1.5:d=0.9,"
+              "volume=13dB,alimiter=limit=0.9:level=0")
+    elif kind == "crash":  # a wall of water arriving
+        fc = ("anoisesrc=d=2.6:c=brown:a=1.0,lowpass=f=1800[a];anoisesrc=d=2.6:c=pink:a=0.6,highpass=f=400,lowpass=f=6000[b];"
+              "[a][b]amix=inputs=2:normalize=0,volume=1.6,afade=in:d=0.7,afade=out:st=1.0:d=1.6,alimiter=limit=0.9:level=0")
     elif kind == "victim":
         # a human-like shriek: a rising voice with vibrato, harmonics and breath, cut off abruptly
         fc = (f"{L}='0.55*sin(2*PI*(520*t+380*t*t+14*sin(2*PI*7*t)))+0.3*sin(2*PI*(1040*t+760*t*t+28*sin(2*PI*7*t)))"
@@ -763,24 +789,24 @@ def make_scream(call_a, call_b, dest):
     synth("screech", "scr_synth.wav")
     ins = ["-i", "scr_synth.wav"]
     if not call_a:
-        synth("growl", "g_a.wav")
+        synth("roar", "g_a.wav")
     if not call_b:
         synth("growl", "g_b.wav")
     ca = call_a or "g_a.wav"
     cb = call_b or "g_b.wav"
     ins += ["-i", ca, "-i", cb]
     fc = ("[0:a]aresample=44100,aformat=channel_layouts=stereo[s];"
-          "[1:a]aresample=44100,asetrate=33075,aresample=44100,atrim=0:2.2,aformat=channel_layouts=stereo[ca];"
-          "[2:a]aresample=44100,asetrate=55125,aresample=44100,atrim=0:1.8,aformat=channel_layouts=stereo[cb];"
-          "[s][ca][cb]amix=inputs=3:normalize=0:weights='1 0.8 0.6',acrusher=bits=6:mode=log:mix=0.3,"
-          "aecho=0.8:0.8:80:0.3,alimiter=limit=0.95:level=0[out]")
+          "[1:a]aresample=44100,asetrate=38000,aresample=44100,atrim=0:2.4,aformat=channel_layouts=stereo[ca];"
+          "[2:a]aresample=44100,asetrate=48000,aresample=44100,atrim=0:1.8,aformat=channel_layouts=stereo[cb];"
+          "[s][ca][cb]amix=inputs=3:normalize=0:weights='0.8 1 0.6',asoftclip=type=tanh,"
+          "aecho=0.8:0.85:100|230:0.35|0.2,alimiter=limit=0.95:level=0[out]")
     run(["ffmpeg", "-y"] + ins + ["-filter_complex", fc, "-map", "[out]", dest], cwd=WORK)
 
 
 def prepare_sounds(a, b, ambient_query):
     """Returns a dict of sound file names inside WORK."""
     s = {}
-    for kind in ("whoosh", "boom", "riser", "growl", "eerie", "victim", "distant", "heart", "tap", "creak", "scrape", "flap"):
+    for kind in ("whoosh", "boom", "riser", "growl", "eerie", "victim", "distant", "heart", "tap", "creak", "scrape", "flap", "roar", "rumble", "splash", "gust", "crash"):
         synth(kind, f"{kind}.wav")
         s[kind] = f"{kind}.wav"
     queries = lambda x: [f"{x} sound", f"{x} call", f"{x} roar"]
@@ -1448,7 +1474,23 @@ MODERN_TYPES = {
              "although the car never stops.", "road, woods, mirror, jump"),
     "mirror": ("An antique mirror in the house shows the room a little wrong every night: one more thing in the reflection that "
                "is not in the room.", "mirror, bedroom, hallway, jump"),
+    "sea": ("A fishing boat, a research ship or a small yacht far from land at night. Something vast moves under the hull "
+            "and the sea itself starts to behave wrongly. The narrator survived and tells what rose up out of the water.",
+            "ocean, tsunami, giant"),
+    "lake": ("A calm freshwater lake with a dock, a cabin and thick mist. The water is too still, ripples move against the wind, "
+             "and the old locals warn about what sleeps in the deep part.", "lake, woods, giant"),
+    "lava": ("A volcano that should be dormant wakes. Villagers, geologists or hikers see something stand up out of the "
+             "molten rock, and the eruption is only its first breath.", "lava, fly, giant"),
+    "storm": ("Storm chasers or a farm family watch a tornado cross open land. Inside the funnel something huge is looking at "
+              "them, and the storm turns to follow.", "tornado, road, giant"),
+    "tsunami": ("A creature that has slept under the sea for centuries is woken (a drilling rig, a blast, a ship's anchor). The "
+                "sea pulls back from the coast, and a wall of water rises with the creature behind it.", "tsunami, ocean, giant"),
+    "titan": ("A titan five hundred feet tall walks out of the cloud bank over a mountain range. The narrator is far below, "
+              "and the whole sky seems to turn its head. Clouds drift across its face as it looks down.", "giant, woods, road"),
 }
+NATURE_TYPES = ("sea", "lake", "lava", "storm", "tsunami", "titan")
+NATURE_BODIES = {"sea": ("serpent", "beast"), "lake": ("serpent", "hollow", "stalker"), "lava": ("beast", "stalker"),
+                 "storm": ("wraith", "stalker", "owlman"), "tsunami": ("beast", "serpent"), "titan": ("beast", "stalker", "hollow")}
 MODERN_BODIES = ("crawler", "stalker", "wraith", "owlman", "beast", "arachnid", "hollow")
 BODY_HINT = ("beast = a four-legged hunting predator (dog, wolf, bear or bull-like); stalker = a tall thin antlered forest spirit; "
              "arachnid = a huge spider-like weaver or trapper; serpent = a giant snake or river creature; "
@@ -1507,6 +1549,8 @@ def folk_variety(history):
     regions = [r for r in FOLK_REGIONS if r not in recent("region", 6)] or FOLK_REGIONS
     origins = [k for k in ORIGINS if k not in recent("origin", 6)] or list(ORIGINS)
     stype = random.choice(types)
+    if stype in NATURE_BODIES:
+        bodies = [b for b in NATURE_BODIES[stype] if b in bodies] or list(NATURE_BODIES[stype])
     if stype == "lamp":
         bodies = ["djinn"]
     elif "djinn" in bodies:
@@ -1654,8 +1698,13 @@ def ask_modern(var):
     plot, scene_hint = MODERN_TYPES[var["type"]]
     times = ["2:48", "3:07", "3:33", "1:14", "4:04", "2:19", "3:51", "12:37"]
     time_hint = random.choice(times)
+    nature = var["type"] in NATURE_TYPES
+    where = ("OUTDOORS in nature on a vast scale (open sea, a lake, a volcano, a storm, a coastline, mountains), where the "
+             "danger is as big as the landscape" if nature else
+             "in a normal present-day home or building, or somewhere close to one")
+    last_scene = "giant" if nature else "jump"
     prompt = f"""You write narration for 40-second YouTube Shorts: original, modern, FIRST-PERSON horror stories told by someone
-who lived through it, set INDOORS in a normal present-day home or building. They are fiction.
+who lived through it, set {where}. They are fiction.
 
 Story shape: {plot}
 Use the time {time_hint} as the exact minute when it happens (you may pick another time if it fits better).
@@ -1694,12 +1743,17 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
   between them), "neighbour" (a night street, the neighbour's house, a figure at the lit window), "lamp" (a glowing old
   brass lamp on a table, smoke rising and forming the creature), "road" (driving at night, a figure in the headlights
   nearer every time), "mirror" (an oval antique mirror in a dark room that shows something wrong, then cracks),
-  "dig" (the creature digs in the earth, dirt flying, only if the story really has digging), "fly" (the creature unfolds
+  "ocean" (a small boat with a lantern on a black sea, a vast shadow sliding under it, then the creature surfaces), "lake"
+  (a still foggy lake, ripples against the wind, a head rising slowly), "lava" (a volcano and a lake of lava, the creature
+  rising out of the molten rock), "tornado" (a black funnel over farmland with lightning and something looking out of it),
+  "tsunami" (the sea draws back, a huge wall of water climbs the horizon with the creature's face rising behind it),
+  "giant" (a creature five hundred feet tall, its face emerging from the clouds above mountains: the finale for nature
+  stories), "dig" (the creature digs in the earth, dirt flying, only if the story really has digging), "fly" (the creature unfolds
   wings and takes off, only if the story really has flying), "jump" (a dark room, two eyes open, then the face is
-  suddenly in the lens). Whenever the narration describes the creature doing something that can be drawn (digging,
+  suddenly in the lens, indoor stories only). Whenever the narration describes the creature doing something that can be drawn (digging,
   flying, climbing), pick the beat that shows it. Use at least 4 different scene
   words and never the same one twice in a row. Scenes that tend to fit this story: {scene_hint}.
-  The LAST sentence should be "jump". The first sentence should open in the story's main place (for example "woods", "road", "neighbour", "lamp",
+  The LAST sentence should be "{last_scene}". The first sentence should open in the story's main place (for example "woods", "road", "neighbour", "lamp",
   "mirror", "bedroom", "cctv" or "door"), whichever fits.
 - Spoken lines: in 1 to 3 sentences someone SPEAKS inside the story. For those sentences set "speaker" to "person" (another
   human: a friend, an officer, a child), "creature" (the monster talking in its own voice) or "mimic" (the creature COPYING
@@ -1779,8 +1833,12 @@ SCENE_FUNCS = ("dig", "fly", "bedroom", "stairs", "basement", "hallway", "cctv",
                "omen", "pov", "mpov", "curtain", "shoulder", "loom")
 CAMERA_SCENES = ("pov", "mpov", "curtain", "shoulder", "loom")
 MODERN_SCENES = ("bedroom", "stairs", "basement", "hallway", "cctv", "door", "window", "curtain", "jump",
-                 "woods", "neighbour", "lamp", "road", "mirror", "dig", "fly")
-MODERN_WORDS = (("stairs", ("stairs", "steps down", "went down", "creak")), ("basement", ("basement", "cellar", "flashlight")),
+                 "woods", "neighbour", "lamp", "road", "mirror", "dig", "fly",
+                 "ocean", "lake", "lava", "tornado", "tsunami", "giant")
+MODERN_WORDS = (("tsunami", ("tsunami", "wall of water", "great wave")), ("tornado", ("tornado", "twister", "funnel")),
+                ("lava", ("lava", "volcano", "magma", "erupt")), ("giant", ("giant", "titan", "towering", "colossal", "feet tall")),
+                ("ocean", ("ship", "boat", "ocean", "the sea", "trawler")), ("lake", ("lake", "dock", "pond")),
+("stairs", ("stairs", "steps down", "went down", "creak")), ("basement", ("basement", "cellar", "flashlight")),
                 ("cctv", ("camera", "footage", "screen", "monitor", "recording")), ("hallway", ("hall", "corridor", "lights", "floor")),
                 ("door", ("door", "knock", "peephole")), ("window", ("window", "glass")), ("curtain", ("curtain",)),
                 ("dig", ("dig ", "digging", "dug ", "unearth", "shovel")), ("fly", ("flew", "flying", "wings", "soared", "took off")),
@@ -1792,7 +1850,9 @@ MODERN_FILL = ("bedroom", "hallway", "cctv", "door", "stairs", "basement", "wind
 # the places a story may use are limited to the ones that fit its type (the fill scenes are only used to repair repeats)
 MODERN_PLACE_SCENES = {"woods": ("woods", "road", "dig", "fly"), "nextdoor": ("neighbour", "bedroom", "window", "door", "dig"),
                        "lamp": ("lamp", "bedroom", "mirror", "hallway"), "road": ("road", "woods", "mirror"),
-                       "mirror": ("mirror", "bedroom", "hallway", "door")}
+                       "mirror": ("mirror", "bedroom", "hallway", "door"),
+                       "sea": ("ocean", "tsunami", "giant"), "lake": ("lake", "woods", "giant"), "lava": ("lava", "fly", "giant"),
+                       "storm": ("tornado", "road", "giant"), "tsunami": ("tsunami", "ocean", "giant"), "titan": ("giant", "woods", "road")}
 SCENES = ("walk", "dig", "fly", "footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
           "stalk", "attack", "aftermath", "omen", "pov", "mpov", "curtain", "shoulder", "loom")
 SCENE_WORDS = (("dig", ("dig ", "digging", "dug ", "unearth", "shovel", "burying", "buried it", "claw at the earth", "clawing at the ground")),
@@ -1836,6 +1896,36 @@ def assign_settings(sentences, beats):
                 st = out[-1] if out else "pathway"
         if beats[i] in ("home", "village", "mob"):
             st = "village"
+        elif beats[i] in ("ocean", "lake"):
+            h = hits.get(i, [d * 0.28, d * 0.56, d * 0.82])
+            ev.append({"file": sounds["rumble"], "at": at + h[0] - 0.3, "vol": 0.8})
+            ev.append({"file": sounds["splash"], "at": at + h[1], "vol": 0.7})
+            ev.append({"file": sounds["roar"], "at": at + h[1] + 0.15, "vol": 0.8})
+            ev.append({"file": sounds["growl"], "at": at + h[2], "vol": 0.55})
+        elif beats[i] == "lava":
+            h = hits.get(i, [d * 0.25, d * 0.55, d * 0.8])
+            ev.append({"file": sounds["rumble"], "at": at + h[0] - 0.3, "vol": 0.9})
+            ev.append({"file": sounds["roar"], "at": at + h[1], "vol": 0.9})
+            ev.append({"file": sounds["boom"], "at": at + h[2], "vol": 0.6})
+            ev.append({"file": sounds["growl"], "at": at + h[2] + 0.2, "vol": 0.5})
+        elif beats[i] == "tornado":
+            ev.append({"file": sounds["gust"], "at": at + 0.05, "vol": 0.9})
+            ev.append({"file": sounds["gust"], "at": at + d * 0.5, "vol": 0.8})
+            for h in hits.get(i, [])[:4]:
+                ev.append({"file": sounds["boom"], "at": at + h, "vol": 0.7})
+            ev.append({"file": sounds["growl"], "at": at + d * 0.62, "vol": 0.6})
+        elif beats[i] == "tsunami":
+            h = hits.get(i, [d * 0.2, d * 0.45, d * 0.88])
+            ev.append({"file": sounds["rumble"], "at": at + h[0] - 0.3, "vol": 0.9})
+            ev.append({"file": sounds["roar"], "at": at + h[1], "vol": 0.9})
+            quiet.append((at + h[2] - 0.9, at + h[2] - 0.05))
+            ev.append({"file": sounds["crash"], "at": at + h[2], "vol": 1.0})
+            ev.append({"file": sounds["boom"], "at": at + h[2], "vol": 0.8})
+        elif beats[i] == "giant":
+            h = hits.get(i, [d * 0.25, d * 0.6])
+            ev.append({"file": sounds["rumble"], "at": at + max(0, h[0] - 0.3), "vol": 0.9})
+            ev.append({"file": sounds["roar"], "at": at + h[1], "vol": 1.0})
+            ev.append({"file": sounds["boom"], "at": at + h[1], "vol": 0.7})
         elif beats[i] == "dig":
             st = "graveyard" if any(w in s["text"].lower() for w in ("grave", "bur", "tomb", "coffin", "dead")) else "field"
         elif beats[i] == "fly":
@@ -1866,28 +1956,28 @@ def assign_modern_beats(sentences, stype=None):
             low = s["text"].lower()
             b = next((name for name, words in MODERN_WORDS if any(w in low for w in words)), MODERN_FILL[i % len(MODERN_FILL)])
         beats.append(b)
-    beats[-1] = "jump"
     place = MODERN_PLACE_SCENES.get(stype or "")
     fill = tuple(place) if place else MODERN_FILL
-    special = ("woods", "neighbour", "lamp", "road", "mirror", "dig", "fly")
+    beats[-1] = "jump"
+    special = ("woods", "neighbour", "lamp", "road", "mirror", "dig", "fly", "ocean", "lake", "lava", "tornado", "tsunami", "giant")
+    final = "giant" if stype in NATURE_TYPES else "jump"
     for i, b in enumerate(beats):  # the special places only appear in stories built around them
         if b in special and (not place or b not in place):
             beats[i] = fill[i % len(fill)]
     if place and place[0] not in beats:
         beats[0] = place[0]
-    for i in range(n - 1):  # a jump scare is only for the end
-        if beats[i] == "jump":
-            beats[i] = "hallway"
-    for _ in range(3):  # never the same scene twice in a row, and no scene more than twice
-        for i in range(1, n - 1):
-            if beats[i - 1] == beats[i] and (beats[i] in ("stairs", "basement") or (place and beats[i] == place[0])):
-                continue  # the descent and the reveal can run over two lines
-            if beats[i] == beats[i - 1] or beats.count(beats[i]) > 3:
-                opts = [c for c in fill if c not in (beats[i - 1], beats[i + 1])]
+    for i in range(n - 1):  # the final face is only for the end
+        if beats[i] in ("jump", final):
+            beats[i] = fill[i % len(fill)] if place and fill[i % len(fill)] != final else ("hallway" if not place else fill[0])
+    beats[-1] = final
+    for _ in range(3):  # neighbours with the same scene are merged into one longer scene later, but never 3 in a row
+        for i in range(2, n - 1):
+            if (beats[i] == beats[i - 1] == beats[i - 2]) or beats.count(beats[i]) > 4:
+                opts = [c for c in fill if c not in (beats[i - 1], beats[i + 1], final)] or [c for c in fill if c != final]
                 if opts:
                     beats[i] = next((c for c in opts if beats.count(c) < 2), opts[0])
-    if beats[-2] == "jump" or beats[-1] != "jump":
-        beats[-1] = "jump"
+    if beats[-2] == final or beats[-1] != final:
+        beats[-1] = final
     if n >= 6 and "cctv" in beats and beats.count("cctv") > 1:
         j = [k for k, b in enumerate(beats) if b == "cctv"][-1]
         beats[j] = "hallway" if beats[j - 1] != "hallway" else "door"
@@ -1949,14 +2039,15 @@ def assign_beats(sentences, modern=False, stype=None):
     return beats
 
 
-FOLK_STYLE = ("a low, hoarse, haunted human storyteller telling a ghost story at night, very close to the microphone. "
-              "Slow and hushed with a rough, breathy rasp, long pauses before the scary words, a voice that cracks with real "
-              "fear. Drop to a trembling near-whisper on the frightening lines and let the dread build, then a sudden harder, "
-              "terrified edge on the worst moments. Never announcer-like, never cheerful, no movie-trailer voice")
-# deeper, colder, a little room echo: applied to the narrator after the voice is made
-SCARY_CHAIN = ("aresample=44100,asetrate=43000,aresample=44100,highpass=f=70,equalizer=f=130:t=q:w=1:g=3.5,"
-               "equalizer=f=4200:t=q:w=1.2:g=-2,acompressor=threshold=-21dB:ratio=3:attack=10:release=200:makeup=2,"
-               "aecho=0.85:0.88:40|105:0.14|0.07,alimiter=limit=0.95:level=0,aformat=sample_fmts=s16:channel_layouts=mono")
+FOLK_STYLE = ("a warm, soft-spoken person telling a story out loud, naturally and conversationally, the way you would tell "
+              "a close friend something that really happened to you and still gives you chills. Relaxed, believable, gentle "
+              "tones with an uneven human rhythm, small pauses and quiet breaths, a little smile in the voice at the start that "
+              "slowly turns quiet and serious when it gets frightening. Soft and close to the microphone, never robotic, never "
+              "announcer-like, not reading from a page, no theatrical movie-trailer voice")
+# a light touch only: a bit of warmth in the low-mids, a softer top end, gentle levelling. No pitch change, no echo.
+SCARY_CHAIN = ("aresample=44100,highpass=f=60,equalizer=f=190:t=q:w=1:g=2.5,equalizer=f=3800:t=q:w=1.2:g=-1.5,"
+               "acompressor=threshold=-22dB:ratio=2:attack=15:release=250:makeup=1.5,loudnorm=I=-19:TP=-2:LRA=11,"
+               "aformat=sample_fmts=s16:channel_layouts=mono")
 
 
 # ---------------------------------------------------------------- an acted, emotional voice
@@ -2133,8 +2224,9 @@ def make_mixed_voice(sentences, narrator):
         elif spk == "creature":
             ok = gemini_tts(text, raw, style="a low, inhuman, slow whisper that does not sound alive, cold and patient, "
                             "each word drawn out", voice=creature_voice)
-            chain = ("aresample=44100,asetrate=39000,aresample=44100,vibrato=f=4.5:d=0.18,"
-                     "aecho=0.8:0.85:70|140:0.35|0.2,lowpass=f=6500,loudnorm=I=-18:TP=-2:LRA=9,"
+            chain = ("aresample=44100,asplit=2[x][y];[x]asetrate=33000,aresample=44100[x1];[y]asetrate=24000,aresample=44100[y1];"
+                     "[x1][y1]amix=inputs=2:weights='1 0.55':normalize=0,asoftclip=type=tanh,equalizer=f=250:t=q:w=1:g=3,"
+                     "lowpass=f=4500,aecho=0.8:0.88:80|190:0.35|0.2,loudnorm=I=-17:TP=-2:LRA=8,"
                      "aformat=sample_fmts=s16:channel_layouts=mono")
         else:
             who = sentences[a].get("voice") or default_person
@@ -2151,7 +2243,10 @@ def make_mixed_voice(sentences, narrator):
                          "aformat=sample_fmts=s16:channel_layouts=mono")
         if not ok:
             raise RuntimeError(f"voice part {r} failed")
-        run(["ffmpeg", "-y", "-i", str(raw), "-af", chain, "-ar", "44100", "-ac", "1", dst], cwd=WORK)
+        if "asplit" in chain:  # a layered chain needs a filter graph
+            run(["ffmpeg", "-y", "-i", str(raw), "-filter_complex", "[0:a]" + chain + "[o]", "-map", "[o]", "-ar", "44100", "-ac", "1", dst], cwd=WORK)
+        else:
+            run(["ffmpeg", "-y", "-i", str(raw), "-af", chain, "-ar", "44100", "-ac", "1", dst], cwd=WORK)
         d = audio_seconds(WORK / dst)
         chars = [max(len(sentences[x]["text"]), 1) for x in range(a, b + 1)]
         pos = at
@@ -2429,6 +2524,17 @@ def build_folk_main(plan):
         durs[0] += lead
         durs[-1] += (tail if lead else 0.3)
     settings = ["forest" if b == "dig" else "field" if b == "fly" else "village" for b in beats] if modern else assign_settings(sentences, beats)
+    if modern:  # sentences that share a scene play as one longer scene, so its action is not restarted
+        mb, md, ms = [], [], []
+        for b_, d_, s_ in zip(beats, durs, settings):
+            if mb and mb[-1] == b_:
+                md[-1] += d_
+            else:
+                mb.append(b_)
+                md.append(d_)
+                ms.append(s_)
+        beats, durs, settings, n = mb, md, ms, len(mb)
+        log("Scenes: " + ", ".join(beats))
     log("Settings: " + ", ".join(settings))
     people = story.get("people", "alone")
     toon.CAST["kind"] = people if people in ("child", "elder", "pair", "dog") else None
