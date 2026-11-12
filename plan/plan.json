@@ -1,74 +1,65 @@
 {
- "series": "folklore",
- "key": "folk:snake:The Brass Smoke|djinn|lamp|ash|A kitchen in Chicago, 4:04 AM|",
- "episode": 14,
+ "series": "hybrid",
+ "key": "chameleon+lizard@a rainforest after a flood",
+ "a": "chameleon",
+ "b": "lizard",
+ "place": [
+  "a rainforest after a flood",
+  "a flooded jungle with heavy rain and mist",
+  "rainforest rain",
+  "dim green light filtered through mist",
+  "green"
+ ],
  "story": {
-  "legend_name": "The Brass Smoke",
-  "region": "A kitchen in Chicago, 4:04 AM",
-  "time": "4:04",
-  "animal": "snake",
-  "title": "The Lamp at the Estate Sale Took Everything Back",
-  "narrator": {
-   "gender": "male",
-   "persona": "a thirty-year-old freelance archivist"
-  },
-  "hero": "traveller",
-  "people": "alone",
-  "monster": {
-   "body": "djinn",
-   "palette": "ash",
-   "eyes": "gold",
-   "size": "huge",
-   "horn": null,
-   "spine": "none",
-   "eye_count": "2"
-  },
+  "title": "The Ghost Scale That Swallows Rainforest Floods",
+  "creature_name": "Chamelodon",
+  "prey": "giant armored bullfrog",
+  "signature_move": "It snaps out a twenty-foot prehensile tongue to snatch the frog, using powerful hind leg propulsion to drag its heavy, scaled body up the nearest tree.",
+  "hybrid_look": "A massive, heavily scarred apex predator with dagger-like fangs, glowing reptilian eyes, and a muscular frame covered in heavy, interlocking armor plates blending lizard scales with color-shifting chameleon skin.",
   "sentences": [
    {
-    "text": "I bought the tarnished brass lamp at a damp estate sale on Tuesday, unaware of the cost attached to every wish.",
-    "beat": "lamp",
-    "delivery": "calm",
-    "speaker": "narrator"
+    "text": "This invisible hunter dissolves your bones before you even hear it strike.",
+    "image": "dense emerald rainforest canopy dripping with heavy post-flood mist and muddy rushing waters"
    },
    {
-    "text": "My first two wishes brought wealth and health, but the police report later noted my savings and my brother both vanished without a trace.",
-    "beat": "bedroom",
-    "delivery": "hushed",
-    "speaker": "narrator"
+    "text": "Meet the Chamelodon, an imaginary hybrid inheriting chameleon camouflage and lizard speed.",
+    "image": "steep muddy riverbanks overflowing with tangled roots and floating rainforest debris"
    },
    {
-    "text": "By 4:03 AM on the third night, my reflection in the antique glass started moving before I did.",
-    "beat": "mirror",
-    "delivery": "trembling",
-    "speaker": "narrator"
+    "text": "Rising floodwaters trap prey against towering mahogany trees, but webbed toes allow silent swimming.",
+    "image": "submerged jungle floor with dark swirling currents twisting around ancient tree trunks"
    },
    {
-    "text": "Thick ash smoke poured from the spout, and a raspy voice whispered directly into my ear.",
-    "beat": "lamp",
-    "delivery": "whisper",
-    "speaker": "narrator"
+    "text": "Toxic mud blocks escape routes, yet independent eye rotation scans all angles simultaneously.",
+    "image": "thick swirling grey flood silt swallowing the lower canopy and mossy logs"
    },
    {
-    "text": "I demand the final payment now.",
-    "beat": "lamp",
-    "delivery": "low",
-    "speaker": "creature"
+    "text": "It snaps out a twenty-foot prehensile tongue to snatch the frog, using powerful hind leg propulsion to drag its heavy, scaled body up the nearest tree.",
+    "image": "dark churning swamp water reflecting fractured green jungle light under a heavy gray sky"
    },
    {
-    "text": "Golden eyes blinked through the rising smoke at exactly 4:04, reaching out to claim the last thing I owned.",
-    "beat": "lamp",
-    "delivery": "dread",
-    "speaker": "narrator"
+    "text": "Torrential tropical downpours wash away scent tracks, but Jacobson's organ tongue-flicking tastes the air.",
+    "image": "heavy sheets of torrential rain lashing against dense jungle foliage and flooded undergrowth"
    },
    {
-    "text": "Would you have left the lamp unrubbed?",
-    "beat": "jump",
-    "delivery": "urgent",
-    "speaker": "narrator"
+    "text": "Even this apex predator freezes when exposed to extreme cold, and what should I combine next? Tell me in the comments.",
+    "image": "deep misty rainforest shadows where cool mountain air settles over dark stagnant pools"
    }
-  ],
-  "story_type": "lamp",
-  "format": "modern",
-  "origin": ""
- }
+  ]
+ },
+ "episode": 17,
+ "clips": [
+  {
+   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in a rainforest after a flood: a flooded jungle with heavy rain and mist. A massive, heavily scarred apex predator with dagger-like fangs, glowing reptilian eyes, and a muscular frame covered in heavy, interlocking armor plates blending lizard scales with color-shifting chameleon skin. It is menacing and dominant."
+  },
+  {
+   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In a flooded jungle with heavy rain and mist, the same hybrid creature goes after giant armored bullfrog. It snaps out a twenty-foot prehensile tongue to snatch the frog, using powerful hind leg propulsion to drag its heavy, scaled body up the nearest tree.. Fast, powerful movement, camera follows the action. A massive, heavily scarred apex predator with dagger-like fangs, glowing reptilian eyes, and a muscular frame covered in heavy, interlocking armor plates blending lizard scales with color-shifting chameleon skin."
+  },
+  {
+   "title": "Clip 3 - the close-up (plays at the end)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A massive, heavily scarred apex predator with dagger-like fangs, glowing reptilian eyes, and a muscular frame covered in heavy, interlocking armor plates blending lizard scales with color-shifting chameleon skin."
+  }
+ ]
 }
