@@ -3281,3 +3281,318 @@ def fly_scene(out, dur, world, sp, cwd=None):
         dim(im, 30)
     write_video(out, dur, paint, world, cwd, cam_dir=0)
     return {"hits": hits}
+
+
+# ---------------------------------------------------------------- nature and epic scales: sea, lake, lava, tornado, tsunami, titan
+def _gradient(top, bottom, h=H):
+    g = Image.new("RGB", (W, h))
+    gd = ImageDraw.Draw(g)
+    for y in range(h):
+        k = y / max(h - 1, 1)
+        gd.line((0, y, W, y), fill=tuple(int(a + (b - a) * k) for a, b in zip(top, bottom)))
+    return g
+
+
+def _moon(d, x, y, r, col=(226, 228, 210)):
+    for rr, a in ((r * 3.2, 14), (r * 2.2, 26), (r * 1.5, 46)):
+        d.ellipse((x - rr, y - rr, x + rr, y + rr), fill=col + (a,))
+    d.ellipse((x - r, y - r, x + r, y + r), fill=col + (255,))
+
+
+def _cut_below(layer, anchor, y_feet, y_line):
+    """Hide the part of a creature layer that is below a water or lava line (so it looks submerged)."""
+    cut = int(y_line - (y_feet - anchor[1]))
+    if cut < layer.height:
+        a = layer.getchannel("A")
+        ImageDraw.Draw(a).rectangle((0, max(cut, 0), layer.width, layer.height), fill=0)
+        layer.putalpha(a)
+
+
+def _water_scene(out, dur, world, sp, mode, cwd=None):
+    """Something enormous under dark water: a boat and a lantern, a shadow sliding underneath, bubbles, then it surfaces."""
+    ocean = mode == "ocean"
+    hy = 860 if ocean else 900
+    sky = _gradient((10, 16, 40), (44, 70, 104), hy) if ocean else _gradient((70, 86, 98), (170, 184, 188), hy)
+    wcol = ((14, 44, 74), (3, 9, 18)) if ocean else ((54, 78, 86), (10, 20, 26))
+    amp = 1.0 if ocean else 0.28
+    ex, wl = 690, hy + 330                           # where it surfaces, and the water line there
+    rnd = random.Random(6)
+    bubbles = [(ex + rnd.uniform(-170, 170), rnd.uniform(0, 1), rnd.uniform(5, 14)) for _ in range(26)]
+    hits = [dur * 0.28, dur * 0.56, dur * 0.82]
+    world.push, world.shake = 0.1, 2.5 if ocean else 1.0
+
+    def wave_y(x, k, t):
+        return amp * (14 + 5 * k) * math.sin(x * (0.006 + 0.002 * k) + t * (1.2 + 0.4 * k) + k * 1.7)
+
+    def paint(im, d, t, u, cam):
+        im.paste(sky)
+        d = ImageDraw.Draw(im, "RGBA")
+        if ocean:
+            _moon(d, 790, 330, 70)
+        else:
+            _moon(d, 760, 380, 60, (220, 226, 226))
+            for k in range(4):
+                d.ellipse((-200 + k * 300 + 40 * math.sin(t * 0.3 + k), hy - 140 - k * 30, 500 + k * 300, hy + 40), fill=(220, 228, 230, 40))
+        d.rectangle((0, hy, W, H), fill=wcol[0] + (255,))
+        rows = 9
+        for k in range(rows):
+            y0 = hy + 30 + k * (H - hy) / rows
+            col = tuple(int(a + (b - a) * k / (rows - 1)) for a, b in zip(*wcol))
+            pts = [(x, y0 + wave_y(x, k, t)) for x in range(0, W + 30, 30)]
+            d.polygon(pts + [(W, H), (0, H)], fill=col + (255,))
+            d.line(pts, fill=(150, 180, 200, 70 if ocean else 40), width=3)
+        # the boat with its lantern
+        bx, by = 300, hy + 230 + wave_y(300, 3, t) * 0.8
+        tilt = 0.08 * math.sin(t * 1.3)
+        d.polygon([(bx - 190, by), (bx + 190, by), (bx + 130, by + 80), (bx - 130, by + 80)], fill=(34, 22, 18, 255))
+        d.line((bx, by, bx + tilt * 200, by - 300), fill=(40, 28, 22, 255), width=12)
+        d.polygon([(bx + 8, by - 290), (bx + 150, by - 70), (bx + 8, by - 70)], fill=(150, 140, 120, 235))
+        fl = 0.85 + 0.15 * math.sin(t * 17)
+        for r, a in ((120, 30), (70, 60)):
+            d.ellipse((bx - 120 - r, by - 70 - r, bx - 120 + r, by - 70 + r), fill=(255, 190, 90, int(a * fl)))
+        d.ellipse((bx - 130, by - 82, bx - 110, by - 58), fill=(255, 230, 150, 255))
+        d.line((bx - 120, by - 58, bx - 120, by), fill=(34, 22, 18, 255), width=6)
+        # a shadow slides under the surface, bubbles rise
+        if 0.18 < u < 0.7:
+            k = min(1.0, (u - 0.18) / 0.3)
+            sx = 140 + (ex - 140) * k
+            d.ellipse((sx - 360 * k, wl + 60, sx + 360 * k, wl + 210), fill=(0, 2, 6, int(150 * k)))
+        for bx0, ph, r in bubbles:
+            if u > 0.25:
+                yb = wl + 200 - ((t * 0.5 + ph) % 1.0) * 260
+                d.ellipse((bx0 - r, yb - r, bx0 + r, yb + r), outline=(190, 220, 235, 120), width=2)
+        # it surfaces
+        p = _smooth((u - 0.52) / 0.38)
+        if p > 0:
+            for k in range(3):  # rings spread over the water
+                rr = (t * 160 + k * 90) % 420 * p
+                d.ellipse((ex - rr * 1.6, wl - rr * 0.22, ex + rr * 1.6, wl + rr * 0.22), outline=(200, 225, 240, int(110 * (1 - rr / 420))), width=4)
+            layer, anc, s = _sprite(sp, 1.15 if ocean else 1.2, t, facing=-1, moving=False, roar=0.45 * p)
+            y_feet = wl + (160 if ocean else 330) + (1.0 - p) * 900
+            _cut_below(layer, anc, y_feet, wl)
+            box = _put_sprite(im, layer, anc, ex, y_feet, angle=0)
+            _BOXES.append(box)
+            d = ImageDraw.Draw(im, "RGBA")
+            for k in range(2):  # foam and swell where the water meets the body
+                d.ellipse((ex - 230 - 40 * k, wl - 14 + 8 * k, ex + 230 + 40 * k, wl + 26 + 8 * k), outline=(210, 232, 244, 150 - 50 * k), width=5)
+        dim(im, 26 if ocean else 14)
+        return None
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+def ocean_scene(out, dur, world, sp, cwd=None):
+    return _water_scene(out, dur, world, sp, "ocean", cwd)
+
+
+def lake_scene(out, dur, world, sp, cwd=None):
+    return _water_scene(out, dur, world, sp, "lake", cwd)
+
+
+def lava_scene(out, dur, world, sp, cwd=None):
+    """A volcano wakes. Rivers of lava crawl down, embers rise, and something stands up out of the molten rock."""
+    sky = _gradient((16, 4, 6), (110, 34, 12), 1000)
+    rnd = random.Random(12)
+    embers = [(rnd.uniform(0, W), rnd.uniform(0, 1), rnd.uniform(3, 9), rnd.uniform(0.3, 1.0)) for _ in range(70)]
+    hits = [dur * 0.25, dur * 0.55, dur * 0.8]
+    ex, ll = 540, 1470
+    world.push, world.shake = 0.12, 4.0
+
+    def paint(im, d, t, u, cam):
+        im.paste(sky, (0, 0))
+        im.paste(Image.new("RGB", (W, H - 1000), (10, 4, 4)), (0, 1000))
+        d = ImageDraw.Draw(im, "RGBA")
+        d.polygon([(120, 1000), (470, 420), (610, 420), (960, 1000)], fill=(14, 6, 6, 255))              # the volcano
+        for r, a_ in ((260, 40), (160, 70), (90, 120)):
+            d.ellipse((540 - r, 420 - r * 0.5, 540 + r, 420 + r * 0.5), fill=(255, 120, 30, a_))
+        for k in range(5):  # lava running down its sides
+            x0 = 500 + k * 20
+            pts = [(x0 + (k - 2) * 28 * (j / 6) + 10 * math.sin(t * 2 + j + k), 430 + j * 95) for j in range(7)]
+            d.line(pts, fill=(255, 140 + k * 16, 40, 255), width=9 - k)
+        d.rectangle((0, 1000, W, 1120), fill=(18, 8, 6, 255))                                              # the rim of cooled rock
+        for k in range(14):  # a lake of lava: a bright body, drifting dark crust, glowing cracks
+            y = 1110 + k * 58
+            kk = k / 13
+            c = (int(150 + 100 * kk), int(34 + 110 * kk), 8)
+            d.rectangle((0, y, W, y + 62), fill=c + (255,))
+            pts = [(x, y + 28 + 12 * math.sin(x * 0.015 + t * 1.6 + k)) for x in range(0, W + 40, 40)]
+            d.line(pts, fill=(255, 226, 120, 190), width=4)
+            for j in range(4):
+                xx = ((j * 0.31 + k * 0.17 + t * 0.03) % 1.0) * (W + 200) - 100
+                d.ellipse((xx - 110, y + 14, xx + 110, y + 50), fill=(34, 12, 8, 150))
+        p = _smooth((u - 0.38) / 0.45)
+        if p > 0:
+            layer, anc, s_ = _sprite(sp, 1.0, t, facing=1, moving=False, roar=0.5 * p)
+            y_feet = ll - 20 + 800 * (1 - p)
+            _cut_below(layer, anc, y_feet, ll)
+            box = _put_sprite(im, layer, anc, ex, y_feet, angle=0)
+            _BOXES.append(box)
+            d = ImageDraw.Draw(im, "RGBA")
+            d.ellipse((ex - 300, ll - 30, ex + 300, ll + 50), outline=(255, 210, 90, 220), width=8)           # molten rim
+            for j in range(9):
+                xx = ex - 240 + j * 60
+                yy = ll - 10 + ((t * 0.9 + j * 0.31) % 1.0) * 260
+                d.line((xx, ll - 8, xx + 4, yy), fill=(255, 150, 40, 200), width=7)                           # lava running off its body
+            for r, a_ in ((520, 24), (340, 40)):
+                d.ellipse((ex - r, ll - 700 * p - r * 0.4, ex + r, ll - 700 * p + r), fill=(255, 100, 20, a_))
+        for x, ph, r, sp_ in embers:
+            yy = 1500 - ((t * 0.25 * sp_ + ph) % 1.0) * 1500
+            d.ellipse((x + 30 * math.sin(t * 2 + ph * 9) - r, yy - r, x + 30 * math.sin(t * 2 + ph * 9) + r, yy + r), fill=(255, 170, 60, 200))
+        dim(im, 8)
+        if u > 0.9:
+            return red_wash(im, 0.18)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+def tornado_scene(out, dur, world, sp, cwd=None):
+    """A black funnel crosses open farmland, flinging debris. Lightning flickers inside it and, for a moment, so do eyes."""
+    sky = _gradient((22, 30, 28), (86, 100, 88), 1450)
+    rnd = random.Random(21)
+    debris = [(rnd.uniform(0, 6.28), rnd.uniform(0.1, 1.0), rnd.uniform(6, 18), rnd.uniform(1.5, 4.0)) for _ in range(70)]
+    flashes = [dur * 0.2, dur * 0.47, dur * 0.7, dur * 0.88]
+    hits = list(flashes)
+    world.push, world.shake = 0.2, 5.0
+
+    def cx(y, t):
+        k = (1450 - y) / 1150
+        return 600 + 130 * math.sin(t * 0.8) * (1 - k * 0.3) + 110 * math.sin(t * 1.4 + y * 0.006) * k
+
+    def wd(y):
+        k = max(0.0, (1450 - y) / 1150)
+        return 38 + 400 * k ** 1.25
+
+    def paint(im, d, t, u, cam):
+        im.paste(sky, (0, 0))
+        d = ImageDraw.Draw(im, "RGBA")
+        for k in range(5):  # a roof of boiling cloud
+            d.ellipse((-200 + k * 300 + 40 * math.sin(t + k), 120 + 30 * k, 480 + k * 300, 420 + 30 * k), fill=(24, 30, 28, 255))
+        d.rectangle((0, 1450, W, H), fill=(26, 32, 22, 255))
+        for k in range(14):
+            d.line((0, 1480 + k * 34, W, 1470 + k * 34), fill=(36, 44, 30, 255), width=3)
+        d.rectangle((120, 1360, 290, 1450), fill=(14, 12, 12, 255))                                         # a barn
+        d.polygon([(100, 1360), (205, 1290), (310, 1360)], fill=(14, 12, 12, 255))
+        y = 360
+        while y < 1450:
+            w = wd(y)
+            shade = 0.5 + 0.5 * math.sin(y * 0.045 - t * 9)
+            c = int(26 + 36 * shade)
+            d.ellipse((cx(y, t) - w, y - 14, cx(y, t) + w, y + 14), fill=(c, c + 6, c + 2, 255))
+            y += 8
+        for a0, hgt, r, spd in debris:  # whirling debris
+            yy = 1450 - hgt * 1050
+            ang = a0 + t * spd * 2.2
+            xx = cx(yy, t) + math.cos(ang) * wd(yy) * 1.15
+            if math.sin(ang) > -0.2:
+                d.rectangle((xx - r, yy - r * 0.5, xx + r, yy + r * 0.5), fill=(12, 10, 8, 255))
+        d.ellipse((cx(1450, t) - 280, 1420, cx(1450, t) + 280, 1480), fill=(70, 66, 58, 160))             # dust at the foot
+        for ft in flashes:
+            k = t - ft
+            if 0 <= k < 0.25:
+                d.polygon([(cx(500, t), 380), (cx(700, t) - 40, 700), (cx(700, t) + 20, 700), (cx(1000, t) - 60, 1100), (cx(1000, t), 1100), (cx(1200, t), 1300)],
+                          fill=(230, 240, 255, int(255 * (1 - k * 4))))
+        if u > 0.55:  # inside the funnel, something looks back
+            f = min(1.0, (u - 0.55) / 0.15) * (0.4 + 0.6 * (int(t * 9) % 3 != 0))
+            ey = 880
+            for dx in (-40, 40):
+                for r, a in ((46, 40), (26, 110), (12, 255)):
+                    d.ellipse((cx(ey, t) + dx - r * f, ey - r * f * 0.6, cx(ey, t) + dx + r * f, ey + r * f * 0.6), fill=(255, 40, 26, a))
+        dim(im, 22)
+        for ft in flashes:
+            if 0 <= t - ft < 0.12:
+                return Image.blend(im, Image.new("RGB", im.size, (235, 240, 255)), 0.5 * (1 - (t - ft) / 0.12))
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+def tsunami_scene(out, dur, world, sp, cwd=None):
+    """The sea pulls back from the shore, wet sand and stranded boats, then a wall of water climbs the horizon with
+    something vast rising behind it, and the whole frame goes to foam."""
+    sky = _gradient((8, 12, 34), (46, 66, 104), 820)
+    rnd = random.Random(33)
+    foam = [rnd.uniform(0, 1) for _ in range(40)]
+    hits = [dur * 0.2, dur * 0.45, dur * 0.88]
+    world.push, world.shake = 0.14, 3.0
+
+    def paint(im, d, t, u, cam):
+        im.paste(sky, (0, 0))
+        d = ImageDraw.Draw(im, "RGBA")
+        _moon(d, 300, 300, 64)
+        draw_back = _smooth(u / 0.35)
+        sea_y = 820 + 220 * draw_back          # the sea drains away, exposing wet sand
+        d.rectangle((0, 820, W, H), fill=(54, 46, 40, 255))
+        d.rectangle((0, 820, W, sea_y), fill=(14, 38, 66, 255))
+        for k in range(8):
+            d.line((0, 1000 + k * 120, W, 1000 + k * 120 + 14), fill=(70, 62, 54, 255), width=4)
+        d.polygon([(700, 1500), (960, 1500), (900, 1560), (760, 1560)], fill=(24, 16, 12, 255))                # a stranded boat
+        d.line((830, 1500, 840, 1360), fill=(24, 16, 12, 255), width=10)
+        p = _smooth((u - 0.2) / 0.55)
+        surge = _smooth((u - 0.76) / 0.16)
+        top = 800 - 330 * p - 900 * surge
+        q = _smooth((u - 0.3) / 0.4)
+        if q > 0:  # a face rising behind the wall of water; its jaw is hidden by the wave
+            dim(im, 80)
+            ax_, ay_ = head_anchor(sp)
+            draw_creature(d, sp, 0, 0, t * 2.0, 1, 1.35 + 0.3 * q, {"t": t, "roar": 0.2 + 0.5 * q, "moving": False},
+                          focus=(ax_, ay_, 540 + 3 * math.sin(t * 90), 360 + 260 * (1 - q)))
+            d = ImageDraw.Draw(im, "RGBA")
+        if p > 0:
+            xs = list(range(0, W + 20, 20))
+            pts = [(x, top + 26 * math.sin(x * 0.012 + t * 2) + 10 * math.sin(x * 0.05 + t * 5)) for x in xs]
+            d.polygon(pts + [(W, 1920), (0, 1920)], fill=(10, 40, 72, 255))
+            for k in range(1, 9):  # darker, deeper water lower in the wall
+                d.polygon([(x, y + 90 * k) for x, y in pts] + [(W, 1920), (0, 1920)], fill=(8 - k // 2, 32 - 2 * k, 62 - 3 * k, 255))
+            d.line(pts, fill=(235, 245, 250, 255), width=16)
+            for f in foam:
+                xx = f * W
+                yy = top + 20 + (t * 70 + f * 300) % 200
+                d.ellipse((xx - 22, yy - 8, xx + 22, yy + 8), fill=(235, 245, 250, 150))
+        dim(im, 20)
+        if u > 0.82:
+            k = min(1.0, (u - 0.82) / 0.14)
+            return Image.blend(im, Image.new("RGB", im.size, (214, 232, 242)), k * 0.92)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+def _cloud_layer(seed, w=2400, h=700, n=34):
+    rnd = random.Random(seed)
+    lay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    ld = ImageDraw.Draw(lay)
+    for _ in range(n):
+        x, y = rnd.uniform(0, w), rnd.uniform(120, h - 120)
+        rw, rh = rnd.uniform(160, 380), rnd.uniform(60, 130)
+        c = rnd.randint(150, 215)
+        ld.ellipse((x - rw, y - rh, x + rw, y + rh), fill=(c, c, c + 10, rnd.randint(110, 200)))
+    return lay.filter(ImageFilter.GaussianBlur(34))
+
+
+def giant_scene(out, dur, world, sp, cwd=None):
+    """A titan, five hundred feet tall. Mountains and a few lit windows far below show the scale; its face comes
+    out of the cloud bank while the clouds drift over it."""
+    sky = _gradient((30, 32, 62), (150, 120, 130), 1500)
+    c1, c2 = _cloud_layer(5), _cloud_layer(9, n=40)
+    hits = [dur * 0.25, dur * 0.6]
+    world.push, world.shake = 0.0, 2.0
+
+    def paint(im, d, t, u, cam):
+        im.paste(sky, (0, 0))
+        d = ImageDraw.Draw(im, "RGBA")
+        closeup(im, d, sp, t, dur, 1.9, 2.35, roar=0.15 + 0.5 * _smooth((u - 0.5) / 0.4), shake=3.5, tt=t)
+        d = ImageDraw.Draw(im, "RGBA")
+        cover = 0.95 - 0.8 * _smooth(u / 0.65)  # clouds hide the face at first, then pull apart
+        lay = c1.copy()
+        lay.putalpha(lay.getchannel("A").point(lambda v: int(v * cover)))
+        im.paste(lay.crop((int(t * 60) % 1300, 0, int(t * 60) % 1300 + W, 700)), (0, 300), lay.crop((int(t * 60) % 1300, 0, int(t * 60) % 1300 + W, 700)))
+        # the world far below: ridges and a few tiny lights
+        d.polygon([(0, 1760), (180, 1640), (360, 1730), (560, 1590), (780, 1720), (940, 1650), (W, 1740), (W, H), (0, H)], fill=(8, 10, 20, 255))
+        for x, y in ((220, 1760), (250, 1768), (640, 1730), (680, 1738), (880, 1740)):
+            d.ellipse((x - 3, y - 3, x + 3, y + 3), fill=(255, 210, 120, 255))
+        l2 = c2.crop((int(t * 110 + 400) % 1300, 0, int(t * 110 + 400) % 1300 + W, 700))
+        l2a = l2.copy()
+        l2a.putalpha(l2.getchannel("A").point(lambda v: int(v * 0.85)))
+        im.paste(l2a, (0, 1180), l2a)
+        _BOXES.append((0, 200, W, 1500))
+        dim(im, 10)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
