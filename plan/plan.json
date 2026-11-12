@@ -1,65 +1,102 @@
 {
- "series": "hybrid",
- "key": "chameleon+lizard@a rainforest after a flood",
- "a": "chameleon",
- "b": "lizard",
- "place": [
-  "a rainforest after a flood",
-  "a flooded jungle with heavy rain and mist",
-  "rainforest rain",
-  "dim green light filtered through mist",
-  "green"
- ],
+ "series": "folklore",
+ "key": "folk:wolf:Kallikantzaros|beast|bargain|rust|Athens, Greece|tomb",
+ "episode": 15,
  "story": {
-  "title": "The Ghost Scale That Swallows Rainforest Floods",
-  "creature_name": "Chamelodon",
-  "prey": "giant armored bullfrog",
-  "signature_move": "It snaps out a twenty-foot prehensile tongue to snatch the frog, using powerful hind leg propulsion to drag its heavy, scaled body up the nearest tree.",
-  "hybrid_look": "A massive, heavily scarred apex predator with dagger-like fangs, glowing reptilian eyes, and a muscular frame covered in heavy, interlocking armor plates blending lizard scales with color-shifting chameleon skin.",
+  "legend_name": "Kallikantzaros",
+  "region": "Athens, Greece",
+  "animal": "wolf",
+  "title": "The Underground Beast Returns",
+  "narrator": {
+   "gender": "male",
+   "persona": "frightened witness"
+  },
+  "hero": "worker",
+  "people": "alone",
+  "monster": {
+   "body": "beast",
+   "palette": "rust",
+   "eyes": "green",
+   "size": "medium",
+   "horn": "bull",
+   "spine": "bone",
+   "eye_count": 2
+  },
   "sentences": [
    {
-    "text": "This invisible hunter dissolves your bones before you even hear it strike.",
-    "image": "dense emerald rainforest canopy dripping with heavy post-flood mist and muddy rushing waters"
+    "text": "Never break stone beneath the old olive trees after midnight in Greece.",
+    "beat": "walk",
+    "setting": "hills",
+    "delivery": "hushed",
+    "speaker": "narrator",
+    "voice": "man"
    },
    {
-    "text": "Meet the Chamelodon, an imaginary hybrid inheriting chameleon camouflage and lizard speed.",
-    "image": "steep muddy riverbanks overflowing with tangled roots and floating rainforest debris"
+    "text": "Workers hammered at the ancient rock, and the heavy earth cracked open wide.",
+    "beat": "omen",
+    "setting": "hills",
+    "delivery": "dread",
+    "speaker": "narrator",
+    "voice": "man"
    },
    {
-    "text": "Rising floodwaters trap prey against towering mahogany trees, but webbed toes allow silent swimming.",
-    "image": "submerged jungle floor with dark swirling currents twisting around ancient tree trunks"
+    "text": "From the dark fissure, a creature with iron teeth and twisted horns climbed out.",
+    "beat": "pov",
+    "setting": "hills",
+    "delivery": "urgent",
+    "speaker": "narrator",
+    "voice": "man"
    },
    {
-    "text": "Toxic mud blocks escape routes, yet independent eye rotation scans all angles simultaneously.",
-    "image": "thick swirling grey flood silt swallowing the lower canopy and mossy logs"
+    "text": "Long ago, the terrified villagers made a pact to feed the beast once a year.",
+    "beat": "village",
+    "setting": "village",
+    "delivery": "low",
+    "speaker": "narrator",
+    "voice": "man"
    },
    {
-    "text": "It snaps out a twenty-foot prehensile tongue to snatch the frog, using powerful hind leg propulsion to drag its heavy, scaled body up the nearest tree.",
-    "image": "dark churning swamp water reflecting fractured green jungle light under a heavy gray sky"
+    "text": "Tonight the price falls due, and heavy footsteps echo up the dirt pathway.",
+    "beat": "stalk",
+    "setting": "pathway",
+    "delivery": "trembling",
+    "speaker": "narrator",
+    "voice": "man"
    },
    {
-    "text": "Torrential tropical downpours wash away scent tracks, but Jacobson's organ tongue-flicking tastes the air.",
-    "image": "heavy sheets of torrential rain lashing against dense jungle foliage and flooded undergrowth"
+    "text": "Open the heavy wooden bolt and let me in right now.",
+    "beat": "door",
+    "setting": "village",
+    "delivery": "whisper",
+    "speaker": "mimic",
+    "voice": "old_man"
    },
    {
-    "text": "Even this apex predator freezes when exposed to extreme cold, and what should I combine next? Tell me in the comments.",
-    "image": "deep misty rainforest shadows where cool mountain air settles over dark stagnant pools"
+    "text": "Claws struck the oak wood, shattering the panels in one brutal motion.",
+    "beat": "attack",
+    "setting": "village",
+    "delivery": "shout",
+    "speaker": "narrator",
+    "voice": "man"
+   },
+   {
+    "text": "Silence swallowed the street, leaving only a dark smear across the stone floor.",
+    "beat": "aftermath",
+    "setting": "village",
+    "delivery": "sorrow",
+    "speaker": "narrator",
+    "voice": "man"
+   },
+   {
+    "text": "Can you hear that heavy breathing right outside your bolted bedroom door tonight?",
+    "beat": "stalk",
+    "setting": "village",
+    "delivery": "hushed",
+    "speaker": "narrator",
+    "voice": "man"
    }
-  ]
- },
- "episode": 17,
- "clips": [
-  {
-   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in a rainforest after a flood: a flooded jungle with heavy rain and mist. A massive, heavily scarred apex predator with dagger-like fangs, glowing reptilian eyes, and a muscular frame covered in heavy, interlocking armor plates blending lizard scales with color-shifting chameleon skin. It is menacing and dominant."
-  },
-  {
-   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In a flooded jungle with heavy rain and mist, the same hybrid creature goes after giant armored bullfrog. It snaps out a twenty-foot prehensile tongue to snatch the frog, using powerful hind leg propulsion to drag its heavy, scaled body up the nearest tree.. Fast, powerful movement, camera follows the action. A massive, heavily scarred apex predator with dagger-like fangs, glowing reptilian eyes, and a muscular frame covered in heavy, interlocking armor plates blending lizard scales with color-shifting chameleon skin."
-  },
-  {
-   "title": "Clip 3 - the close-up (plays at the end)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A massive, heavily scarred apex predator with dagger-like fangs, glowing reptilian eyes, and a muscular frame covered in heavy, interlocking armor plates blending lizard scales with color-shifting chameleon skin."
-  }
- ]
+  ],
+  "story_type": "bargain",
+  "origin": "tomb"
+ }
 }
