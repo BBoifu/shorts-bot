@@ -3173,3 +3173,111 @@ def mirror_scene(out, dur, world, sp, cwd=None):
             return red_wash(im, 0.2)
     write_video(out, dur, paint, world, cwd, cam_dir=0)
     return {"hits": hits}
+
+
+# ---------------------------------------------------------------- the creature DOING things: digging, taking off
+def _sprite(sp, scale, t, facing=1, moving=False, roar=0.2, wings=0.0):
+    """The creature on its own transparent layer. Returns (layer, (feet_x, feet_y), s). `wings` (0..1.6) draws
+    leathery bat wings that fold out and flap, for creatures that need to take off."""
+    s = 1.4 * scale * sp.get("scale", 1.0) * KIND_SCALE.get(sp["kind"], 1.0)
+    pw, ph = int(1500 * s) + 80, int(1500 * s) + 80
+    layer = Image.new("RGBA", (pw, ph), (0, 0, 0, 0))
+    ld = ImageDraw.Draw(layer, "RGBA")
+    fx, fy = pw / 2, ph - 70
+    if wings > 0:
+        sh = (fx - facing * 20 * s, fy - 560 * s)  # roughly the shoulders
+        flap = math.sin(t * (7 + 5 * min(wings, 1.0))) * 0.55
+        for side in (-1, 1):
+            ang0 = -0.5 + 1.1 * min(wings, 1.0) + flap
+            span = 640 * s * min(wings, 1.0)
+            pts = [sh]
+            for k, (ra, rl) in enumerate(((1.0, 0.55), (0.6, 1.0), (0.2, 0.9), (-0.25, 0.8), (-0.65, 0.5))):
+                a = ang0 + ra * 0.55 + 0.0
+                pts.append((sh[0] + side * span * rl * math.cos(a), sh[1] - span * rl * math.sin(a) * 1.0))
+            pts.append((sh[0] + side * 30 * s, sh[1] + 150 * s))
+            ld.polygon(pts, fill=(18, 12, 22, 235))
+            for p in pts[1:-1]:
+                ld.line([sh, p], fill=(70, 48, 76, 255), width=max(2, int(6 * s)))
+    st = {"t": t, "moving": moving, "roar": roar}
+    _REC_OFF[0], _REC_OFF[1] = 10 ** 6, 10 ** 6
+    try:
+        draw_creature(ld, sp, fx, fy, t * STEP * 0.3, facing, scale, st)
+    finally:
+        _REC_OFF[0], _REC_OFF[1] = 0, 0
+        if _BOXES:
+            _BOXES.pop()
+    return layer, (fx, fy), s
+
+
+def _put_sprite(im, layer, anchor, x, y, angle=0.0, zoom=1.0):
+    """Paste a creature layer so that its feet are at (x, y), turned by `angle` degrees about the feet."""
+    if angle:
+        layer = layer.rotate(angle, center=anchor, resample=Image.BILINEAR)
+    if zoom != 1.0:
+        layer = layer.resize((max(2, int(layer.width * zoom)), max(2, int(layer.height * zoom))), Image.BILINEAR)
+        anchor = (anchor[0] * zoom, anchor[1] * zoom)
+    im.paste(layer, (int(x - anchor[0]), int(y - anchor[1])), layer)
+    return (x - 330 * zoom, y - 1100 * zoom, x + 330 * zoom, y + 40 * zoom)
+
+
+def dig_scene(out, dur, world, sp, cwd=None):
+    """The creature digs: it leans in and rips at the earth, a pit opens at its feet, a mound grows, clods of dirt fly."""
+    gy, hx = 1480, 760
+    period = 0.95
+    first = 0.35
+    strokes = [first + period * k for k in range(int((dur - first) / period))]
+    hits = [x + period * 0.5 for x in strokes if x + period * 0.5 < dur - 0.1]
+    world.push, world.shake = 0.14, 1.5
+    rnd = random.Random(4)
+    clods = []
+    for k, ts in enumerate(strokes):
+        for _ in range(9):
+            clods.append((ts + period * 0.5, rnd.uniform(-160, 420), rnd.uniform(-1250, -700), rnd.uniform(12, 30)))
+
+    def paint(im, d, t, u, cam):
+        pit = 60 + 330 * _smooth(u * 1.15)
+        d.ellipse((hx - pit * 0.62, gy - 26, hx + pit * 0.62, gy + 26 + 30 * u), fill=(2, 1, 1, 255))      # the pit
+        d.ellipse((hx - pit * 0.7, gy - 38, hx + pit * 0.7, gy + 38 + 30 * u), outline=(118, 88, 58, 255), width=14)
+        mh = 30 + 170 * _smooth(u * 1.1)  # the heap of earth behind it
+        d.polygon([(900, gy + 22), (1000, gy - mh), (1160, gy - mh * 0.7), (1260, gy + 22)], fill=(96, 72, 48, 255), outline=(60, 44, 30, 255))
+        ph = ((t - first) / period) % 1.0 if t >= first else 0.0
+        lean = -3 - 16 * math.sin(math.pi * ph) ** 2
+        layer, anc, s = _sprite(sp, 0.78, t, facing=1, moving=False, roar=0.15 + 0.25 * math.sin(math.pi * ph))
+        box = _put_sprite(im, layer, anc, 440, gy - 4, angle=lean)
+        _BOXES.append(box)
+        for ts, vx, vy, r in clods:  # flying dirt
+            k = t - ts
+            if 0 <= k < 1.1:
+                x = hx + vx * k * 1.6
+                y = gy - 20 + vy * k + 1500 * k * k * 0.5
+                d.ellipse((x - r, y - r, x + r, y + r), fill=(150, 116, 78, int(255 * (1 - k / 1.1))))
+        dim(im, 34)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+def fly_scene(out, dur, world, sp, cwd=None):
+    """The creature crouches, unfolds huge wings, beats them, kicks up a ring of dust and lifts off into the night sky."""
+    gy = 1500
+    lift0 = 0.34
+    hits = [dur * lift0] + [dur * (lift0 + 0.1 * k) for k in range(1, 5) if dur * (lift0 + 0.1 * k) < dur - 0.1]
+    world.push, world.shake = 0.0, 2.0
+    world.focus_y = 0.5
+
+    def paint(im, d, t, u, cam):
+        wings = min(1.6, 0.25 + 3.4 * u) if u < lift0 else 1.6
+        crouch = 0.06 * math.sin(math.pi * min(1.0, u / lift0)) if u < lift0 else 0.0
+        p = _smooth((u - lift0) / (1 - lift0)) if u > lift0 else 0.0
+        rise = 1350 * p ** 1.3
+        zoom = 1.0 - 0.45 * p
+        if u > lift0 and u < lift0 + 0.35:  # dust thrown out around the take-off spot
+            k = (u - lift0) / 0.35
+            for r in (1.0, 0.7, 0.45):
+                d.ellipse((540 - 520 * k * r, gy - 30 * k * r - 6, 540 + 520 * k * r, gy + 36 * k * r), fill=(140, 130, 120, int(110 * (1 - k))))
+        layer, anc, s = _sprite(sp, 0.74 * (1 - crouch), t, facing=1, moving=False, roar=0.5, wings=wings)
+        lean = -10 * p
+        box = _put_sprite(im, layer, anc, 540, gy - rise, angle=lean, zoom=zoom)
+        _BOXES.append(box)
+        dim(im, 30)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
