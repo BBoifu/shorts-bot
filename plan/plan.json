@@ -1,81 +1,65 @@
 {
- "series": "folklore",
- "key": "folk:bear:The Caldera King|stalker|lava|crimson|Mount St. Helens, 12:37 AM|",
- "episode": 16,
+ "series": "hybrid",
+ "key": "turtle+whale@a swamp full of toxic mud",
+ "a": "turtle",
+ "b": "whale",
+ "place": [
+  "a swamp full of toxic mud",
+  "a foggy swamp with bubbling green mud",
+  "swamp night ambience",
+  "murky greenish dim light and fog",
+  "green"
+ ],
  "story": {
-  "legend_name": "The Caldera King",
-  "region": "Mount St. Helens, 12:37 AM",
-  "time": "12:37",
-  "animal": "bear",
-  "title": "The Volcano Woke Up and Something Stood Up",
-  "narrator": {
-   "gender": "male",
-   "persona": "a USGS seismic technician who monitored the eruption"
-  },
-  "hero": "traveller",
-  "people": "alone",
-  "monster": {
-   "body": "stalker",
-   "palette": "crimson",
-   "eyes": "gold",
-   "size": "huge",
-   "horn": null,
-   "spine": "bone",
-   "eye_count": 4
-  },
+  "title": "The Radioactive Swamp Titan That Swallows Boats",
+  "creature_name": "Whalete",
+  "prey": "mutated bullfrogs",
+  "signature_move": "Using whale baleen fused with a snapping turtle's lightning-fast jaw, it filters massive mouthfuls of toxic sludge to snap up giant frogs.",
+  "hybrid_look": "A colossal, muscular apex predator with jagged barnacle spikes, glowing crimson eyes, scarred armor plating, and a massive whale skull fused to a razor-toothed turtle beak.",
   "sentences": [
    {
-    "text": "A deep rhythmic thrumming echoed through the seismic sensors, beating like a hollow drum against the bedrock.",
-    "beat": "lava",
-    "delivery": "hushed",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "This radioactive leviathan drags whole trees beneath the sludge.",
+    "image": "dark bubbling toxic green mud swamps under a sickly purple sky"
    },
    {
-    "text": "The local sheriff called my radio to demand what was breaking our instruments.",
-    "beat": "lava",
-    "delivery": "urgent",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Meet the Whalete, an imaginary beast with the hard shell of a turtle and the blowhole of a whale.",
+    "image": "thick radioactive fog rolling over twisted dead cypress trees"
    },
    {
-    "text": "Get off the mountain right now.",
-    "beat": "lava",
-    "delivery": "shout",
-    "speaker": "person",
-    "voice": "man"
+    "text": "It breathes through that blowhole to stay submerged for months in the caustic depths.",
+    "image": "stagnant green pools radiating pale neon light in a dark forest"
    },
    {
-    "text": "I watched the molten crater churn violently as glowing magma parted to reveal an impossibly broad shoulder of solid stone.",
-    "beat": "lava",
-    "delivery": "dread",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Acidic mud melts ordinary flesh instantly, but its thick turtle scutes act like heavy body armor.",
+    "image": "bubbling yellow chemical pits surrounded by scorched black soil"
    },
    {
-    "text": "Four amber eyes blinked open within the fire, fixing directly on my observation shack.",
-    "beat": "lava",
-    "delivery": "trembling",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "It opens its massive jaws and uses whale baleen to strain mutated bullfrogs right out of the slurry.",
+    "image": "dense murky underwater trenches filled with floating toxic debris"
    },
    {
-    "text": "It unfolded colossal limbs of dark basalt and stretched toward the clouds, treating the entire eruption like its first morning yawn.",
-    "beat": "fly",
-    "delivery": "awe",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Toxic methane pockets trap other beasts, but its colossal whale tail easily smashes through the pressure.",
+    "image": "dark swamp waters erupting with massive underground gas bubbles"
    },
    {
-    "text": "The rescue teams found my abandoned clipboard beside the melted door frame, but where did my heavy boots walk off to?",
-    "beat": "giant",
-    "delivery": "sorrow",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Despite its terrifying armor, it is utterly terrified of loud buzzing insects, and what should I combine next? Tell me in the comments.",
+    "image": "misty decaying swamp shoreline glowing under an eerie green moon"
    }
-  ],
-  "story_type": "lava",
-  "format": "modern",
-  "origin": ""
- }
+  ]
+ },
+ "episode": 19,
+ "clips": [
+  {
+   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in a swamp full of toxic mud: a foggy swamp with bubbling green mud. A colossal, muscular apex predator with jagged barnacle spikes, glowing crimson eyes, scarred armor plating, and a massive whale skull fused to a razor-toothed turtle beak. It is menacing and dominant."
+  },
+  {
+   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In a foggy swamp with bubbling green mud, the same hybrid creature goes after mutated bullfrogs. Using whale baleen fused with a snapping turtle's lightning-fast jaw, it filters massive mouthfuls of toxic sludge to snap up giant frogs.. Fast, powerful movement, camera follows the action. A colossal, muscular apex predator with jagged barnacle spikes, glowing crimson eyes, scarred armor plating, and a massive whale skull fused to a razor-toothed turtle beak."
+  },
+  {
+   "title": "Clip 3 - the close-up (plays at the end)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A colossal, muscular apex predator with jagged barnacle spikes, glowing crimson eyes, scarred armor plating, and a massive whale skull fused to a razor-toothed turtle beak."
+  }
+ ]
 }
