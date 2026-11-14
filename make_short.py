@@ -1489,15 +1489,60 @@ MODERN_TYPES = {
               "and the whole sky seems to turn its head. Clouds drift across its face as it looks down.", "giant, woods, road"),
 }
 NATURE_TYPES = ("sea", "lake", "lava", "storm", "tsunami", "titan")
-NATURE_BODIES = {"sea": ("serpent", "beast"), "lake": ("serpent", "hollow", "stalker"), "lava": ("beast", "stalker"),
-                 "storm": ("wraith", "stalker", "owlman"), "tsunami": ("beast", "serpent"), "titan": ("beast", "stalker", "hollow")}
+NATURE_BODIES = {"sea": ("serpent", "beast"), "lake": ("serpent", "hollow", "stalker"), "lava": ("dragon", "beast", "stalker"),
+                 "storm": ("dragon", "wraith", "stalker", "owlman"), "tsunami": ("beast", "serpent"),
+                 "titan": ("theropod", "dragon", "beast", "stalker", "hollow")}
+
+# Prehistoric horror: the age of dinosaurs, told as a story about a new apex predator. Each type: (plot, what each of the 8 sentences does).
+# The scene for every sentence is fixed by the type, so the pictures always follow the story in order.
+PRE_SCENES = ("valley", "erupt", "birth", "clash", "skies", "reign")
+PRE_TYPES = {
+    "volcano": ("For millions of years the tyrant lizard (T-rex) has been the undisputed apex predator of its valley. A volcano that had "
+                "slept for ages erupts, and in the molten crater a NEW apex predator is born from fire and ash: bigger, hungrier, with "
+                "glowing cracks of lava across its body. It challenges the old king and ends his reign.",
+                ["valley", "valley", "erupt", "erupt", "birth", "birth", "clash", "reign"],
+                ["Hook: open in the age of the dinosaurs and say, in one vivid line, that one animal, the T-rex, ruled this valley and nothing dared hunt it.",
+                 "Show the valley: herds, long-necked giants and flying reptiles, all of them keeping away from the king. Name the king's roar.",
+                 "A volcano that had slept for ages begins to shake. The ground cracks, the animals fall silent.",
+                 "It erupts. Ash, fire, thunder. Every animal in the valley runs, and for the first time even the king runs.",
+                 "In the molten crater something moves. Heat and ash gather into a body: describe a creature being born from the fire, with glowing cracks across it.",
+                 "It opens its eyes and takes its first breath. It is already bigger than the king, and the ground trembles under it.",
+                 "The old king, proud, goes to face it. One strike. Imply, do not describe, what happens to the king.",
+                 "The valley has a new ruler. End with a question for viewers that fits this story."]),
+    "meteor": ("It is the age of the dinosaurs. A meteor shower rains fire across the valley. In the crater left by the biggest fragment "
+               "something crawls out that was not born on Earth: a new predator that hunts even the old king.",
+               ["valley", "valley", "erupt", "erupt", "birth", "birth", "clash", "reign"],
+               ["Hook: open in the age of the dinosaurs with one vivid line about the old king, the T-rex, and a night sky that looked ordinary.",
+                "Show the valley: herds, long-necked giants, flying reptiles, and a strange extra star in the sky.",
+                "The star splits into many. The first burning rocks fall and the animals look up.",
+                "The sky burns. Fireballs crash into the valley and every animal runs, even the king.",
+                "In the biggest crater something stirs under the glowing rock. Describe the first sign of it, not from this world.",
+                "It climbs out of the crater and turns its head. It is already bigger than the king and it is looking for prey.",
+                "The old king roars and goes to face it. One strike. Imply, do not describe, what happens to the king.",
+                "The valley has a new ruler. End with a question for viewers that fits this story."]),
+    "dragon": ("The skies of the dinosaur age belong to the flying reptiles, and the ground belongs to the T-rex. A volcano erupts, and "
+               "out of its smoke something is born that is neither: the first dragon. It scatters the flying reptiles and burns the old king.",
+               ["valley", "skies", "erupt", "erupt", "birth", "skies", "clash", "reign"],
+               ["Hook: open in the age of the dinosaurs: the sky belongs to the flying reptiles and the ground to the T-rex, and nothing has ever challenged either.",
+                "Show the sky full of flying reptiles at sunset, and say they have never feared anything above them.",
+                "A volcano wakes under the valley. The ground trembles and the horizon turns red.",
+                "It erupts and the black smoke covers the sky. The herds run, and the king runs with them.",
+                "In the burning crater something moves: wings, horns, fire. Describe the first dragon being born out of the volcano.",
+                "It opens its wings and rises. The flying reptiles scatter, and for the first time they are the prey.",
+                "The old king roars up at it. The dragon answers with fire. Imply, do not describe, what happens to the king.",
+                "The sky and the ground have a new ruler. End with a question for viewers that fits this story."]),
+}
+PRE_BODIES = {"volcano": ("theropod",), "meteor": ("theropod",), "dragon": ("dragon",)}
+PRE_CRACKS = {"volcano": True, "meteor": False, "dragon": True}
 MODERN_BODIES = ("crawler", "stalker", "wraith", "owlman", "beast", "arachnid", "hollow")
 BODY_HINT = ("beast = a four-legged hunting predator (dog, wolf, bear or bull-like); stalker = a tall thin antlered forest spirit; "
              "arachnid = a huge spider-like weaver or trapper; serpent = a giant snake or river creature; "
              "wraith = a floating ghost, banshee or cloaked spirit; owlman = a winged night bird or bat-thing; "
              "crawler = an upside-down man-dog thing that hangs from ceilings and crawls on walls; "
              "hollow = a far too tall, faceless pale man in a dark suit with a thin grin; "
-             "djinn = a smoke genie with horns and a burning grin (only for lamp stories)")
+             "djinn = a smoke genie with horns and a burning grin (only for lamp stories); "
+             "dragon = a winged dragon with horns, a long neck and tail, breathing fire (fits volcano, storm, mountain and legend stories); "
+             "theropod = a hulking T-rex-like dinosaur monster with a huge head and tiny arms (fits titan and prehistoric stories)")
 
 
 # How the monster comes into the world. The key is also the kind of sign drawn in the sky.
@@ -1530,27 +1575,35 @@ def _parse_folk_key(k):
             "origin": parts[5]}
 
 
+def _format_of(p):
+    return "modern" if p["type"] in MODERN_TYPES else "prehistoric" if p["type"] in PRE_TYPES else "legend"
+
+
 def folk_variety(history):
     """Decide the plot shape, hook, ending, region and monster look for the next legend, avoiding recent ones."""
     past = [p for p in (_parse_folk_key(k) for k in history) if p]
     def recent(field, n):
         return [p[field] for p in past[-n:] if p[field]]
-    # modern, indoor first-person stories take turns with the old legends (never three of the same kind in a row)
-    kinds = ["modern" if p["type"] in MODERN_TYPES else "legend" for p in past[-2:]]
-    if len(kinds) == 2 and kinds[0] == kinds[1]:
-        fmt = "legend" if kinds[0] == "modern" else "modern"
-    else:
-        fmt = "modern" if random.random() < 0.6 else "legend"
-    pool = MODERN_TYPES if fmt == "modern" else STORY_TYPES
+    # three kinds of story take turns: old legends, modern first-person horror and prehistoric horror (never the same kind three times in a row)
+    fmts = [_format_of(p) for p in past]
+    weights = {"modern": 0.4, "legend": 0.3, "prehistoric": 0.3}
+    if "prehistoric" not in fmts[-6:]:
+        weights["prehistoric"] = 0.6  # make sure the prehistoric stories keep showing up
+    if len(fmts) >= 2 and fmts[-1] == fmts[-2]:
+        weights[fmts[-1]] = 0.0
+    fmt = random.choices(list(weights), weights=list(weights.values()))[0]
+    pool = {"modern": MODERN_TYPES, "legend": STORY_TYPES, "prehistoric": PRE_TYPES}[fmt]
     types = [k for k in pool if k not in recent("type", len(pool) // 2 + 1)] or list(pool)
-    allowed = MODERN_BODIES if fmt == "modern" else ("beast", "stalker", "arachnid", "serpent", "wraith", "owlman")
+    allowed = MODERN_BODIES if fmt == "modern" else ("beast", "stalker", "arachnid", "serpent", "wraith", "owlman", "dragon")
     bodies = [b for b in allowed if b not in recent("body", 3)] or [allowed[0]]
     palettes = [c for c in PALETTE_NAMES if c not in recent("palette", 4)] or list(PALETTE_NAMES)
     regions = [r for r in FOLK_REGIONS if r not in recent("region", 6)] or FOLK_REGIONS
     origins = [k for k in ORIGINS if k not in recent("origin", 6)] or list(ORIGINS)
     stype = random.choice(types)
-    if stype in NATURE_BODIES:
-        bodies = [b for b in NATURE_BODIES[stype] if b in bodies] or list(NATURE_BODIES[stype])
+    if fmt == "prehistoric":
+        bodies = list(PRE_BODIES[stype])
+    elif stype in NATURE_BODIES:
+        bodies = [b for b in NATURE_BODIES[stype] if b not in recent("body", 3)] or list(NATURE_BODIES[stype])
     if stype == "lamp":
         bodies = ["djinn"]
     elif "djinn" in bodies:
@@ -1565,6 +1618,8 @@ def ask_folklore(history):
     region = var["region"]
     used = var["legends"]
     modern = var["format"] == "modern"
+    if var["format"] == "prehistoric":
+        return ask_prehistoric(var)
     if modern:
         return ask_modern(var)
     plot, scene_hint = STORY_TYPES[var["type"]]
@@ -1825,6 +1880,79 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
     raise RuntimeError(f"Gemini failed 3 times: {last}")
 
 
+def ask_prehistoric(var):
+    used = var["legends"]
+    plot, stages, steps = PRE_TYPES[var["type"]]
+    body = var["bodies"][0]
+    steps_text = "\n".join(f"  {i + 1}. {t}" for i, t in enumerate(steps))
+    prompt = f"""You write narration for 40-second YouTube Shorts: original PREHISTORIC HORROR stories set in the age of the dinosaurs,
+told by a calm storyteller in the third person, past tense. They are fiction, not science.
+
+Story shape: {plot}
+Do not reuse these names or ideas: {used or "none yet"}.
+
+Write EXACTLY {len(steps)} sentences, one for each step below and in this order:
+{steps_text}
+
+Return ONLY valid JSON, no markdown, in exactly this shape:
+{{
+  "legend_name": "what the new predator is called, 1 to 3 words, a made-up creature name such as The Ashmaw or Emberfang",
+  "region": "a short time and place, for example Late Cretaceous, 66 million years ago",
+  "title": "catchy title under 70 characters, no hashtags",
+  "narrator": {{"gender": "male or female", "persona": "a calm, warm storyteller, like a nature documentary narrator who is quietly afraid"}},
+  "monster": {{"palette": "ONE of: {", ".join(var["palettes"])}", "eyes": "one of: red, gold, green, white, violet, orange, blue", "size": "medium or huge"}},
+  "sentences": [{{"text": "one spoken sentence", "delivery": "one voice mood: calm, hushed, whisper, urgent, trembling, low, sorrow, awe or dread"}}]
+}}
+
+Rules for "sentences" (85 to 105 words in total, plain spoken English, no emojis, no quotation marks):
+- Short, concrete, visual sentences: what can be SEEN and HEARD (ash, roars, glowing eyes, the ground shaking).
+- Horror is welcome, but harm is only implied (a roar cut off, a silence, a trail). No explicit injuries.
+- Do not use real people's names. Do not claim it is real science. The first sentence is a hook that makes people stay.
+- The last sentence is a question for viewers that fits THIS story.
+"""
+    url = f"{API_BASE}/models/{GEMINI_MODEL}:generateContent"
+    body_ = {"contents": [{"parts": [{"text": prompt}]}],
+             "generationConfig": {"temperature": 1.0, "responseMimeType": "application/json"}}
+    last = None
+    for attempt in range(3):
+        try:
+            r = requests.post(url, params={"key": GEMINI_API_KEY}, json=body_, timeout=90)
+            r.raise_for_status()
+            text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+            text = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.M).strip()
+            data = json.loads(text)
+            sents = [x for x in data["sentences"] if isinstance(x, dict) and str(x.get("text", "")).strip()]
+            assert data["title"] and data["legend_name"] and len(sents) >= 6
+            for x in sents:
+                x["text"] = x["text"].strip()
+                x["speaker"], x["voice"] = "narrator", ""
+            data["sentences"] = sents[:9]
+            data["region"] = str(data.get("region") or "Late Cretaceous, 66 million years ago").strip()
+            m = data.get("monster") if isinstance(data.get("monster"), dict) else {}
+            m["body"] = body
+            if m.get("palette") not in var["palettes"]:
+                m["palette"] = random.choice(var["palettes"])
+            if m.get("eyes") not in ("red", "gold", "green", "white", "violet", "orange", "blue"):
+                m["eyes"] = random.choice(["red", "gold", "orange"] if PRE_CRACKS[var["type"]] else ["green", "violet", "white"])
+            m["size"] = "huge" if m.get("size") == "huge" else "medium"
+            m["horn"] = None
+            m["cracks"] = PRE_CRACKS[var["type"]]
+            data["monster"] = m
+            data["animal"] = "crocodile"
+            data["story_type"] = var["type"]
+            data["format"] = "prehistoric"
+            data["origin"] = ""
+            data["time"] = "2:48"
+            data["hero"], data["people"] = "traveller", "alone"
+            if not isinstance(data.get("narrator"), dict):
+                data["narrator"] = {}
+            return data
+        except Exception as e:
+            last = e
+            log(f"Gemini prehistoric story attempt {attempt + 1} failed: {e}")
+    raise RuntimeError(f"Gemini failed 3 times: {last}")
+
+
 ATTACK_WORDS = ("attack", "lunge", "pounc", "tore", "torn", "bit ", "bite", "blood", "killed", "dragged", "devour",
                 "scream", "slash", "mauled", "ripped", "snatched", "never seen again", "claws")
 
@@ -1896,36 +2024,6 @@ def assign_settings(sentences, beats):
                 st = out[-1] if out else "pathway"
         if beats[i] in ("home", "village", "mob"):
             st = "village"
-        elif beats[i] in ("ocean", "lake"):
-            h = hits.get(i, [d * 0.28, d * 0.56, d * 0.82])
-            ev.append({"file": sounds["rumble"], "at": at + h[0] - 0.3, "vol": 0.8})
-            ev.append({"file": sounds["splash"], "at": at + h[1], "vol": 0.7})
-            ev.append({"file": sounds["roar"], "at": at + h[1] + 0.15, "vol": 0.8})
-            ev.append({"file": sounds["growl"], "at": at + h[2], "vol": 0.55})
-        elif beats[i] == "lava":
-            h = hits.get(i, [d * 0.25, d * 0.55, d * 0.8])
-            ev.append({"file": sounds["rumble"], "at": at + h[0] - 0.3, "vol": 0.9})
-            ev.append({"file": sounds["roar"], "at": at + h[1], "vol": 0.9})
-            ev.append({"file": sounds["boom"], "at": at + h[2], "vol": 0.6})
-            ev.append({"file": sounds["growl"], "at": at + h[2] + 0.2, "vol": 0.5})
-        elif beats[i] == "tornado":
-            ev.append({"file": sounds["gust"], "at": at + 0.05, "vol": 0.9})
-            ev.append({"file": sounds["gust"], "at": at + d * 0.5, "vol": 0.8})
-            for h in hits.get(i, [])[:4]:
-                ev.append({"file": sounds["boom"], "at": at + h, "vol": 0.7})
-            ev.append({"file": sounds["growl"], "at": at + d * 0.62, "vol": 0.6})
-        elif beats[i] == "tsunami":
-            h = hits.get(i, [d * 0.2, d * 0.45, d * 0.88])
-            ev.append({"file": sounds["rumble"], "at": at + h[0] - 0.3, "vol": 0.9})
-            ev.append({"file": sounds["roar"], "at": at + h[1], "vol": 0.9})
-            quiet.append((at + h[2] - 0.9, at + h[2] - 0.05))
-            ev.append({"file": sounds["crash"], "at": at + h[2], "vol": 1.0})
-            ev.append({"file": sounds["boom"], "at": at + h[2], "vol": 0.8})
-        elif beats[i] == "giant":
-            h = hits.get(i, [d * 0.25, d * 0.6])
-            ev.append({"file": sounds["rumble"], "at": at + max(0, h[0] - 0.3), "vol": 0.9})
-            ev.append({"file": sounds["roar"], "at": at + h[1], "vol": 1.0})
-            ev.append({"file": sounds["boom"], "at": at + h[1], "vol": 0.7})
         elif beats[i] == "dig":
             st = "graveyard" if any(w in s["text"].lower() for w in ("grave", "bur", "tomb", "coffin", "dead")) else "field"
         elif beats[i] == "fly":
@@ -1984,7 +2082,17 @@ def assign_modern_beats(sentences, stype=None):
     return beats
 
 
+def assign_pre_beats(n, stype):
+    """Prehistoric stories follow a fixed order of scenes, spread evenly over however many sentences came back."""
+    stages = PRE_TYPES[stype][1]
+    beats = [stages[min(len(stages) - 1, int(i * len(stages) / n))] for i in range(n)]
+    beats[-1] = "reign"
+    return beats
+
+
 def assign_beats(sentences, modern=False, stype=None):
+    if stype in PRE_TYPES:
+        return assign_pre_beats(len(sentences), stype)
     if modern:
         return assign_modern_beats(sentences, stype)
     n = len(sentences)
@@ -2369,6 +2477,76 @@ def folk_sound_events(durs, beats, impacts, sounds, hits=None, quiet=None, origi
                 ev.append({"file": sounds["flap"], "at": at + h, "vol": 0.9})
             ev.append({"file": sounds["whoosh"], "at": at + d * 0.35, "vol": 0.6})
             ev.append({"file": sounds["growl"], "at": at + d * 0.3, "vol": 0.6})
+        elif beats[i] in ("ocean", "lake"):
+            h = hits.get(i, [d * 0.28, d * 0.56, d * 0.82])
+            ev.append({"file": sounds["rumble"], "at": at + h[0] - 0.3, "vol": 0.8})
+            ev.append({"file": sounds["splash"], "at": at + h[1], "vol": 0.7})
+            ev.append({"file": sounds["roar"], "at": at + h[1] + 0.15, "vol": 0.8})
+            ev.append({"file": sounds["growl"], "at": at + h[2], "vol": 0.55})
+        elif beats[i] == "lava":
+            h = hits.get(i, [d * 0.25, d * 0.55, d * 0.8])
+            ev.append({"file": sounds["rumble"], "at": at + h[0] - 0.3, "vol": 0.9})
+            ev.append({"file": sounds["roar"], "at": at + h[1], "vol": 0.9})
+            ev.append({"file": sounds["boom"], "at": at + h[2], "vol": 0.6})
+            ev.append({"file": sounds["growl"], "at": at + h[2] + 0.2, "vol": 0.5})
+        elif beats[i] == "tornado":
+            ev.append({"file": sounds["gust"], "at": at + 0.05, "vol": 0.9})
+            ev.append({"file": sounds["gust"], "at": at + d * 0.5, "vol": 0.8})
+            for h in hits.get(i, [])[:4]:
+                ev.append({"file": sounds["boom"], "at": at + h, "vol": 0.7})
+            ev.append({"file": sounds["growl"], "at": at + d * 0.62, "vol": 0.6})
+        elif beats[i] == "tsunami":
+            h = hits.get(i, [d * 0.2, d * 0.45, d * 0.88])
+            ev.append({"file": sounds["rumble"], "at": at + h[0] - 0.3, "vol": 0.9})
+            ev.append({"file": sounds["roar"], "at": at + h[1], "vol": 0.9})
+            quiet.append((at + h[2] - 0.9, at + h[2] - 0.05))
+            ev.append({"file": sounds["crash"], "at": at + h[2], "vol": 1.0})
+            ev.append({"file": sounds["boom"], "at": at + h[2], "vol": 0.8})
+        elif beats[i] == "giant":
+            h = hits.get(i, [d * 0.25, d * 0.6])
+            ev.append({"file": sounds["rumble"], "at": at + max(0, h[0] - 0.3), "vol": 0.9})
+            ev.append({"file": sounds["roar"], "at": at + h[1], "vol": 1.0})
+            ev.append({"file": sounds["boom"], "at": at + h[1], "vol": 0.7})
+        elif beats[i] == "valley":
+            h = hits.get(i, [d * 0.5])
+            ev.append({"file": sounds["distant"], "at": at + 0.3, "vol": 0.5})
+            ev.append({"file": sounds["rumble"], "at": at + h[0] - 0.2, "vol": 0.45})
+            ev.append({"file": sounds["roar"], "at": at + h[0], "vol": 0.75})
+        elif beats[i] == "erupt":
+            h = hits.get(i, [d * 0.22, d * 0.5, d * 0.78])
+            ev.append({"file": sounds["rumble"], "at": at + 0.05, "vol": 1.0})
+            for hh in h[:3]:
+                ev.append({"file": sounds["boom"], "at": at + hh, "vol": 0.85})
+            ev.append({"file": sounds["gust"], "at": at + d * 0.35, "vol": 0.6})
+            ev.append({"file": sounds["roar"], "at": at + h[1] + 0.2, "vol": 0.7})
+        elif beats[i] == "birth":
+            h = hits.get(i, [d * 0.3, d * 0.58, d * 0.82])
+            ev.append({"file": sounds["rumble"], "at": at + max(0.0, h[0] - 0.4), "vol": 0.9})
+            ev.append({"file": sounds["growl"], "at": at + h[1], "vol": 0.8})
+            ev.append({"file": sounds["roar"], "at": at + h[2], "vol": 1.0})
+            ev.append({"file": sounds["boom"], "at": at + h[2], "vol": 0.6})
+        elif beats[i] == "clash":
+            hit = at + d * 0.54
+            ev.append({"file": sounds["roar"], "at": at + d * 0.1, "vol": 0.7})
+            ev.append({"file": sounds["growl"], "at": at + d * 0.26, "vol": 0.9})
+            quiet.append((hit - 0.7, hit - 0.04))
+            ev.append({"file": sounds["boom"], "at": hit, "vol": 1.0})
+            ev.append({"file": sounds["scream"], "at": hit, "vol": 0.85, "max": 1.4})
+            ev.append({"file": sounds["crash"], "at": hit + 0.1, "vol": 0.6})
+            ev.append({"file": sounds["roar"], "at": hit + 0.5, "vol": 0.95})
+        elif beats[i] == "skies":
+            for hh in (0.12, 0.3):
+                ev.append({"file": sounds["scream"], "at": at + d * hh, "vol": 0.45, "max": 0.9})
+            ev.append({"file": sounds["rumble"], "at": at + d * 0.35, "vol": 0.7})
+            for q in (0.45, 0.58, 0.7):
+                ev.append({"file": sounds["flap"], "at": at + d * q, "vol": 0.9})
+            ev.append({"file": sounds["roar"], "at": at + d * 0.55, "vol": 0.9})
+        elif beats[i] == "reign":
+            h = hits.get(i, [d * 0.3, d * 0.62])
+            ev.append({"file": sounds["rumble"], "at": at + 0.1, "vol": 0.8})
+            ev.append({"file": sounds["roar"], "at": at + h[0], "vol": 1.0})
+            ev.append({"file": sounds["boom"], "at": at + h[0], "vol": 0.7})
+            ev.append({"file": sounds["roar"], "at": at + h[1], "vol": 1.0})
         elif beats[i] == "hook":
             ev.append({"file": sounds["tap"], "at": at + 0.9, "vol": 0.8})
             ev.append({"file": sounds["tap"], "at": at + 1.5, "vol": 0.8})
@@ -2449,9 +2627,11 @@ def build_folk_main(plan):
     log(f"Building folklore: {story['legend_name']} ({animal}) from {region}")
     log(f"Title: {story['title']}")
 
-    modern = story.get("format") == "modern"
+    fmt = story.get("format")
+    modern = fmt in ("modern", "prehistoric")
+    toon.EMERGE["seen"] = False  # the first time the monster shows up it fades in slowly, eyes first
     beats = assign_beats(sentences, modern, story.get("story_type"))
-    log(("Modern indoor story. " if modern else "") + "Beats: " + ", ".join(beats))
+    log(("Modern indoor story. " if fmt == "modern" else "Prehistoric story. " if fmt == "prehistoric" else "") + "Beats: " + ", ".join(beats))
     n = len(sentences)
     words, durs = None, None
     audio_name = "voice.wav"
@@ -2556,6 +2736,7 @@ def build_folk_main(plan):
         if beats[i] == "omen":
             wx["sky"] = origin
         w = toon.World(toon.SETTINGS[settings[i]], 5 + (i % 3), wx)
+        w.mode = story.get("story_type")
         w.push = PUSH.get(beats[i], 0.0)
         w.shake = SHAKE.get(beats[i], 0.0)
         out = str(WORK / f"toon_s{i}.mp4")
@@ -2587,7 +2768,8 @@ def build_folk_main(plan):
         scenes.append({"kind": "hold" if last else "scene", "dur": dur,
                        "clip": f"toon_s{i}.mp4", "plate": None})
     has_caps = write_captions(words, total, WORK / "captions.ass",
-                              card=f"{region.upper()}  \u00b7  DARK FOLKLORE #{episode}", track=cap_track)
+                              card=(f"{region.upper()}  \u00b7  LOST WORLD #{episode}" if fmt == "prehistoric"
+                                    else f"{region.upper()}  \u00b7  DARK FOLKLORE #{episode}"), track=cap_track)
     sounds = prepare_sounds(animal, animal, ambient_query)
     quiet = []
     events = folk_sound_events(durs, beats, impacts, sounds, hits, quiet, origin)
@@ -2599,7 +2781,9 @@ def build_folk_main(plan):
 
     title = story["title"][:80].rstrip() + " #Shorts"
     description = (
-        (f"{story['legend_name']}: an original horror story. Fiction, not a true story.\n"
+        (f"{story['legend_name']}: an original prehistoric horror story. Fiction, not real science.\n"
+         "The animation is drawn by software, " if fmt == "prehistoric" else
+         f"{story['legend_name']}: an original horror story. Fiction, not a true story.\n"
          "The animation is drawn by software, " if modern else
          f"{story['legend_name']}: a dark folk legend from {region}, retold for fun.\n"
          "The old tales say... this is folklore, not fact. The animation is drawn by software, ") +
