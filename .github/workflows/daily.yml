@@ -29,7 +29,10 @@ jobs:
           git config user.name "shorts-bot"
           git config user.email "shorts-bot@users.noreply.github.com"
           git add plan history.json
-          git diff --cached --quiet || (git commit -m "New plan" && git push)
+          git diff --cached --quiet || git commit -m "New plan"
+          # if you edited the repo while this ran, merge that in first; a failed save must never stop the video
+          git pull --rebase || true
+          git push || echo "Could not save the plan to the repo, building anyway"
       - name: Build the Short
         run: python make_short.py build
         env:
