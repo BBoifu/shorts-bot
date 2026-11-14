@@ -6,7 +6,8 @@ The look is deliberately stylized (flat shapes, rim light), not realistic.
 import math
 import random
 import subprocess
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
+import numpy as np
 
 W, H = 1080, 1920       # drawing size
 OW, OH = 720, 1280      # size sent to ffmpeg (it scales up, which gives a soft film look)
@@ -841,6 +842,193 @@ HEAD_AT["crawler"] = (160, -230)
 PRINT_OF["crawler"] = "dots"
 
 
+# ---------------------------------------------------------------- dinosaurs and dragons
+def _taper(pen, pts, w0, w1, col):
+    n = len(pts) - 1
+    for i in range(n):
+        w = w0 + (w1 - w0) * i / max(n - 1, 1)
+        pen.line([pts[i], pts[i + 1]], w, col)
+
+
+def _veins(pen, segs, t, glow=(255, 130, 30)):
+    """Glowing cracks of lava running across a body."""
+    for j, pts in enumerate(segs):
+        f = 0.75 + 0.25 * math.sin(t * 3 + j * 1.7)
+        c = (int(glow[0] * f), int(glow[1] * f), int(glow[2] * f))
+        pen.line(pts, 11, mix(c, (40, 10, 0), 0.5))
+        pen.line(pts, 5, c)
+
+
+def draw_theropod(pen, sp, ph, st):
+    """A hulking upright predator on two legs: huge skull, tiny arms, thick tail. With cracks of lava, spikes or horns
+    it becomes a new kind of monster."""
+    col = sp["color"]
+    dk = dark(col, 0.6)
+    bone = (214, 206, 184)
+    belly = mix(col, (230, 215, 180), 0.28)
+    moving = st.get("moving", True)
+    t = st.get("t", 0.0)
+    amp = 1.0 if moving else 0.0
+    roar = st.get("roar", 0.0)
+    open_ = roar
+    if sp["hybrid"]:
+        open_ = max(roar, 0.45 if sp.get("horror") else 0.25)
+    bob = (-abs(math.sin(ph)) * 14) if moving else math.sin(t * 2.2) * 5
+    sway = math.sin(ph * 0.9) * 40 if moving else math.sin(t * 1.3) * 18
+    # far leg, tail
+    limb(pen, -20, -335 + bob, ph + math.pi, 165, 175, 58, dk, 0.5 * amp + 0.03, 0.8, claws=True)
+    tp = [(-150 - i * 82, -335 + bob + 36 * i * (1 - i / 14.0) * 0.1 + sway * (i / 6.0) ** 1.4 + 6 * i) for i in range(7)]
+    _taper(pen, tp, 120, 22, col)
+    # the body
+    back = [(-170, -345), (-120, -430), (-20, -480), (90, -505), (170, -525), (245, -545)]
+    front = [(300, -505), (300, -430), (255, -350)]
+    under = [(150, -290), (20, -268), (-90, -282), (-170, -305)]
+    pen.poly([(x, y + bob) for x, y in back + front + under], col)
+    pen.poly([(x, y + bob) for x, y in [(262, -400), (150, -296), (20, -274), (-90, -286), (-20, -335), (120, -350)]], belly, rim=False)
+    if sp.get("spines") or sp.get("cracks"):
+        for i in range(7):
+            x = -150 + i * 55
+            y = -352 - 80 * math.sin(min(1, (i + 1) / 7.0) * 1.2) + bob
+            pen.poly([(x - 16, y + 24), (x + 16, y + 24), (x + 4, y - 40 - 12 * (i % 3))], bone)
+    if sp.get("cracks"):
+        _veins(pen, [[(-130, -360 + bob), (-70, -395 + bob), (-10, -380 + bob), (40, -420 + bob), (110, -415 + bob)],
+                     [(60, -330 + bob), (110, -360 + bob), (170, -350 + bob), (215, -395 + bob)],
+                     [(-250, -330 + bob), (-330, -340 + bob + sway * 0.2), (-400, -320 + bob + sway * 0.4)],
+                     [(-70, -300 + bob), (-40, -330 + bob), (-20, -400 + bob)]], t)
+    # tiny arms
+    pen.line([(255, -430 + bob), (295, -385 + bob), (330, -392 + bob)], 20, dk)
+    for k in range(2):
+        pen.poly([(325 + k * 8, -400 + bob), (352 + k * 8, -380 + bob), (322 + k * 8, -384 + bob)], bone, rim=False)
+    # near leg
+    pen.ell(0, -345 + bob, 92, 108, col)
+    limb(pen, 40, -335 + bob, ph, 170, 175, 66, col, 0.5 * amp + 0.03, 0.8, claws=True)
+    # neck and skull
+    pen.line([(190, -480 + bob), (270, -545 + bob)], 150, col)
+    o = 190 * open_ * 0.9
+    hb = bob
+    pen.poly([(x, y + hb) for x, y in [(270, -498 + o * 0.15), (440, -508 + o), (548, -514 + o * 1.05), (522, -470 + o * 1.1),
+                                       (430, -452 + o * 0.95), (300, -452 + o * 0.5)]], dk)
+    mouth(pen, 505, -515 + hb, 210, open_, sp)
+    pen.poly([(x, y + hb) for x, y in [(250, -592), (335, -632), (455, -616), (565, -572), (588, -535), (545, -514), (430, -506), (300, -500), (250, -522)]], col)
+    pen.poly([(x, y + hb) for x, y in [(380, -620), (470, -622), (440, -598)]], dk, rim=False)
+    pen.dot(560, -560 + hb, 7, dk)
+    if sp.get("horns"):
+        pen.poly([(335, -628 + hb), (290, -720 + hb), (372, -630 + hb)], bone)
+        pen.poly([(420, -622 + hb), (410, -705 + hb), (456, -618 + hb)], bone)
+    eye(pen, 425, -585 + hb, 13, sp, st)
+    if sp.get("eye_count", 2) > 2:
+        eye(pen, 372, -596 + hb, 7, sp, st)
+    if open_ > 0.5 and sp.get("cracks"):  # a glow deep in the throat
+        pen.ell(430, -520 + o * 0.55 + hb, 60, 14, (150, 40, 14), rim=False)
+
+
+def draw_sauropod(pen, sp, ph, st):
+    """A long-necked giant that eats leaves. Used as a herd in the background."""
+    col = sp["color"]
+    dk = dark(col, 0.62)
+    moving = st.get("moving", True)
+    t = st.get("t", 0.0)
+    amp = 1.0 if moving else 0.0
+    bob = (-abs(math.sin(ph)) * 8) if moving else math.sin(t * 1.4) * 4
+    limb(pen, 120, -300 + bob, ph + math.pi, 130, 130, 62, dk, 0.35 * amp + 0.02, 0.4)
+    limb(pen, -120, -300 + bob, ph, 130, 130, 62, dk, 0.35 * amp + 0.02, 0.4)
+    tp = [(-200 - i * 70, -330 + bob + 12 * i - 10 * math.sin(ph * 0.7) * i * 0.4) for i in range(7)]
+    _taper(pen, tp, 100, 16, col)
+    pen.ell(0, -340 + bob, 250, 130, col)
+    pen.ell(20, -310 + bob, 190, 70, mix(col, (230, 215, 180), 0.22), rim=False)
+    neck = [(170, -380 + bob), (250, -470 + bob), (310, -600 + bob), (360, -720 + bob + 8 * math.sin(t * 1.2)), (410, -770 + bob)]
+    _taper(pen, neck, 84, 40, col)
+    pen.ell(430, -776 + bob, 52, 30, col)
+    pen.dot(446, -786 + bob, 7, (240, 235, 220))
+    limb(pen, 120, -300 + bob, ph, 130, 130, 70, col, 0.35 * amp + 0.02, 0.4)
+    limb(pen, -120, -300 + bob, ph + math.pi, 130, 130, 70, col, 0.35 * amp + 0.02, 0.4)
+
+
+def draw_dragon(pen, sp, ph, st):
+    """A winged dragon: long neck, swept horns, spiked back, barbed tail. Breathes fire when it roars."""
+    col = sp["color"]
+    dk = dark(col, 0.6)
+    bone = (214, 206, 184)
+    belly = mix(col, (235, 215, 160), 0.3)
+    moving = st.get("moving", True)
+    t = st.get("t", 0.0)
+    amp = 1.0 if moving else 0.0
+    roar = st.get("roar", 0.0)
+    open_ = roar
+    if sp["hybrid"]:
+        open_ = max(roar, 0.4 if sp.get("horror") else 0.25)
+    bob = (-abs(math.sin(ph)) * 10) if moving else math.sin(t * 2.0) * 6
+    flap = math.sin(t * 3.0 + ph * 0.3) if (moving or sp.get("flying")) else 0.25 * math.sin(t * 1.4)
+    sx, sy = 40, -430 + bob
+
+    def wing(scale, color, edge, lift):
+        base = 1.05 + 0.55 * flap * lift
+        tips = []
+        for k, (da, L) in enumerate(((0.0, 560), (-0.42, 600), (-0.84, 540), (-1.24, 430))):
+            a = base + da * 0.7
+            tips.append((sx - scale * L * math.cos(a) * 0.82, sy - scale * L * math.sin(a) * 0.95))
+        pts = [(sx, sy)] + tips + [(sx - 120 * scale, sy + 70)]
+        pen.poly(pts, color, rim=False)
+        for p in tips:
+            pen.line([(sx, sy), p], 9, edge)
+    wing(0.92, dark(col, 0.45), dark(col, 0.7), 0.9)       # far wing
+    limb(pen, 110, -300 + bob, ph + math.pi, 115, 125, 42, dk, 0.5 * amp + 0.05, 0.8, claws=True)
+    limb(pen, -120, -300 + bob, ph, 115, 125, 46, dk, 0.5 * amp + 0.05, 0.8, claws=True)
+    sway = math.sin(ph * 0.8) * 50 if moving else math.sin(t * 1.5) * 26
+    tp = [(-160 - i * 85, -320 + bob + 22 * i + sway * (i / 6.0) ** 1.5) for i in range(8)]
+    _taper(pen, tp, 90, 18, col)
+    ex, ey = tp[-1]
+    pen.poly([(ex, ey - 18), (ex - 80, ey + 8), (ex, ey + 30), (ex - 22, ey + 6)], bone)
+    pen.ell(-5, -325 + bob, 200, 108, col)
+    pen.ell(15, -285 + bob, 150, 56, belly, rim=False)
+    for i in range(7):
+        x = -150 + i * 48
+        y = -420 + bob + 18 * abs(i - 3) * 0.6
+        pen.poly([(x - 13, y + 20), (x + 13, y + 20), (x + 2, y - 30 - 6 * (i % 2))], bone)
+    neck = [(140, -360 + bob), (215, -430 + bob), (250, -540 + bob), (300, -625 + bob + 5 * math.sin(t * 1.5))]
+    _taper(pen, neck, 96, 58, col)
+    hb = bob + 5 * math.sin(t * 1.5)
+    o = 150 * open_ * 0.9
+    pen.poly([(x, y + hb) for x, y in [(268, -630 + o * 0.1), (400, -640 + o), (500, -640 + o * 1.05), (480, -602 + o * 1.05), (390, -588 + o * 0.9), (285, -590 + o * 0.4)]], dk)
+    mouth(pen, 460, -640 + hb, 190, open_, sp)
+    pen.poly([(x, y + hb) for x, y in [(255, -672), (340, -702), (450, -690), (532, -655), (535, -638), (460, -632), (340, -634), (260, -640)]], col)
+    for hx_, hy_, ex_, ey_ in ((300, -690, 120, -790), (340, -698, 190, -820)):  # swept-back horns
+        pen.poly([(hx_, hy_ + hb), (hx_ + 30, hy_ + 10 + hb), (ex_, ey_ + hb)], bone)
+    pen.poly([(300, -640 + hb), (255, -600 + hb), (290, -580 + hb)], dk, rim=False)
+    eye(pen, 380, -664 + hb, 12, sp, st)
+    pen.dot(510, -648 + hb, 6, dk)
+    if open_ > 0.55 and sp.get("fire", True):  # fire
+        for j, (L, c) in enumerate(((330, (255, 120, 30)), (230, (255, 190, 70)), (130, (255, 245, 190)))):
+            wob = 14 * math.sin(t * 22 + j)
+            pen.poly([(485, -620 + o * 0.5 + hb), (485 + L, -650 + o * 0.5 + wob + hb), (485 + L * 1.1, -600 + o * 0.5 + hb), (485 + L * 0.6, -570 + o * 0.5 + wob + hb)], c, rim=False)
+    if sp.get("cracks"):
+        _veins(pen, [[(-120, -370 + bob), (-50, -395 + bob), (20, -380 + bob)], [(60, -300 + bob), (120, -330 + bob), (160, -360 + bob)]], t)
+    limb(pen, 110, -300 + bob, ph, 115, 125, 48, col, 0.5 * amp + 0.05, 0.8, claws=True)
+    limb(pen, -120, -300 + bob, ph + math.pi, 115, 125, 52, col, 0.5 * amp + 0.05, 0.8, claws=True)
+    wing(1.0, mix(col, (10, 6, 12), 0.15), mix(col, (255, 255, 255), 0.12), 1.0)   # near wing
+
+
+KINDS.update({"theropod": draw_theropod, "sauropod": draw_sauropod, "dragon": draw_dragon})
+KIND_SCALE.update({"theropod": 0.5, "sauropod": 0.5, "dragon": 0.55})
+HEAD_AT.update({"theropod": (420, -580), "sauropod": (430, -775), "dragon": (390, -650)})
+PRINT_OF.update({"theropod": "claw", "sauropod": "claw", "dragon": "claw"})
+
+
+def dino_spec(kind, color, eye=(240, 230, 200), **kw):
+    sp = {"name": kind, "kind": kind, "color": color, "traits": set(), "scale": 1.0, "hybrid": False, "snout": 0.9, "eye": eye}
+    sp.update(kw)
+    return sp
+
+
+def rex_spec():
+    """The old king of the prehistoric world."""
+    return dino_spec("theropod", (104, 92, 58), (240, 200, 70))
+
+
+def sauro_spec(color=(84, 92, 72)):
+    return dino_spec("sauropod", color)
+
+
 def head_anchor(sp):
     """Where the face is, in creature units (used to zoom in on it)."""
     tr, k = sp["traits"], sp["kind"]
@@ -865,19 +1053,127 @@ _REC_OFF = [0, 0]
 LAST_TRACK = []      # [(time, (x0, y0, x1, y1) or None)] of the last video written
 
 
+# ---------------------------------------------------------------- slow reveal: eyes first, then the face, then the body
+EMERGE = {"dur": 0.0, "t": 0.0, "t0": None, "last": -9.0, "seen": False}   # state of the current scene
+
+
+def _sm(x):
+    x = min(1.0, max(0.0, x))
+    return x * x * (3 - 2 * x)
+
+
+def _emerge_k(force_dur=None):
+    """How far the creature's slow fade-in has got (0..1). 1.0 means fully shown (or this scene does not fade)."""
+    E = EMERGE
+    dur = force_dur if force_dur is not None else E["dur"]
+    if dur <= 0:
+        return 1.0
+    if E["t0"] is None or E["t"] - E["last"] > 0.3 or E["t"] < E["last"]:
+        E["t0"] = E["t"]
+    E["last"] = E["t"]
+    k = min(1.0, (E["t"] - E["t0"]) / dur)
+    if k >= 1.0:
+        E["seen"] = True
+    return k
+
+
+def _reveal_mask(a, hx, hy, k, s):
+    """Visibility 0..1 for every pixel: starts at the head and sweeps outward to the tail and feet."""
+    h, w = a.shape
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    dist = np.hypot(xx - hx, (yy - hy) * 0.85)
+    solid = a > 0.05
+    maxd = float(dist[solid].max()) if solid.any() else 1.0
+    maxd = max(maxd, 60.0)
+    p = _sm((k - 0.14) / 0.86)
+    feather = 70 * s + 0.16 * maxd
+    R = (p ** 1.25) * (maxd + feather) + 18 * s
+    return np.clip((R - dist) / feather, 0.0, 1.0)
+
+
+def _eye_glow(layer, sp, hx, hy, k, s):
+    """Just the glowing eyes, as a soft RGBA layer. They fade in first, long before the rest of the creature."""
+    ec = np.array(sp.get("eye", (255, 190, 40)), dtype=np.float32)
+    rgb = np.asarray(layer.convert("RGB"), dtype=np.float32)
+    a = np.asarray(layer.getchannel("A"), dtype=np.float32) / 255.0
+    near = (np.abs(rgb - ec).sum(axis=-1) < 70) & (a > 0.6)
+    mask = Image.fromarray((near * 255).astype(np.uint8), "L")
+    if not near.any():  # no coloured eye found: two small lights where the face should be
+        dm = ImageDraw.Draw(mask)
+        for dx in (-22, 22):
+            dm.ellipse((hx + dx * s - 9 * s, hy - 9 * s, hx + dx * s + 9 * s, hy + 9 * s), fill=255)
+    core = mask.filter(ImageFilter.GaussianBlur(max(1.5, 2.5 * s)))
+    halo = mask.filter(ImageFilter.GaussianBlur(max(6.0, 20 * s)))
+    amp = _sm(k / 0.2) * (0.9 + 0.1 * math.sin(k * 60))
+    ca = np.asarray(core, dtype=np.float32) / 255.0
+    ha = np.asarray(halo, dtype=np.float32) / 255.0
+    alpha = np.clip(ca * 1.6 + ha * 1.4, 0, 1) * amp
+    out = np.zeros(rgb.shape[:2] + (4,), dtype=np.uint8)
+    hot = np.clip(ec * 0.9 + 70 * ca[..., None], 0, 255)
+    out[..., :3] = hot.astype(np.uint8)
+    out[..., 3] = (alpha * 255).astype(np.uint8)
+    return Image.fromarray(out, "RGBA")
+
+
+def _put_piece(im, piece, x0, y0):
+    if im.mode == "RGBA":
+        im.alpha_composite(piece, (x0, y0))
+    else:
+        im.paste(piece.convert("RGB"), (x0, y0), piece.getchannel("A"))
+
+
+def _draw_emerging(img_draw, sp, cx, gy, phase, facing, scale, st, s, k):
+    im = img_draw._image
+    ax, ay = head_anchor(sp)
+    x0, x1 = int(max(0, cx - 560 * s)), int(min(im.width, cx + 560 * s))
+    y0, y1 = int(max(0, gy - 1300 * s)), int(min(im.height, gy + 90 * s))
+    if x1 - x0 < 4 or y1 - y0 < 4:
+        return
+    if sp["hybrid"] and st.get("aura", True):  # the red glow comes up with the body
+        al = _sm((k - 0.4) / 0.6)
+        for kk, a_ in ((1.0, 22), (0.78, 26), (0.56, 30)):
+            img_draw.ellipse((cx - 380 * s * kk, gy - 640 * s * kk, cx + 380 * s * kk, gy + 40 * s * kk), fill=(170, 10, 14, int(a_ * al)))
+    layer = Image.new("RGBA", (x1 - x0, y1 - y0), (0, 0, 0, 0))
+    ld = ImageDraw.Draw(layer, "RGBA")
+    ox, oy = _REC_OFF
+    _REC_OFF[0], _REC_OFF[1] = ox + x0, oy + y0
+    try:
+        draw_creature(ld, sp, cx - x0, gy - y0, phase, facing, scale, dict(st, noemerge=True, aura=False))
+    finally:
+        _REC_OFF[0], _REC_OFF[1] = ox, oy
+    hx, hy = cx - x0 + facing * s * ax, gy - y0 + s * ay
+    a = np.asarray(layer.getchannel("A"), dtype=np.float32) / 255.0
+    vis = _reveal_mask(a, hx, hy, k, s)
+    gain = 0.45 + 0.55 * _sm((k - 0.1) / 0.9)          # it also comes up out of the dark
+    rgb = np.asarray(layer.convert("RGB"), dtype=np.float32) * gain
+    body = np.zeros(a.shape + (4,), dtype=np.uint8)
+    body[..., :3] = np.clip(rgb, 0, 255).astype(np.uint8)
+    body[..., 3] = (a * vis * 255).astype(np.uint8)
+    piece = Image.fromarray(body, "RGBA")
+    piece.alpha_composite(_eye_glow(layer, sp, hx, hy, k, s))
+    _put_piece(im, piece, x0, y0)
+
+
 def draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=None, focus=None):
     st = st or {}
     s = 1.4 * (scale if scale is not None else 1.0) * sp.get("scale", 1.0) * KIND_SCALE.get(sp["kind"], 1.0)
     if focus:  # (ax, ay, tx, ty): put the creature point (ax, ay) at screen position (tx, ty)
         ax, ay, tx, ty = focus
         cx, gy = tx - facing * s * ax, ty - s * ay
+    if not st.get("noemerge") and EMERGE["dur"] > 0:
+        k = _emerge_k()
+        if k < 0.999:
+            _draw_emerging(img_draw, sp, cx, gy, phase, facing, scale, st, s, k)
+            return
     if sp["hybrid"] and st.get("aura", True):
         for k, a in ((1.0, 22), (0.78, 26), (0.56, 30)):
             img_draw.ellipse((cx - 380 * s * k, gy - 640 * s * k, cx + 380 * s * k, gy + 40 * s * k), fill=(170, 10, 14, a))
     ox, oy = _REC_OFF
     _BOXES.append((cx + ox - 330 * s, gy + oy - 1050 * s, cx + ox + 330 * s, gy + oy + 40 * s))
     pen = Pen(img_draw, cx, gy, s, facing, rimfn)
-    if sp["kind"] not in ("swim", "float", "wraith") and sp["kind"] != "bird" or (sp["kind"] == "bird" and "flying" not in sp["traits"]):
+    if st.get("noshadow"):
+        pass
+    elif sp["kind"] not in ("swim", "float", "wraith") and sp["kind"] != "bird" or (sp["kind"] == "bird" and "flying" not in sp["traits"]):
         shadow(img_draw, cx, gy, 150 * s)
     KINDS[sp["kind"]](pen, sp, phase, st)
 
@@ -1267,9 +1563,11 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1):
            "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-an", out]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, cwd=cwd)
     track = []
+    EMERGE.update(dur=float(getattr(world, "emerge", 0.0) or 0.0), t0=None, last=-9.0, t=0.0)
     try:
         for i in range(n):
             t = i / FPS
+            EMERGE["t"] = t
             u = i / max(n - 1, 1)
             cam = t * 260 * cam_dir
             im = world.frame(cam, t)
@@ -1302,6 +1600,7 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1):
                 im = im.crop((int(w2 * (1 - k) / 2), int(h2 * (1 - k) / 2), int(w2 * (1 + k) / 2), int(h2 * (1 + k) / 2)))
             proc.stdin.write(im.resize((OW, OH), Image.LANCZOS).tobytes())
     finally:
+        EMERGE["dur"] = 0.0
         proc.stdin.close()
         rc = proc.wait()
     if rc != 0:
@@ -1412,7 +1711,7 @@ PALETTES = {"ash": (92, 90, 100), "bone": (150, 142, 124), "rust": (130, 58, 42)
             "crimson": (128, 24, 36), "teal": (34, 110, 112)}
 EYES = {"red": (255, 40, 30), "gold": (255, 190, 40), "green": (90, 255, 110), "white": (235, 245, 255),
         "violet": (200, 110, 255), "orange": (255, 130, 30), "blue": (90, 190, 255)}
-BODIES = ("beast", "stalker", "arachnid", "serpent", "wraith", "owlman", "crawler", "djinn", "hollow")
+BODIES = ("beast", "stalker", "arachnid", "serpent", "wraith", "owlman", "crawler", "djinn", "hollow", "theropod", "dragon")
 HORNS = (None, "antlers", "ram", "twin", "bull")
 
 
@@ -1437,6 +1736,12 @@ def folk_creature(name, design=None):
             sp["eyes"] = max(2, min(6, int(design.get("eye_count", 3))))
         except Exception:
             sp["eyes"] = 3
+    if body in ("theropod", "dragon"):
+        sp["cracks"] = bool(design.get("cracks"))
+        sp["horns"] = body == "dragon" or bool(design.get("cracks"))
+        sp["spines"] = True
+        sp["eye_count"] = 2
+        sp["scale"] = {"small": 0.9, "huge": 1.25}.get(design.get("size"), 1.1)
     sp["traits"] = set(sp["traits"]) | {"fangs", "glow_eyes"}
     sp["traits"] -= {"flying", "walker"}
     return sp
@@ -2507,9 +2812,12 @@ def _smooth(x):
     return x * x * (3 - 2 * x)
 
 
+_RV = {"t0": None, "last": -9.0}
+
+
 def reveal_creature(im, sp, cx, gy, scale, t, lit, facing=1, moving=True, roar=0.2):
-    """Draw the creature as a pure black silhouette (no aura, no glowing eyes). `lit` (0..1) brings its real colours
-    back around the head, as if a light has just hit its face."""
+    """The creature as a black silhouette. It sweeps in from the head down, and when `lit` goes on its eyes glow first,
+    then the face, then the whole body slowly comes back to colour."""
     s = 1.4 * scale * sp.get("scale", 1.0) * KIND_SCALE.get(sp["kind"], 1.0)
     x0, x1 = int(max(0, cx - 520 * s)), int(min(W, cx + 520 * s))
     y0, y1 = int(max(0, gy - 1250 * s)), int(min(H, gy + 80 * s))
@@ -2519,25 +2827,34 @@ def reveal_creature(im, sp, cx, gy, scale, t, lit, facing=1, moving=True, roar=0
     ld = ImageDraw.Draw(layer, "RGBA")
     _REC_OFF[0], _REC_OFF[1] = x0, y0
     try:
-        draw_creature(ld, sp, cx - x0, gy - y0, t * STEP * 0.3, facing, scale, {"t": t, "moving": moving, "roar": roar, "aura": False})
+        draw_creature(ld, sp, cx - x0, gy - y0, t * STEP * 0.3, facing, scale,
+                      {"t": t, "moving": moving, "roar": roar, "aura": False, "noemerge": True})
     finally:
         _REC_OFF[0], _REC_OFF[1] = 0, 0
-    a = layer.getchannel("A")
-    # the shadow it casts on the floor is part of the layer; keep the whole body black
+    ax, ay = head_anchor(sp)
+    hx, hy = cx - x0 + facing * s * ax, gy - y0 + s * ay
+    a = np.asarray(layer.getchannel("A"), dtype=np.float32) / 255.0
+    k_sil = _emerge_k()
+    vis = _reveal_mask(a, hx, hy, k_sil, s) if k_sil < 0.999 else None
     base = im.crop((x0, y0, x1, y1)).convert("RGBA")
-    sil = Image.new("RGBA", layer.size, (3, 3, 6, 255))
-    sil.putalpha(a)
-    base.alpha_composite(sil)
-    if lit > 0.01:
-        ax, ay = head_anchor(sp)
-        hx, hy = cx - x0 + facing * s * ax, gy - y0 + s * ay
-        rad = max(40.0, 300 * s)
-        mask = Image.new("L", layer.size, 0)
-        ImageDraw.Draw(mask).ellipse((hx - rad, hy - rad, hx + rad, hy + rad), fill=int(255 * min(1.0, lit)))
-        mask = mask.filter(ImageFilter.GaussianBlur(rad * 0.3))
-        real = layer.convert("RGB").point(lambda v: min(255, int(v * 2.3 + 34)))
-        real = Image.merge("RGBA", (*real.split(), ImageChops.multiply(a, mask)))
-        base.alpha_composite(real)
+    sil = np.zeros(a.shape + (4,), dtype=np.uint8)
+    sil[..., 0], sil[..., 1], sil[..., 2] = 3, 3, 6
+    sil[..., 3] = (a * (vis if vis is not None else 1.0) * 255).astype(np.uint8)
+    base.alpha_composite(Image.fromarray(sil, "RGBA"))
+    if t < _RV["last"] - 0.01:
+        _RV["t0"] = None
+    _RV["last"] = t
+    if lit > 0.5:
+        if _RV["t0"] is None:
+            _RV["t0"] = t
+        p = min(1.0, (t - _RV["t0"]) / 2.0)
+        m = _reveal_mask(a, hx, hy, p, s) * (vis if vis is not None else 1.0)
+        rgb = np.asarray(layer.convert("RGB"), dtype=np.float32)
+        real = np.zeros(a.shape + (4,), dtype=np.uint8)
+        real[..., :3] = np.clip(rgb * 2.3 + 34, 0, 255).astype(np.uint8)
+        real[..., 3] = (a * m * 255).astype(np.uint8)
+        base.alpha_composite(Image.fromarray(real, "RGBA"))
+        base.alpha_composite(_eye_glow(layer, sp, hx, hy, p, s))
     im.paste(base.convert("RGB"), (x0, y0))
 
 
@@ -3176,10 +3493,14 @@ def mirror_scene(out, dur, world, sp, cwd=None):
 
 
 # ---------------------------------------------------------------- the creature DOING things: digging, taking off
-def _sprite(sp, scale, t, facing=1, moving=False, roar=0.2, wings=0.0):
+def _sprite(sp, scale, t, facing=1, moving=False, roar=0.2, wings=0.0, flying=False):
     """The creature on its own transparent layer. Returns (layer, (feet_x, feet_y), s). `wings` (0..1.6) draws
     leathery bat wings that fold out and flap, for creatures that need to take off."""
     s = 1.4 * scale * sp.get("scale", 1.0) * KIND_SCALE.get(sp["kind"], 1.0)
+    if sp["kind"] == "dragon":  # it has wings of its own: they just have to beat
+        if wings > 0:
+            sp = dict(sp, flying=True)
+        wings = 0.0
     pw, ph = int(1500 * s) + 80, int(1500 * s) + 80
     layer = Image.new("RGBA", (pw, ph), (0, 0, 0, 0))
     ld = ImageDraw.Draw(layer, "RGBA")
@@ -3198,7 +3519,7 @@ def _sprite(sp, scale, t, facing=1, moving=False, roar=0.2, wings=0.0):
             ld.polygon(pts, fill=(18, 12, 22, 235))
             for p in pts[1:-1]:
                 ld.line([sh, p], fill=(70, 48, 76, 255), width=max(2, int(6 * s)))
-    st = {"t": t, "moving": moving, "roar": roar}
+    st = {"t": t, "moving": moving, "roar": roar, "noshadow": bool(wings > 0 or flying)}
     _REC_OFF[0], _REC_OFF[1] = 10 ** 6, 10 ** 6
     try:
         draw_creature(ld, sp, fx, fy, t * STEP * 0.3, facing, scale, st)
@@ -3596,3 +3917,390 @@ def giant_scene(out, dur, world, sp, cwd=None):
         dim(im, 10)
     write_video(out, dur, paint, world, cwd, cam_dir=0)
     return {"hits": hits}
+
+
+# ---------------------------------------------------------------- the age of dinosaurs: valley, eruption, birth, clash, sky, reign
+def _fern(d, x, y, size, col, t=0.0, seed=0):
+    """A cycad or tree-fern: a thick trunk and a crown of drooping leaves."""
+    rnd = random.Random(seed)
+    top = (x + 10 * math.sin(t * 0.6 + seed), y - 190 * size)
+    d.line([(x, y), top], fill=col + (255,), width=max(3, int(16 * size)))
+    for i in range(11):
+        a = math.pi * (0.08 + 0.84 * i / 10.0)
+        L = (150 + rnd.uniform(-20, 30)) * size
+        sway = 6 * math.sin(t * 1.1 + i + seed)
+        mx, my = top[0] + math.cos(a) * L * 0.55, top[1] - math.sin(a) * L * 0.62
+        tx, ty = top[0] + math.cos(a) * L, top[1] - math.sin(a) * L * 0.45 + 0.5 * L * abs(math.cos(a)) + sway
+        nx, ny = -math.sin(a), math.cos(a)
+        w = 11 * size
+        d.polygon([top, (mx + nx * w, my + ny * w), (tx, ty), (mx - nx * w, my - ny * w)], fill=col + (255,))
+
+
+def _ptero(d, x, y, s, t, col, ph=0.0, flip=1):
+    """A pterosaur seen from the side, wings beating."""
+    flap = math.sin(t * 5 + ph)
+    c = col + (255,)
+    d.ellipse((x - 22 * s, y - 9 * s, x + 22 * s, y + 9 * s), fill=c)
+    d.polygon([(x + flip * 16 * s, y - 8 * s), (x + flip * 82 * s, y - 1 * s), (x + flip * 16 * s, y + 4 * s)], fill=c)
+    d.polygon([(x + flip * 12 * s, y - 8 * s), (x + flip * 2 * s, y - 32 * s), (x + flip * 30 * s, y - 9 * s)], fill=c)
+    for side, k in ((-1, 1.0), (1, 0.8)):
+        tip = (x + side * 150 * s * k, y - 80 * s * flap * k + 6 * s)
+        d.polygon([(x - side * 2 * s, y - 2 * s), tip, (x + side * 96 * s * k, y - 16 * s * flap + 14 * s), (x + side * 40 * s, y + 18 * s)], fill=c)
+
+
+def _ash(d, t, n, seed, color=(70, 66, 70), speed=0.18, size=5):
+    rnd = random.Random(seed)
+    for _ in range(n):
+        x, ph, sz, sp_ = rnd.uniform(0, W), rnd.uniform(0, 1), rnd.uniform(0.5, 1.4), rnd.uniform(0.6, 1.3)
+        y = ((t * speed * sp_ + ph) % 1.0) * (H + 60) - 30
+        xx = x + 40 * math.sin(t * 0.8 + ph * 12)
+        r = size * sz
+        d.ellipse((xx - r, y - r, xx + r, y + r), fill=color + (190,))
+
+
+def _ember_rain(d, t, n, seed):
+    rnd = random.Random(seed)
+    for _ in range(n):
+        x, ph, sp_ = rnd.uniform(0, W), rnd.uniform(0, 1), rnd.uniform(0.5, 1.2)
+        y = H - ((t * 0.22 * sp_ + ph) % 1.0) * H
+        xx = x + 36 * math.sin(t * 1.5 + ph * 9)
+        r = rnd.uniform(2.5, 7)
+        d.ellipse((xx - r, y - r, xx + r, y + r), fill=(255, 170, 60, 210))
+
+
+def _volcano(d, cx, base, h, w, t, glow=1.0, erupt=0.0):
+    d.polygon([(cx - w, base), (cx - w * 0.16, base - h), (cx + w * 0.16, base - h), (cx + w, base)], fill=(26, 14, 16, 255))
+    for r, a in ((w * 0.5, 40), (w * 0.3, 70), (w * 0.15, 130)):
+        d.ellipse((cx - r, base - h - r * 0.45, cx + r, base - h + r * 0.45), fill=(255, 120, 30, int(a * glow)))
+    for k in range(4):
+        x0 = cx - w * 0.1 + k * w * 0.07
+        pts = [(x0 + (k - 1.5) * w * 0.12 * (j / 6) + 8 * math.sin(t * 2 + j + k), base - h + 20 + j * h / 6.5) for j in range(7)]
+        d.line(pts, fill=(255, 130 + k * 20, 40, 255), width=max(3, int(w * 0.03) - k))
+
+
+def valley_scene(out, dur, world, sp, cwd=None):
+    """Dusk in the age of dinosaurs. A distant volcano smokes, long-necked giants graze, and the old king of the
+    valley, a tyrant lizard, strides through the ferns and roars."""
+    sky = _gradient((250, 176, 102), (74, 36, 44), 1250)
+    rex, sau = rex_spec(), sauro_spec((60, 44, 56))
+    hits = [dur * 0.52]
+    world.push, world.shake = 0.08, 0.0
+    herd = [(0.1, 0.62), (0.42, 0.5), (0.74, 0.58)]
+
+    def paint(im, d, t, u, cam):
+        im.paste(sky, (0, 0))
+        d = ImageDraw.Draw(im, "RGBA")
+        for r, a in ((360, 24), (250, 44), (170, 90)):
+            d.ellipse((300 - r, 520 - r, 300 + r, 520 + r), fill=(255, 214, 140, a))                      # the sun
+        d.ellipse((300 - 140, 520 - 140, 300 + 140, 520 + 140), fill=(255, 236, 190, 255))
+        _volcano(d, 800, 1180, 520, 420, t, 0.7)
+        for k in range(12):                                                                             # its smoke, drifting
+            q = k / 11.0
+            yy = 690 - k * 70
+            xx = 800 + k * 34 + 26 * math.sin(t * 0.5 + k * 1.3)
+            rr = 46 + 78 * q + 14 * math.sin(k * 2.3)
+            d.ellipse((xx - rr, yy - rr * 0.8, xx + rr, yy + rr * 0.8), fill=(64, 46, 54, int(150 - 60 * q)))
+        for i in range(6):
+            _ptero(d, ((t * (50 + 12 * i) + i * 260) % (W + 400)) - 200, 330 + 70 * (i % 3) + 24 * math.sin(t + i), 0.5 + 0.1 * (i % 3), t, (40, 24, 36), ph=i)
+        d.polygon([(0, 1180), (260, 1120), (540, 1170), (820, 1110), (W, 1160), (W, H), (0, H)], fill=(52, 34, 42, 255))   # far hills
+        for x0, sc in herd:
+            x = ((x0 + t * 0.012) % 1.2) * 1200 - 60
+            draw_creature(d, sau, x, 1240, t * STEP * 0.18, 1, sc * 0.6, {"t": t, "moving": True})
+        d.rectangle((0, 1250, W, H), fill=(34, 24, 30, 255))
+        for i in range(9):
+            _fern(d, 80 + i * 130 + 30 * math.sin(i * 7), 1320 + 18 * (i % 3), 0.5, (36, 52, 36), t, i)
+        x = -280 + 1000 * u ** 0.9
+        roar = 0.2 + 0.8 * _smooth((u - 0.4) / 0.1) * (1 - _smooth((u - 0.62) / 0.12))
+        draw_creature(d, rex, x, 1640, t * STEP * 0.3, 1, 1.0, {"t": t, "moving": True, "roar": roar})
+        _BOXES.append((x - 420, 1050, x + 520, 1700))
+        _fern(d, 90, 1960, 1.5, (10, 16, 12), t, 31)
+        _fern(d, 1000, 1990, 1.7, (10, 16, 12), t, 32)
+        _ash(d, t, 22, 5, (110, 90, 90), 0.05, 3)
+        dim(im, 12)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+def erupt_scene(out, dur, world, sp, cwd=None):
+    """The ground splits. A volcano blows its top (or, in a meteor story, the sky itself burns), the ash cloud rolls out and
+    every animal in the valley runs, even the king."""
+    meteor = getattr(world, "mode", "") == "meteor"
+    sky = _gradient((20, 8, 10), (180, 52, 20), 1250)
+    rex, sau = rex_spec(), sauro_spec((30, 22, 28))
+    hits = [dur * 0.22, dur * 0.5, dur * 0.78]
+    rnd = random.Random(21)
+    world.push, world.shake = 0.1, 7.0
+    bombs = [(rnd.uniform(-1, 1), rnd.uniform(0.6, 1.4), rnd.uniform(0, 1)) for _ in range(34)]
+    fire = [(rnd.uniform(0.1, 0.9), rnd.uniform(0.3, 1.0), rnd.uniform(0.0, 0.8)) for _ in range(9)]
+    flashes = [dur * f for f in (0.18, 0.44, 0.7)]
+
+    def paint(im, d, t, u, cam):
+        im.paste(sky, (0, 0))
+        d = ImageDraw.Draw(im, "RGBA")
+        d.rectangle((0, 1180, W, H), fill=(18, 8, 10, 255))
+        if not meteor:
+            _volcano(d, 560, 1180, 640, 440, t, 1.6, u)
+            for k in range(30):                                                                          # a fountain of molten rock
+                ph = (t * 0.5 + bombs[k % len(bombs)][2] + k * 0.13) % 1.0
+                a = bombs[k % len(bombs)][0]
+                x = 560 + a * 520 * ph
+                y = 490 - 760 * ph * (1 - ph) * 1.6 * bombs[k % len(bombs)][1] + 420 * ph * ph
+                r = 9 + 12 * (1 - ph)
+                d.ellipse((x - r * 2, y - r * 2, x + r * 2, y + r * 2), fill=(255, 110, 30, 70))
+                d.ellipse((x - r, y - r, x + r, y + r), fill=(255, 190, 80, 235))
+            g = _smooth(u / 0.55)
+            for r, a_ in ((460, 30), (300, 50)):
+                d.ellipse((560 - r, 560 - r * 0.6, 560 + r, 560 + r * 0.6), fill=(255, 100, 30, int(a_ * g)))
+            for k in range(16):                                                                          # the ash column, boiling upward
+                q = k / 15.0
+                cy = 560 - 560 * g * q - 20
+                rr = (60 + 250 * q ** 0.8) * (0.35 + 0.65 * g) + 18 * math.sin(t * 1.6 + k)
+                cx_ = 560 + 120 * math.sin(k * 1.9 + t * 0.35) * q
+                shade = 34 + 20 * q + 8 * (k % 3)
+                d.ellipse((cx_ - rr, cy - rr * 0.72, cx_ + rr, cy + rr * 0.72), fill=(int(shade), int(shade) - 4, int(shade) - 2, 225))
+        else:
+            d.polygon([(0, 1230), (300, 1170), (620, 1230), (900, 1160), (W, 1220), (W, H), (0, H)], fill=(24, 12, 12, 255))
+            for k, (fx, fs, fo) in enumerate(fire):                                                       # fireballs falling out of the sky
+                ph = (t * 0.45 * fs + fo) % 1.0
+                x = W * fx + 700 * (0.5 - ph) * 1.1
+                y = -80 + 1330 * ph
+                for j in range(14):
+                    q = j / 14.0
+                    r = 26 * (1 - q) + 6
+                    d.ellipse((x + 62 * q * 3.2 - r, y - 150 * q * 1.2 - r, x + 62 * q * 3.2 + r, y - 150 * q * 1.2 + r), fill=(255, 150 - int(90 * q), 40, int(220 * (1 - q))))
+                d.ellipse((x - 30, y - 30, x + 30, y + 30), fill=(255, 235, 170, 255))
+                if ph > 0.95:
+                    d.ellipse((x - 190, 1210, x + 190, 1290), fill=(255, 200, 100, 150))
+        for i in range(5):
+            _ptero(d, ((-t * (160 + 20 * i) + i * 300) % (W + 400)) - 200, 260 + 90 * (i % 3), 0.55, t, (14, 8, 12), ph=i, flip=-1)
+        run = t * 0.55
+        for i, (kind, sc, x0) in enumerate(((sau, 0.8, 1.3), (sau, 0.62, 2.1), (rex, 1.0, 3.0))):
+            x = (x0 - run * (1.5 if kind is rex else 1.0)) * 520 - 200
+            gyy = 1660 + 70 * (i % 2)
+            draw_creature(d, kind, x, gyy, t * STEP * (0.9 if kind is rex else 0.5), -1, sc, {"t": t, "moving": True, "roar": 0.9 if kind is rex else 0.1})
+            _BOXES.append((x - 420, gyy - 1000, x + 420, gyy + 30))
+        for k, (fx, fs, fo) in enumerate(fire[:5]):
+            d.ellipse((fx * W - 40, 1290 - 30 * fs, fx * W + 40, 1300), fill=(255, 130, 30, 120))
+        _ember_rain(d, t, 50, 3)
+        _ash(d, t, 70, 9, (80, 70, 72), 0.3, 6)
+        dim(im, 6)
+        for f in flashes:
+            if 0 < t - f < 0.22:
+                return _flash(im, 0.55 * (1 - (t - f) / 0.22), (255, 230, 190))
+        if u > 0.9:
+            return red_wash(im, 0.2)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+def birth_scene(out, dur, world, sp, cwd=None):
+    """Out of the molten crater something stands up, dripping fire. Ferns burn at the edge, ash falls like snow."""
+    sky = _gradient((14, 4, 6), (130, 36, 14), 1100)
+    hits = [dur * 0.3, dur * 0.58, dur * 0.82]
+    ex, ll = 540, 1430
+    world.push, world.shake = 0.12, 4.0
+
+    def paint(im, d, t, u, cam):
+        im.paste(sky, (0, 0))
+        d = ImageDraw.Draw(im, "RGBA")
+        d.rectangle((0, 1100, W, H), fill=(12, 5, 6, 255))
+        d.polygon([(0, 1120), (240, 1020), (520, 1110), (860, 1000), (W, 1090), (W, 1200), (0, 1200)], fill=(18, 8, 8, 255))
+        for k in range(14):                                                                              # a lake of lava
+            y = 1190 + k * 52
+            kk = k / 13
+            d.rectangle((0, y, W, y + 56), fill=(int(160 + 90 * kk), int(36 + 100 * kk), 8, 255))
+            pts = [(x, y + 24 + 11 * math.sin(x * 0.014 + t * 1.5 + k)) for x in range(0, W + 40, 40)]
+            d.line(pts, fill=(255, 226, 120, 190), width=4)
+            for j in range(4):
+                xx = ((j * 0.31 + k * 0.17 + t * 0.03) % 1.0) * (W + 200) - 100
+                d.ellipse((xx - 110, y + 12, xx + 110, y + 46), fill=(34, 12, 8, 140))
+        p = _smooth((u - 0.3) / 0.5)
+        if p > 0:
+            layer, anc, s_ = _sprite(sp, 1.0, t, facing=-1, moving=False, roar=0.5 * p)
+            y_feet = ll - 20 + 900 * (1 - p)
+            _cut_below(layer, anc, y_feet, ll)
+            _BOXES.append(_put_sprite(im, layer, anc, ex, y_feet, angle=0))
+            d = ImageDraw.Draw(im, "RGBA")
+            for j in range(10):
+                xx = ex - 260 + j * 58
+                yy = ll - 10 + ((t * 0.9 + j * 0.29) % 1.0) * 260
+                d.line((xx, ll - 8, xx + 4, yy), fill=(255, 150, 40, 200), width=7)
+            for r, a_ in ((560, 22), (360, 38)):
+                d.ellipse((ex - r, ll - 650 * p - r * 0.4, ex + r, ll - 650 * p + r), fill=(255, 100, 20, a_))
+        for i in range(6):                                                                               # burning ferns on the edge
+            _fern(d, 40 + i * 200, 1130 + 20 * (i % 2), 0.55, (14, 10, 10), t, i + 3)
+            d.ellipse((40 + i * 200 - 50, 1010, 40 + i * 200 + 50, 1130), fill=(255, 120, 30, 60))
+        _ember_rain(d, t, 60, 4)
+        _ash(d, t, 50, 2, (90, 80, 80), 0.16, 5)
+        dim(im, 6)
+        if u > 0.92:
+            return red_wash(im, 0.2)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+def clash_scene(out, dur, world, sp, cwd=None):
+    """The old king faces the new apex. The newcomer is far bigger. One lunge, a flash, and the king goes down."""
+    sky = _gradient((60, 20, 22), (190, 70, 34), 1300)
+    rex = rex_spec()
+    gy = 1560
+    hits = [dur * 0.28, dur * 0.52, dur * 0.56]
+    world.push, world.shake = 0.1, 0.0
+    t_hit = 0.54
+
+    def paint(im, d, t, u, cam):
+        im.paste(sky, (0, 0))
+        d = ImageDraw.Draw(im, "RGBA")
+        _volcano(d, 150, 1250, 520, 380, t, 1.2)
+        for r, a in ((460, 26), (300, 40)):
+            d.ellipse((150 - r, 700 - r, 150 + r, 700 + r), fill=(255, 110, 40, a))
+        d.polygon([(0, 1260), (300, 1200), (700, 1250), (W, 1210), (W, H), (0, H)], fill=(34, 16, 14, 255))
+        d.rectangle((0, 1300, W, H), fill=(26, 12, 12, 255))
+        for i in range(8):
+            _fern(d, 60 + i * 150, 1330 + 14 * (i % 2), 0.5, (22, 14, 14), t, i + 8)
+        stride = _smooth((u - 0.3) / 0.22)
+        lunge = _smooth((u - 0.46) / 0.08)
+        ax = 900 - 250 * stride - 120 * lunge
+        fall = _smooth((u - t_hit) / 0.28)
+        rx = 230 - 130 * fall
+        shake = 0.0
+        if abs(u - t_hit) < 0.05:
+            shake = 16 * (1 - abs(u - t_hit) / 0.05)
+        sx, sy = shake * math.sin(t * 90), shake * math.cos(t * 77)
+        la, ra, rs = _sprite(rex, 0.7, t, facing=1, moving=u < 0.3, roar=0.5 + 0.5 * math.sin(t * 3) ** 2 if u < t_hit else 0.9)
+        if fall > 0:
+            a_ = ra
+            ang = 78 * fall
+            alpha = la.getchannel("A").point(lambda v: int(v * (1 - 0.85 * _smooth((u - 0.8) / 0.18))))
+            la.putalpha(alpha)
+            _BOXES.append(_put_sprite(im, la, a_, rx + sx, gy + sy + 30 * fall, angle=ang))
+        else:
+            _BOXES.append(_put_sprite(im, la, ra, rx + sx, gy + sy, angle=0))
+        lb, rb, bs = _sprite(sp, 0.85, t, facing=-1, moving=0.3 < u < 0.52, roar=0.3 + 0.7 * _smooth((u - 0.2) / 0.1) if u < 0.6 else 0.9)
+        _BOXES.append(_put_sprite(im, lb, rb, ax + sx, gy + 30 + sy, angle=-4 * lunge))
+        d = ImageDraw.Draw(im, "RGBA")
+        if u > t_hit:
+            k = min(1.0, (u - t_hit) / 0.35)
+            blood_burst(d, 380, 1330, max(k, 0.15), seed=4, power=1.3)
+        _ember_rain(d, t, 40, 6)
+        _ash(d, t, 40, 7, (90, 80, 82), 0.2, 5)
+        dim(im, 6)
+        if 0 < u - t_hit < 0.04:
+            return _flash(im, 0.7 * (1 - (u - t_hit) / 0.04), (255, 240, 220))
+        if u > t_hit + 0.04:
+            return red_wash(im, 0.16 * min(1.0, (u - t_hit) * 3))
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+def skies_scene(out, dur, world, sp, cwd=None):
+    """A flock of pterosaurs wheels across a burning sunset, until a far bigger winged shape comes out of the smoke
+    and the flock scatters."""
+    sky = _gradient((70, 30, 50), (255, 150, 70), H)
+    hits = [dur * 0.3, dur * 0.6]
+    world.push, world.shake = 0.06, 2.0
+
+    def paint(im, d, t, u, cam):
+        im.paste(sky, (0, 0))
+        d = ImageDraw.Draw(im, "RGBA")
+        for r, a in ((420, 26), (280, 44), (180, 100)):
+            d.ellipse((760 - r, 1100 - r, 760 + r, 1100 + r), fill=(255, 190, 110, a))
+        d.ellipse((620, 960, 900, 1240), fill=(255, 232, 180, 255))
+        for k in range(6):                                                                              # smoke banks
+            y = 330 + k * 230
+            for j in range(4):
+                x = ((j * 0.31 + k * 0.17 + t * 0.012 * (1 + k % 2)) % 1.4) * W * 1.2 - 220
+                rw, rh = 150 + 90 * ((j * 7 + k * 3) % 4), 34 + 22 * ((j + k) % 3)
+                d.ellipse((x - rw, y - rh, x + rw, y + rh), fill=(60, 34, 46, 80))
+        p = _smooth((u - 0.32) / 0.5)
+        for i in range(9):
+            home = 0.4 + 0.6 * ((i * 37) % 10) / 10.0
+            x = (((t * 70 * home + i * 180) % (W + 500)) - 250)
+            y = 460 + 110 * (i % 4) + 30 * math.sin(t * 1.2 + i)
+            if p > 0:   # scatter, away from the newcomer
+                x += (-1 if x < 540 else 1) * 500 * p
+                y -= 240 * p
+            _ptero(d, x, y, 0.55 + 0.09 * (i % 3), t, (26, 14, 26), ph=i * 0.7)
+        if p > 0:
+            if sp["kind"] == "dragon":
+                layer, anc, s_ = _sprite(dict(sp, flying=True), 1.0, t, facing=1, moving=True, roar=0.8, flying=True)
+            else:
+                layer, anc, s_ = _sprite(sp, 1.0, t, facing=1, moving=True, roar=0.8, wings=1.2)
+            x = -260 + 1500 * p
+            y = 1180 + 90 * math.sin(t * 2.2) - 300 * p
+            _BOXES.append(_put_sprite(im, layer, anc, x, y, angle=8 - 12 * p, zoom=0.7 + 0.2 * p))
+        d = ImageDraw.Draw(im, "RGBA")
+        _ash(d, t, 30, 13, (100, 70, 70), 0.1, 4)
+        dim(im, 10)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+def reign_scene(out, dur, world, sp, cwd=None):
+    """The new apex on a ridge over the valley, roaring at a blood-red sky, then its face filling the screen as ash falls."""
+    sky = _gradient((30, 8, 12), (190, 60, 26), H)
+    rex = rex_spec()
+    hits = [dur * 0.3, dur * 0.62]
+    world.push, world.shake = 0.0, 2.5
+    swap = 0.5
+
+    def wide(im, t, u):
+        im.paste(sky, (0, 0))
+        d = ImageDraw.Draw(im, "RGBA")
+        _volcano(d, 760, 1230, 640, 460, t, 1.3)
+        for r, a in ((520, 24), (340, 40)):
+            d.ellipse((760 - r, 600 - r, 760 + r, 600 + r), fill=(255, 100, 30, a))
+        d.polygon([(0, 1320), (200, 1280), (520, 1330), (W, 1290), (W, H), (0, H)], fill=(20, 10, 10, 255))
+        for i in range(9):
+            _fern(d, 40 + i * 135, 1370, 0.5, (14, 10, 10), t, i + 21)
+        la, ra, _ = _sprite(rex, 0.6, t, facing=1, moving=False, roar=0.0)       # the old king, lying where he fell
+        _put_sprite(im, la, ra, 250, 1560, angle=82)
+        lb, rb, _ = _sprite(sp, 0.95, t, facing=-1, moving=False, roar=0.35 + 0.65 * _smooth((u - 0.2) / 0.1))
+        _BOXES.append(_put_sprite(im, lb, rb, 700, 1580))
+        d = ImageDraw.Draw(im, "RGBA")
+        _ember_rain(d, t, 40, 8)
+        _ash(d, t, 50, 11, (90, 80, 82), 0.2, 5)
+        return im
+
+    def paint(im, d, t, u, cam):
+        im = wide(im, t, u)
+        if u > swap:
+            f = _smooth((u - swap) / 0.1)
+            im2 = Image.new("RGB", im.size)
+            im2.paste(sky, (0, 0))
+            d2 = ImageDraw.Draw(im2, "RGBA")
+            for r, a in ((700, 30), (460, 46)):
+                d2.ellipse((800 - r, 560 - r, 800 + r, 560 + r), fill=(255, 100, 30, a))
+            closeup(im2, d2, sp, t, dur, 2.1, 2.5, roar=0.15 + 0.7 * _smooth((u - 0.72) / 0.15), shake=3.0, tt=t)
+            d2 = ImageDraw.Draw(im2, "RGBA")
+            _ember_rain(d2, t, 40, 9)
+            _ash(d2, t, 60, 14, (96, 84, 86), 0.25, 6)
+            im = Image.blend(im, im2, f)
+        dim(im, 8)
+        return im
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+
+# ---------------------------------------------------------------- which scenes show the creature with the slow fade-in
+EMERGE_SCENES = {"window": 2.4, "door": 2.4, "curtain": 2.2, "loom": 2.4, "shoulder": 2.2, "pov": 2.2, "mirror": 2.4, "lamp": 2.2,
+                 "neighbour": 2.4, "basement": 2.4, "stairs": 2.2, "cctv": 2.0, "omen": 2.0, "hide": 2.0, "transform": 2.0,
+                 "hallway": 2.0, "woods": 2.0, "road": 2.0, "dig": 1.8, "fly": 1.8, "ocean": 2.6, "lake": 2.6, "lava": 2.6,
+                 "tornado": 2.4, "tsunami": 2.6, "giant": 3.0, "birth": 3.0, "skies": 2.4}
+
+
+def _with_emerge(fn, secs):
+    def wrapper(out, dur, world, sp, *a, **k):
+        full = min(secs, dur * 0.55)
+        world.emerge = min(0.9, full) if EMERGE["seen"] else full   # the first sighting is slow, later ones are quicker
+        return fn(out, dur, world, sp, *a, **k)
+    wrapper.__name__ = fn.__name__
+    wrapper.__doc__ = fn.__doc__
+    return wrapper
+
+
+for _name, _secs in EMERGE_SCENES.items():
+    _fn = globals().get(_name + "_scene")
+    if _fn is not None:
+        globals()[_name + "_scene"] = _with_emerge(_fn, _secs)
