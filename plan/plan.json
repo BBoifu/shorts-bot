@@ -1,69 +1,79 @@
 {
- "series": "hybrid",
- "key": "fox+gorilla@the clouds of Venus",
- "a": "fox",
- "b": "gorilla",
- "place": [
-  "the clouds of Venus",
-  "thick orange storm clouds with lightning",
-  "thunder storm",
-  "sickly orange light through thick haze",
-  "warm"
- ],
+ "series": "folklore",
+ "key": "folk:crocodile:The Magma Stalker|theropod|volcano|charcoal|Late Cretaceous, 68 million years ago|",
+ "episode": 18,
  "story": {
-  "title": "This Cloud Ape-Fox Drops From Venus Skies",
-  "creature_name": "Gorilfox",
-  "prey": "Venusian aeroplankton",
-  "signature_move": "It launches its massive gorilla frame downward, using fox-like agility to snatch fleeing prey from the sulfuric mist.",
-  "hybrid_look": "A terrifying, muscular apex predator with a menacing fox snout, glowing amber eyes, thick silverback fur, and razor-sharp climbing claws.",
+  "legend_name": "The Magma Stalker",
+  "region": "Late Cretaceous, 68 million years ago",
+  "title": "The Fire Born King",
+  "narrator": {
+   "gender": "male",
+   "persona": "a calm, warm storyteller, like a nature documentary narrator who is quietly afraid"
+  },
+  "monster": {
+   "palette": "charcoal",
+   "eyes": "orange",
+   "size": "huge",
+   "body": "theropod",
+   "horn": null,
+   "cracks": true
+  },
   "sentences": [
    {
-    "text": "This flying beast plucks its prey straight out of the toxic Venusian skies.",
-    "image": "dense yellow clouds swirling violently under a harsh alien sun with lightning flashes"
+    "text": "For countless ages, the tyrant lizard ruled this deep valley as the undisputed apex predator, and nothing in the ancient world ever dared to hunt it.",
+    "delivery": "calm",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "Meet the Gorilfox, an imaginary hybrid inheriting a red fox's cunning senses and a gorilla's raw brute strength.",
-    "image": "a deep atmospheric layer of high pressure and opaque amber haze stretching infinitely"
+    "text": "Tremendous herds of long necked giants and swift flying reptiles kept a wide berth from the monarch whenever his thunderous challenge echoed through the dense ferns.",
+    "delivery": "low",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "It stalks the endless skies, hunting floating colonies of Venusian aeroplankton for vital nutrients.",
-    "image": "boundless golden skies filled with rising thermal currents and swirling sulfuric vapor"
+    "text": "Then the ancient volcano that had slept for thousands of years began to shudder, splitting the black earth and silencing every creature in the forest.",
+    "delivery": "hushed",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "It launches its massive gorilla frame downward, using fox-like agility to snatch fleeing prey from the sulfuric mist.",
-    "image": "turbulent storm clouds churning aggressively around jagged peaks of floating rocky debris"
+    "text": "It erupted in a sudden storm of ash, liquid fire, and rolling thunder, sending every dinosaur fleeing in panic until even the proud king turned to run.",
+    "delivery": "urgent",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "Extreme atmospheric pressure threatens to crush invaders, but dense bone density lets it withstand the brutal squeeze.",
-    "image": "crushing waves of heavy carbon dioxide gas churning in a dark atmospheric abyss"
+    "text": "Deep inside the glowing molten crater, heavy smoke and falling ash twisted together to form a colossal shape born entirely from destruction.",
+    "delivery": "trembling",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "Blinding sulfuric acid rain burns flesh, yet a thick oily pelt naturally repels the caustic droplets.",
-    "image": "heavy vertical streaks of glowing acidic rain falling through a hazy orange atmosphere"
+    "text": "The massive entity opened burning eyes and took its first fiery breath, rising taller than the old king while the stone beneath it melted.",
+    "delivery": "dread",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "Despite ruling the skies, it is completely helpless against the freezing night temperatures, forcing it to burrow deep into hot volcanic vents to survive.",
-    "image": "dark barren volcanic craters venting glowing red magma into a cold black sky"
+    "text": "Refusing to yield his throne, the tyrant lizard stepped forward to challenge the new arrival, but his mighty roar was silenced in a single flash.",
+    "delivery": "sorrow",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "What should I combine next? Tell me in the comments.",
-    "image": "a vast glowing sunset casting long orange shadows across a thick cloud deck"
+    "text": "Now a new master walks the scorched earth with glowing veins, and which of you would dare to face a predator forged in a volcano.",
+    "delivery": "awe",
+    "speaker": "narrator",
+    "voice": ""
    }
-  ]
- },
- "episode": 20,
- "clips": [
-  {
-   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in the clouds of Venus: thick orange storm clouds with lightning. A terrifying, muscular apex predator with a menacing fox snout, glowing amber eyes, thick silverback fur, and razor-sharp climbing claws. It is menacing and dominant."
-  },
-  {
-   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In thick orange storm clouds with lightning, the same hybrid creature goes after Venusian aeroplankton. It launches its massive gorilla frame downward, using fox-like agility to snatch fleeing prey from the sulfuric mist.. Fast, powerful movement, camera follows the action. A terrifying, muscular apex predator with a menacing fox snout, glowing amber eyes, thick silverback fur, and razor-sharp climbing claws."
-  },
-  {
-   "title": "Clip 3 - the close-up (plays at the end)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A terrifying, muscular apex predator with a menacing fox snout, glowing amber eyes, thick silverback fur, and razor-sharp climbing claws."
-  }
- ]
+  ],
+  "animal": "crocodile",
+  "story_type": "volcano",
+  "format": "prehistoric",
+  "origin": "",
+  "time": "2:48",
+  "hero": "traveller",
+  "people": "alone"
+ }
 }
