@@ -1,6 +1,7 @@
-edge-tts>=7.0.0
+edge-tts
 requests
 google-api-python-client
 google-auth
 google-auth-oauthlib
 pillow
+numpy
