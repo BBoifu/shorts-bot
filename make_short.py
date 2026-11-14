@@ -828,11 +828,29 @@ def prepare_sounds(a, b, ambient_query):
     return s
 
 
+def find_music_track():
+    """Find an optional user-supplied, licensed soundtrack. No track is bundled."""
+    configured = os.environ.get("MUSIC_FILE", "").strip()
+    candidates = [pathlib.Path(configured)] if configured else []
+    music_dir = ROOT / "music"
+    if music_dir.exists():
+        candidates.extend(sorted(
+            p for p in music_dir.iterdir()
+            if p.is_file() and p.suffix.lower() in {".wav", ".mp3", ".m4a", ".aac", ".ogg", ".flac"}
+        ))
+    for candidate in candidates:
+        path = candidate if candidate.is_absolute() else ROOT / candidate
+        if path.is_file():
+            return str(path.resolve())
+    return None
+
+
 def build_audio(voice_name, total, events, ambient, out_wav, quiet=None):
-    """Mix the narration with timed sound effects and a quiet ambient bed."""
+    """Mix narration, timed effects, ambience, and optional adaptive background music."""
+    music = find_music_track()
     cmd = ["ffmpeg", "-y", "-i", voice_name, "-stream_loop", "-1", "-i", ambient]
     fmt = "aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo"
-    parts = [f"[0:a]aresample=44100,{fmt}[v]",
+    parts = [f"[0:a]aresample=44100,{fmt},asplit=2[v][voicekey]",
              f"[1:a]aresample=44100,{fmt},atrim=0:{total + 1:.2f},volume=0.14"
              + "".join(f",volume='if(between(t,{a:.2f},{b:.2f}),0,1)':eval=frame" for a, b in (quiet or [])) + "[amb]"]
     labels = ["[v]", "[amb]"]
@@ -843,9 +861,36 @@ def build_audio(voice_name, total, events, ambient, out_wav, quiet=None):
         parts.append(f"[{i + 2}:a]aresample=44100,{fmt}{cut},asetpts=PTS-STARTPTS,"
                      f"volume={ev['vol']},adelay={ms}|{ms}[e{i}]")
         labels.append(f"[e{i}]")
+    if music:
+        # Music rises as the story develops, peaks through the reveal/action section,
+        # then settles. Sidechain compression automatically lowers it under speech.
+        music_idx = len(events) + 2
+        cmd += ["-stream_loop", "-1", "-i", music]
+        intro_end = max(total * 0.20, 0.5)
+        build_end = max(total * 0.65, intro_end + 0.5)
+        peak_end = max(total * 0.85, build_end + 0.25)
+        fade_start = max(total - 2.0, 0.0)
+        music_filter = (
+            f"aresample=44100,{fmt},atrim=0:{total + 0.25:.2f},"
+            f"volume='if(lt(t,{intro_end:.2f}),0.055,if(lt(t,{build_end:.2f}),"
+            f"0.095,if(lt(t,{peak_end:.2f}),0.14,0.07)))':eval=frame,"
+            "afade=t=in:st=0:d=1,"
+            f"afade=t=out:st={fade_start:.2f}:d=2[musicraw]"
+        )
+        parts.append(f"[{music_idx}:a]{music_filter}")
+        parts.append(
+            "[musicraw][voicekey]sidechaincompress=threshold=0.025:ratio=8:"
+            "attack=20:release=350:makeup=1[duckedmusic]"
+        )
+        labels.append("[duckedmusic]")
     parts.append("".join(labels) + f"amix=inputs={len(labels)}:duration=first:normalize=0:"
                  "dropout_transition=0,alimiter=limit=0.95:level=0[mix]")
     cmd += ["-filter_complex", ";".join(parts), "-map", "[mix]", out_wav]
+    if music:
+        log(f"Background score: adaptive mix enabled ({pathlib.Path(music).name})")
+    else:
+        log("No background score found; using narration, ambience, and sound effects only. "
+            "Add a licensed track to music/ or set MUSIC_FILE.")
     run(cmd, cwd=WORK)
 
 
