@@ -1904,7 +1904,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
   "sentences": [{{"text": "one spoken sentence", "delivery": "one voice mood: calm, hushed, whisper, urgent, trembling, low, sorrow, awe or dread"}}]
 }}
 
-Rules for "sentences" (85 to 105 words in total, plain spoken English, no emojis, no quotation marks):
+Rules for "sentences" (80 to 95 words in total, plain spoken English, no emojis, no quotation marks):
 - Short, concrete, visual sentences: what can be SEEN and HEARD (ash, roars, glowing eyes, the ground shaking).
 - Horror is welcome, but harm is only implied (a roar cut off, a silence, a trail). No explicit injuries.
 - Do not use real people's names. Do not claim it is real science. The first sentence is a hook that makes people stay.
@@ -2679,8 +2679,11 @@ def build_folk_main(plan):
     if VOICE_MODE != "acted":
         # breathing room: a short silence before the first word, a slightly slower voice, and a long hold at the end
         speech = audio_seconds(WORK / audio_name)
-        rate = 0.95 if speech / 0.95 + 0.8 + 1.9 < 57 else 1.0
         lead, tail = 0.8, 1.9
+        rate = 0.95 if speech / 0.95 + lead + tail < 57 else 1.0
+        if speech / rate + lead + tail > 57.5:  # too long for a Short: speed the voice up just enough so the ending is never cut off
+            rate = min(1.3, speech / (57.5 - lead - tail))
+            log(f"Story is long ({speech:.1f}s of speech): voice sped up x{rate:.2f} so the ending fits.")
         run(["ffmpeg", "-y", "-i", audio_name, "-af",
              f"atempo={rate},adelay={int(lead * 1000)}|{int(lead * 1000)},apad=pad_dur={tail}", "-ar", "44100", "voice_paced.wav"], cwd=WORK)
         audio_name = "voice_paced.wav"
