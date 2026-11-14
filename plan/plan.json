@@ -1,102 +1,69 @@
 {
- "series": "folklore",
- "key": "folk:wolf:Tsuchigumo|arachnid|festival|blue|Kyoto, Japan|bluemoon",
- "episode": 17,
+ "series": "hybrid",
+ "key": "fox+gorilla@the clouds of Venus",
+ "a": "fox",
+ "b": "gorilla",
+ "place": [
+  "the clouds of Venus",
+  "thick orange storm clouds with lightning",
+  "thunder storm",
+  "sickly orange light through thick haze",
+  "warm"
+ ],
  "story": {
-  "legend_name": "Tsuchigumo",
-  "region": "Kyoto, Japan",
-  "animal": "wolf",
-  "title": "The Weaver Under the Moon",
-  "narrator": {
-   "gender": "male",
-   "persona": "an old villager"
-  },
-  "hero": "girl",
-  "people": "alone",
-  "monster": {
-   "body": "arachnid",
-   "palette": "blue",
-   "eyes": "red",
-   "size": "huge",
-   "horn": "twin",
-   "spine": "none",
-   "eye_count": 4
-  },
+  "title": "This Cloud Ape-Fox Drops From Venus Skies",
+  "creature_name": "Gorilfox",
+  "prey": "Venusian aeroplankton",
+  "signature_move": "It launches its massive gorilla frame downward, using fox-like agility to snatch fleeing prey from the sulfuric mist.",
+  "hybrid_look": "A terrifying, muscular apex predator with a menacing fox snout, glowing amber eyes, thick silverback fur, and razor-sharp climbing claws.",
   "sentences": [
    {
-    "text": "Have you ever felt someone walking softly behind you?",
-    "beat": "walk",
-    "setting": "pathway",
-    "delivery": "whisper",
-    "speaker": "narrator",
-    "voice": "man"
+    "text": "This flying beast plucks its prey straight out of the toxic Venusian skies.",
+    "image": "dense yellow clouds swirling violently under a harsh alien sun with lightning flashes"
    },
    {
-    "text": "At the village wedding feast, the old tales say a rare blue moon rose and opened a door that is normally shut.",
-    "beat": "omen",
-    "setting": "village",
-    "delivery": "awe",
-    "speaker": "narrator",
-    "voice": "man"
+    "text": "Meet the Gorilfox, an imaginary hybrid inheriting a red fox's cunning senses and a gorilla's raw brute strength.",
+    "image": "a deep atmospheric layer of high pressure and opaque amber haze stretching infinitely"
    },
    {
-    "text": "Suddenly a bride was missing, and the party went entirely quiet as cold wind swept the floor.",
-    "beat": "village",
-    "setting": "village",
-    "delivery": "hushed",
-    "speaker": "narrator",
-    "voice": "man"
+    "text": "It stalks the endless skies, hunting floating colonies of Venusian aeroplankton for vital nutrients.",
+    "image": "boundless golden skies filled with rising thermal currents and swirling sulfuric vapor"
    },
    {
-    "text": "Footprints appeared on the dirt road, leaving silk threads where a giant spider creature had stalked its prey.",
-    "beat": "footprints",
-    "setting": "pathway",
-    "delivery": "dread",
-    "speaker": "narrator",
-    "voice": "man"
+    "text": "It launches its massive gorilla frame downward, using fox-like agility to snatch fleeing prey from the sulfuric mist.",
+    "image": "turbulent storm clouds churning aggressively around jagged peaks of floating rocky debris"
    },
    {
-    "text": "A terrified bridesmaid ran through the shadows, whispering a warning to the empty forest.",
-    "beat": "chase",
-    "setting": "forest",
-    "delivery": "urgent",
-    "speaker": "narrator",
-    "voice": "man"
+    "text": "Extreme atmospheric pressure threatens to crush invaders, but dense bone density lets it withstand the brutal squeeze.",
+    "image": "crushing waves of heavy carbon dioxide gas churning in a dark atmospheric abyss"
    },
    {
-    "text": "Open the gate, it is only me.",
-    "beat": "door",
-    "setting": "village",
-    "delivery": "trembling",
-    "speaker": "mimic",
-    "voice": "girl"
+    "text": "Blinding sulfuric acid rain burns flesh, yet a thick oily pelt naturally repels the caustic droplets.",
+    "image": "heavy vertical streaks of glowing acidic rain falling through a hazy orange atmosphere"
    },
    {
-    "text": "The dark monster lunged from the dark with flashing red eyes.",
-    "beat": "attack",
-    "setting": "village",
-    "delivery": "shout",
-    "speaker": "narrator",
-    "voice": "man"
+    "text": "Despite ruling the skies, it is completely helpless against the freezing night temperatures, forcing it to burrow deep into hot volcanic vents to survive.",
+    "image": "dark barren volcanic craters venting glowing red magma into a cold black sky"
    },
    {
-    "text": "Only torn silk and a dropped lantern remained in the mud.",
-    "beat": "aftermath",
-    "setting": "pathway",
-    "delivery": "low",
-    "speaker": "narrator",
-    "voice": "man"
-   },
-   {
-    "text": "Will you dare lock your door tonight when something scratches outside?",
-    "beat": "stalk",
-    "setting": "village",
-    "delivery": "calm",
-    "speaker": "narrator",
-    "voice": "man"
+    "text": "What should I combine next? Tell me in the comments.",
+    "image": "a vast glowing sunset casting long orange shadows across a thick cloud deck"
    }
-  ],
-  "story_type": "festival",
-  "origin": "bluemoon"
- }
+  ]
+ },
+ "episode": 20,
+ "clips": [
+  {
+   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in the clouds of Venus: thick orange storm clouds with lightning. A terrifying, muscular apex predator with a menacing fox snout, glowing amber eyes, thick silverback fur, and razor-sharp climbing claws. It is menacing and dominant."
+  },
+  {
+   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In thick orange storm clouds with lightning, the same hybrid creature goes after Venusian aeroplankton. It launches its massive gorilla frame downward, using fox-like agility to snatch fleeing prey from the sulfuric mist.. Fast, powerful movement, camera follows the action. A terrifying, muscular apex predator with a menacing fox snout, glowing amber eyes, thick silverback fur, and razor-sharp climbing claws."
+  },
+  {
+   "title": "Clip 3 - the close-up (plays at the end)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A terrifying, muscular apex predator with a menacing fox snout, glowing amber eyes, thick silverback fur, and razor-sharp climbing claws."
+  }
+ ]
 }
