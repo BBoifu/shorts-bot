@@ -858,7 +858,8 @@ BEAT_INTENSITY = {
     "pov": .50, "mpov": .50, "dig": .45, "fly": .50, "ocean": .50, "lake": .45, "erupt": .75, "hallway": .65, "curtain": .60,
     "window": .60, "loom": .70, "shoulder": .60, "mirror": .65, "birth": .80, "tsunami": .85, "storm": .80, "lava": .70,
     "giant": .85, "jump": .90, "attack": .90, "chase": .90, "clash": .95, "transform": .80, "mob": .70, "aftermath": .40,
-    "reign": .45, "hook": .45, "door": .50}
+    "reign": .45, "hook": .45, "door": .50,
+    "eyes": .60, "notice": .55, "lantern": .45, "establish": .32}
 REVEAL_AT = {  # how far into the scene the monster is shown (fraction of the scene)
     "hallway": .72, "woods": .78, "road": .75, "jump": .72, "birth": .45, "loom": .70, "curtain": .70, "window": .70,
     "giant": .40, "tsunami": .55, "ocean": .56, "lake": .56, "lava": .50, "erupt": .55, "clash": .30, "mirror": .60,
@@ -1151,17 +1152,17 @@ def write_captions(words, total, path, card=None, track=None):
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
     lines = []
-    group = 2
     prev_y, prev_end = CAPTION_SPOTS[0], -9.0
-    for i in range(0, len(words), group):
-        chunk = words[i:i + group]
+    groups = caption_groups(words) if len(words) > 6 else [words[i:i + 2] for i in range(0, len(words), 2)]
+    for gi, chunk in enumerate(groups):
         start = chunk[0][0]
-        nxt = words[i + group][0] if i + group < len(words) else total
+        nxt = groups[gi + 1][0][0] if gi + 1 < len(groups) else total
         end = max(chunk[-1][1], min(nxt, chunk[-1][1] + 0.4))
         toks = [w[2].upper().replace("{", "").replace("}", "") for w in chunk]
+        long_line = len(" ".join(toks)) > 17
         key = max(range(len(toks)), key=lambda j: len(toks[j]))  # the longest word is shown in orange
         toks[key] = "{\\c&H001E9BFF&}" + toks[key] + "{\\c&H00FFFFFF&}"
-        text = " ".join(toks)
+        text = ("{\\fs92}" if long_line else "") + " ".join(toks)
         y = CAPTION_SPOTS[0]
         if track:
             # keep the last spot if it is still clear, otherwise take the first free one (or the least covered one)
@@ -2744,6 +2745,21 @@ def folk_sound_events(durs, beats, impacts, sounds, hits=None, quiet=None, origi
                 ev.append({"file": sounds["flap"], "at": at + h, "vol": 0.9})
             ev.append({"file": sounds["whoosh"], "at": at + d * 0.35, "vol": 0.6})
             ev.append({"file": sounds["growl"], "at": at + d * 0.3, "vol": 0.6})
+        elif beats[i] == "eyes":
+            ev.append({"file": sounds["eerie"], "at": at + 0.1, "vol": 0.55})
+            ev.append({"file": sounds["heart"], "at": at + d * 0.55, "vol": 0.8})
+        elif beats[i] == "lantern":
+            for h in hits.get(i, [])[:2]:
+                ev.append({"file": sounds["creak"], "at": at + h, "vol": 0.6})
+            if len(hits.get(i, [])) == 1:  # the drop: a thud and the glass
+                ev.append({"file": sounds["boom"], "at": at + hits[i][0], "vol": 0.5})
+                ev.append({"file": sounds["tap"], "at": at + hits[i][0] + 0.05, "vol": 0.9})
+                quiet.append((at + hits[i][0] + 0.2, at + hits[i][0] + 0.9))  # then a held silence
+        elif beats[i] == "notice":
+            ev.append({"file": sounds["tap"], "at": at + d * 0.2, "vol": 0.6})
+            ev.append({"file": sounds["heart"], "at": at + d * 0.62, "vol": 0.85})
+        elif beats[i] == "establish":
+            ev.append({"file": sounds["gust"], "at": at + 0.1, "vol": 0.55})
         elif beats[i] in ("ocean", "lake"):
             h = hits.get(i, [d * 0.28, d * 0.56, d * 0.82])
             ev.append({"file": sounds["rumble"], "at": at + h[0] - 0.3, "vol": 0.8})
@@ -2879,6 +2895,73 @@ def folk_sound_events(durs, beats, impacts, sounds, hits=None, quiet=None, origi
     return ev
 
 
+INSERT_POOL = {"legend": ["establish", "notice", "lantern", "eyes"], "modern": ["eyes", "lantern"],
+               "prehistoric": ["eyes"], "nature": ["eyes"]}
+ESTABLISH_VARIANTS = ["pan", "push", "pull", "storm", "low"]
+MIN_SHOT = 4.4  # a scene shorter than this is not split
+
+
+def plan_shots(beats, durs, fmt, stype, rnd=None):
+    """Turns each scene into two shots: a short cutaway first (wide establishing shot, a person noticing something, a lantern
+    close-up, eyes in the dark), then the main scene. The first and last scenes stay whole. No cutaway type is used twice in
+    a row, and the establishing shots rotate through different camera moves."""
+    rnd = rnd or random.Random(len(beats) * 31 + int(sum(durs)))
+    kind = "nature" if stype in NATURE_TYPES else {"modern": "modern", "prehistoric": "prehistoric"}.get(fmt, "legend")
+    pool = INSERT_POOL[kind]
+    shots, last_ins, var_i, prev_ins = [], None, rnd.randrange(len(ESTABLISH_VARIANTS)), False
+    n = len(beats)
+    for i, (b, d) in enumerate(zip(beats, durs)):
+        ins = None
+        gap_ok = not (len(pool) < 2 and prev_ins)  # a one-type pool needs a plain scene between cutaways
+        if 0 < i < n - 1 and d >= MIN_SHOT and b not in ("attack", "aftermath") and gap_ok:
+            opts = [p for p in pool if p != last_ins] or pool
+            if i + 1 < n and beats[i + 1] == "attack":
+                opts = [p for p in opts if p != "notice"] or opts
+            ins = rnd.choice(opts)
+        if ins:
+            var = None
+            if ins == "establish":
+                var = ESTABLISH_VARIANTS[var_i % len(ESTABLISH_VARIANTS)]
+                var_i += 1
+            elif ins == "lantern":
+                var = "drop" if rnd.random() < 0.4 else "swing"
+            elif ins == "valley":
+                var = "pull" if rnd.random() < 0.5 else "push"
+            di = min(2.5, max(1.6, d * 0.34))
+            shots.append({"i": i, "beat": ins, "dur": di, "insert": True, "variant": var})
+            shots.append({"i": i, "beat": b, "dur": d - di, "insert": False, "variant": None})
+            last_ins = ins
+            prev_ins = True
+        else:
+            prev_ins = False
+            shots.append({"i": i, "beat": b, "dur": d, "insert": False, "variant": None})
+    prev_main = None
+    for sh in shots:  # the same scene twice in a row gets a different camera the second time
+        if not sh["insert"]:
+            sh["repeat"] = sh["beat"] == prev_main
+            prev_main = sh["beat"]
+    return shots
+
+
+def caption_groups(words):
+    """Groups of 3 to 4 words that end at natural breaks (commas, full stops), never a single stranded word."""
+    groups, cur = [], []
+    END = (".", ",", "!", "?", ";", ":", "\u2014", "\u2026")
+    for k, w in enumerate(words):
+        cur.append(w)
+        rest = len(words) - k - 1
+        sentence_end = w[2].rstrip("\"'\u201d)").endswith((".", "!", "?", "\u2026"))
+        soft_end = w[2].rstrip("\"'\u201d)").endswith(END)
+        if len(cur) >= 4 or (soft_end and len(cur) >= 3) or (sentence_end and len(cur) >= 2) or rest == 0:
+            if rest == 1 and len(cur) >= 3 and not sentence_end:
+                continue  # let the last word join this group instead of standing alone
+            groups.append(cur)
+            cur = []
+    if cur:
+        groups.append(cur)
+    return groups
+
+
 def build_folk_main(plan):
     import toon
     story = plan["story"]
@@ -2978,7 +3061,7 @@ def build_folk_main(plan):
     if modern:  # sentences that share a scene play as one longer scene, so its action is not restarted
         mb, md, ms = [], [], []
         for b_, d_, s_ in zip(beats, durs, settings):
-            if mb and mb[-1] == b_:
+            if mb and mb[-1] == b_ and not (fmt == "prehistoric" and b_ in ("valley", "erupt") and mb.count(b_) < 2):
                 md[-1] += d_
             else:
                 mb.append(b_)
@@ -2998,38 +3081,48 @@ def build_folk_main(plan):
             "aftermath": 0.06, "mob": 0.08}
     SHAKE = {"chase": 7.0}
     FIRST_SIGN_AT = next((j for j, b in enumerate(beats) if b == "omen"), n)
+    shots = plan_shots(beats, durs, fmt, story.get("story_type"))
+    log(f"Shots ({len(shots)}): " + ", ".join(sh["beat"] + (f"[{sh['variant']}]" if sh["variant"] else "") for sh in shots))
     scenes, impacts, blooded, hits = [], {}, False, {}
     cap_track, scene_at = [], 0.0
-    for i, dur in enumerate(durs):
+    for j, sh in enumerate(shots):
+        i, dur, beat = sh["i"], sh["dur"], sh["beat"]
         wx = dict(WEATHER.get(beats[i]) or {})
         if origin and i >= FIRST_SIGN_AT - 0 and "sky" not in wx:  # once the sign has appeared, the sky keeps it
             wx["sky"] = origin
         if beats[i] == "omen":
             wx["sky"] = origin
-        w = toon.World(toon.SETTINGS[settings[i]], 5 + (i % 3), wx)
+        w = toon.World(toon.SETTINGS[settings[i]], 5 + (j % 3), wx)
         w.mode = story.get("story_type")
-        w.push = PUSH.get(beats[i], 0.0)
-        w.shake = SHAKE.get(beats[i], 0.0)
-        out = str(WORK / f"toon_s{i}.mp4")
+        if sh.get("repeat"):
+            w.pull = 0.22
+        w.push = PUSH.get(beats[i], 0.0) if not sh["insert"] else 0.0
+        w.shake = SHAKE.get(beats[i], 0.0) if not sh["insert"] else 0.0
+        out = str(WORK / f"toon_s{j}.mp4")
         w.clock = story.get("time") or "2:48"
         cur = dict(creature, bloody=True) if blooded else creature
         g0 = 1300 - 740 * i / n
         g1 = 1300 - 740 * (i + 1) / n
         intro = (cur, min(1.4, dur * 0.5)) if i == 0 else None
-        last = i == n - 1
-        if modern:
-            hits[i] = getattr(toon, beats[i] + "_scene")(out, dur, w, cur, cwd=WORK).get("hits", [])
-        elif beats[i] == "attack":
-            impacts[i] = toon.attack_scene(out, dur, w, creature, cwd=WORK)["impact_at"]
+        last = i == n - 1 and not sh["insert"]
+        if sh["insert"]:
+            w.variant = sh["variant"]
+            if beat == "valley":  # the wide view of the valley, used as an establishing cutaway
+                w.push, w.pull = (0.0, 0.18) if sh["variant"] == "pull" else (0.18, 0.0)
+            hits[j] = toon.INSERT_FUNCS[beat](out, dur, w, cur, cwd=WORK).get("hits", [])
+        elif modern:
+            hits[j] = getattr(toon, beat + "_scene")(out, dur, w, cur, cwd=WORK).get("hits", [])
+        elif beat == "attack":
+            impacts[j] = toon.attack_scene(out, dur, w, creature, cwd=WORK)["impact_at"]
             blooded = True
-        elif beats[i] == "aftermath" and not last:
+        elif beat == "aftermath" and not last:
             toon.ground_scene(out, dur, w, cur, cwd=WORK)
-        elif beats[i] == "aftermath":
+        elif beat == "aftermath":
             toon.aftermath_scene(out, dur, w, cur, cwd=WORK, outro=min(1.6, dur * 0.6))
-        elif beats[i] == "omen" and not (i == 0 or last):
-            hits[i] = toon.omen_scene(out, dur, w, cur, cwd=WORK).get("hits", [])
-        elif beats[i] in SCENE_FUNCS and not (i == 0 or last):
-            hits[i] = getattr(toon, beats[i] + "_scene")(out, dur, w, cur, cwd=WORK).get("hits", [])
+        elif beat == "omen" and not (i == 0 or last):
+            hits[j] = toon.omen_scene(out, dur, w, cur, cwd=WORK).get("hits", [])
+        elif beat in SCENE_FUNCS and not (i == 0 or last):
+            hits[j] = getattr(toon, beat + "_scene")(out, dur, w, cur, cwd=WORK).get("hits", [])
         else:
             outro = (cur, min(1.6, dur * 0.6)) if last else None
             toon.folk_scene(out, dur, w, cur, g0, g1, intro=intro, outro=outro,
@@ -3037,7 +3130,9 @@ def build_folk_main(plan):
         cap_track += [(scene_at + tt, bb) for tt, bb in toon.LAST_TRACK]
         scene_at += dur
         scenes.append({"kind": "hold" if last else "scene", "dur": dur,
-                       "clip": f"toon_s{i}.mp4", "plate": None})
+                       "clip": f"toon_s{j}.mp4", "plate": None})
+    beats = [sh["beat"] for sh in shots]  # the sound and the score follow the shots, not the sentences
+    durs = [sh["dur"] for sh in shots]
     has_caps = write_captions(words, total, WORK / "captions.ass",
                               card=(f"{region.upper()}  \u00b7  LOST WORLD #{episode}" if fmt == "prehistoric"
                                     else f"{region.upper()}  \u00b7  DARK FOLKLORE #{episode}"), track=cap_track)
