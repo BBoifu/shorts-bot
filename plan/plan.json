@@ -1,81 +1,65 @@
 {
- "series": "folklore",
- "key": "folk:bull:The Eye in the Gale|dragon|storm|ash|The Kansas plains, 12:37 PM|",
- "episode": 19,
+ "series": "hybrid",
+ "key": "crab+hummingbird@the clouds of Venus",
+ "a": "crab",
+ "b": "hummingbird",
+ "place": [
+  "the clouds of Venus",
+  "thick orange storm clouds with lightning",
+  "thunder storm",
+  "sickly orange light through thick haze",
+  "warm"
+ ],
  "story": {
-  "legend_name": "The Eye in the Gale",
-  "region": "The Kansas plains, 12:37 PM",
-  "time": "12:37",
-  "animal": "bull",
-  "title": "The Tornado That Stared Back",
-  "narrator": {
-   "gender": "male",
-   "persona": "a storm chaser recording his final log"
-  },
-  "hero": "traveller",
-  "people": "alone",
-  "monster": {
-   "body": "dragon",
-   "palette": "ash",
-   "eyes": "red",
-   "size": "huge",
-   "horn": null,
-   "spine": "bone",
-   "eye_count": "2"
-  },
+  "title": "This Cloud Monster Snaps Its Prey Mid-Air",
+  "creature_name": "Hummingcrabs",
+  "prey": "Venusian aeroplankton",
+  "signature_move": "It hovers on vibrating wings before snapping its armored claws shut around passing prey in a flash.",
+  "hybrid_look": "A massive, terrifying apex predator with a menacing, armored face, glowing crimson eyes, jagged shell spikes, and razor-sharp hummingbird needle fangs.",
   "sentences": [
    {
-    "text": "Have you ever felt someone watching you from inside a wall of black wind?",
-    "beat": "road",
-    "delivery": "hushed",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "This impossible monster destroys its victims without ever touching the ground.",
+    "image": "dense, swirling sulfuric acid clouds lit by flashes of violet lightning across a dark sky"
    },
    {
-    "text": "My partner yelled over the roar of the engine to check the radar.",
-    "beat": "road",
-    "delivery": "urgent",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Meet the hummingcrab, a terrifying imaginary hybrid born from the armor of a crab and the wings of a hummingbird.",
+    "image": "thick, glowing amber fog rolling heavily over a crushing atmospheric pressure gradient"
    },
    {
-    "text": "Look at how fast it shifted toward us!",
-    "beat": "tornado",
-    "delivery": "shout",
-    "speaker": "person",
-    "voice": "man"
+    "text": "It survives the scorching heat of Venus by using a reflective shell that bounces away thermal radiation.",
+    "image": "blinding white glare reflecting off toxic cloud layers under a pale yellowish sun"
    },
    {
-    "text": "The funnel stopped spinning like a normal storm and flattened out into a massive vertical tunnel.",
-    "beat": "tornado",
-    "delivery": "trembling",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "To fight the violent atmospheric winds, it rapidly flaps its wings to hover in place just like real hummingbirds do.",
+    "image": "turbulent, swirling vortexes of dark crimson vapor twisting through the high atmosphere"
    },
    {
-    "text": "Right through the revolving debris and green lightning, a pair of gigantic red eyes locked onto my windshield.",
-    "beat": "road",
-    "delivery": "dread",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "It hovers on vibrating wings before snapping its armored claws shut around passing prey in a flash.",
+    "image": "deep cloud canyons plunging into pitch blackness where high speed gales roar continuously"
    },
    {
-    "text": "It was not just wind tearing up the soil; it was a living colossus pulling the earth up into its throat.",
-    "beat": "giant",
-    "delivery": "awe",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Its heavy exoskeleton protects it from corrosive acid rain that would instantly melt softer creatures.",
+    "image": "heavy, dripping mist of yellow chemical fluid falling through a gloomy, overcast sky"
    },
    {
-    "text": "Would you have stayed in your car once the sky turned around to hunt you?",
-    "beat": "giant",
-    "delivery": "calm",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Despite its fierce dominance, it completely freezes and drops like a stone if exposed to sudden freezing drafts. What should I combine next? Tell me in the comments.",
+    "image": "sharp, icy blue frost crystals forming rapidly within a chilling pocket of deep upper atmosphere"
    }
-  ],
-  "story_type": "storm",
-  "format": "modern",
-  "origin": ""
- }
+  ]
+ },
+ "episode": 22,
+ "clips": [
+  {
+   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in the clouds of Venus: thick orange storm clouds with lightning. A massive, terrifying apex predator with a menacing, armored face, glowing crimson eyes, jagged shell spikes, and razor-sharp hummingbird needle fangs. It is menacing and dominant."
+  },
+  {
+   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In thick orange storm clouds with lightning, the same hybrid creature goes after Venusian aeroplankton. It hovers on vibrating wings before snapping its armored claws shut around passing prey in a flash.. Fast, powerful movement, camera follows the action. A massive, terrifying apex predator with a menacing, armored face, glowing crimson eyes, jagged shell spikes, and razor-sharp hummingbird needle fangs."
+  },
+  {
+   "title": "Clip 3 - the close-up (plays at the end)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A massive, terrifying apex predator with a menacing, armored face, glowing crimson eyes, jagged shell spikes, and razor-sharp hummingbird needle fangs."
+  }
+ ]
 }
