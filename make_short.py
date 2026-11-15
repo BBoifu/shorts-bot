@@ -845,12 +845,206 @@ def find_music_track():
     return None
 
 
-def build_audio(voice_name, total, events, ambient, out_wav, quiet=None):
-    """Mix narration, timed effects, ambience, and optional adaptive background music."""
+# ---------------------------------------------------------------- original cinematic score (synthesized, so no licence problems)
+SCORE_MOODS = {  # root note (Hz), chord (semitones above root), pulse speed (beats per minute at medium intensity), percussion style
+    "legend": dict(root=73.42, chord=(0, 3, 7, 8), bpm=52, drums="heart"),        # D minor with a cold flat sixth
+    "modern": dict(root=55.0, chord=(0, 1, 7), bpm=58, drums="heart"),            # A with a minor second: uneasy, close, quiet
+    "prehistoric": dict(root=65.41, chord=(0, 3, 7, 10), bpm=68, drums="tribal"),  # C minor, heavy low drums
+    "nature": dict(root=46.25, chord=(0, 7, 12), bpm=44, drums="swell"),          # a very deep drone that breathes like the sea
+}
+BEAT_INTENSITY = {
+    "omen": .30, "walk": .35, "home": .30, "village": .35, "valley": .30, "hide": .40, "footprints": .35, "bedroom": .40,
+    "stairs": .50, "basement": .55, "cctv": .50, "neighbour": .45, "woods": .50, "road": .55, "stalk": .55, "lamp": .55,
+    "pov": .50, "mpov": .50, "dig": .45, "fly": .50, "ocean": .50, "lake": .45, "erupt": .75, "hallway": .65, "curtain": .60,
+    "window": .60, "loom": .70, "shoulder": .60, "mirror": .65, "birth": .80, "tsunami": .85, "storm": .80, "lava": .70,
+    "giant": .85, "jump": .90, "attack": .90, "chase": .90, "clash": .95, "transform": .80, "mob": .70, "aftermath": .40,
+    "reign": .45, "hook": .45, "door": .50}
+REVEAL_AT = {  # how far into the scene the monster is shown (fraction of the scene)
+    "hallway": .72, "woods": .78, "road": .75, "jump": .72, "birth": .45, "loom": .70, "curtain": .70, "window": .70,
+    "giant": .40, "tsunami": .55, "ocean": .56, "lake": .56, "lava": .50, "erupt": .55, "clash": .30, "mirror": .60,
+    "lamp": .70, "transform": .50}
+
+
+def make_score(total, plan, out_path):
+    """Builds a dark, original film score for this exact story. plan = {"mood", "scenes": [(start, dur, intensity)],
+    "reveals": [(time, strength)]}. The music swells with the scene intensity, rises into every reveal, drops almost to
+    silence for a moment, hits, and then settles; the last seconds resolve into a low fading chord."""
+    import numpy as np
+    sr = 44100
+    n = int(total * sr)
+    t = np.arange(n) / sr
+    mood = SCORE_MOODS.get(plan.get("mood"), SCORE_MOODS["legend"])
+    rng = np.random.default_rng(7)
+
+    def smooth(x, sec):
+        k = max(int(sec * sr), 1)
+        pad = np.concatenate([np.full(k // 2, x[0]), x, np.full(k - k // 2, x[-1])])
+        c = np.cumsum(np.insert(pad, 0, 0.0))
+        return (c[k:k + n] - c[:n]) / k
+
+    def lowpass(x, fc):
+        f = np.fft.rfft(x)
+        fr = np.fft.rfftfreq(len(x), 1 / sr)
+        return np.fft.irfft(f / (1 + (fr / fc) ** 4), len(x))
+
+    # intensity curve through the scene centres, rising slowly over the video
+    cen = [s + d / 2 for s, d, _ in plan["scenes"]]
+    val = [i for _, _, i in plan["scenes"]]
+    inten = np.interp(t, cen, val)
+    inten = smooth(inten, 1.6) * (0.82 + 0.18 * np.clip(t / max(total * 0.7, 1), 0, 1))
+    end_t = total - 2.4  # the last seconds resolve
+    inten = inten * np.where(t > end_t, 1 - 0.55 * np.clip((t - end_t) / 2.4, 0, 1), 1.0)
+    root = mood["root"]
+
+    # 1) drone: three slightly detuned voices, brighter when the intensity is higher
+    cut = 160 + 900 * inten
+    drone = np.zeros(n)
+    for f0, amp in ((root, 1.0), (root * 1.5, 0.5), (root * 2 * 1.004, 0.35)):
+        for k in range(1, 11):
+            drone += amp * np.sin(2 * np.pi * k * f0 * t + k) / k * np.clip(1 - k * f0 / cut, 0, 1) ** 1.5
+    drone *= 0.22 + 0.78 * inten
+    if mood["drums"] == "swell":
+        drone *= 0.75 + 0.25 * np.sin(2 * np.pi * 0.09 * t)
+
+    # 2) pad: the chord, a little wider left and right
+    padL, padR = np.zeros(n), np.zeros(n)
+    for j, iv in enumerate(mood["chord"]):
+        f0 = root * 2 * 2 ** (iv / 12)
+        trem = 0.75 + 0.25 * np.sin(2 * np.pi * (0.11 + 0.03 * j) * t + j)
+        padL += (np.sin(2 * np.pi * f0 * 1.003 * t) + 0.4 * np.sin(4 * np.pi * f0 * t)) * trem
+        padR += (np.sin(2 * np.pi * f0 / 1.003 * t + 1) + 0.4 * np.sin(4 * np.pi * f0 * t + 2)) * trem
+    gain = (0.05 + 0.34 * inten ** 1.3) / max(len(mood["chord"]), 1)
+    padL, padR = padL * gain, padR * gain
+
+    # 3) percussion: a pulse that speeds up and hardens with the intensity; nothing at all while it is quiet
+    perc = np.zeros(n)
+    soft_noise = lowpass(rng.standard_normal(int(0.9 * sr)), 700) * 3.0  # the 'skin' of a drum: dull, never a sharp tick
+    def thump(at, amp, f_hi=95, f_lo=42, decay=5.0, click=0.25):
+        i0 = int(at * sr)
+        m = int(0.9 * sr)
+        if i0 >= n:
+            return
+        tau = np.arange(min(m, n - i0)) / sr
+        ph = 2 * np.pi * np.cumsum(f_lo + (f_hi - f_lo) * np.exp(-tau * 22)) / sr
+        s = np.sin(ph) * np.exp(-tau * decay) + click * soft_noise[:len(tau)] * np.exp(-tau * 60)
+        perc[i0:i0 + len(tau)] += amp * s
+    tt = 0.6
+    while tt < total - 2.0:
+        iv = float(np.interp(tt, t, inten))
+        if iv > 0.38:
+            a = (iv ** 1.6) * 0.9
+            if mood["drums"] == "tribal":
+                thump(tt, a * 1.1, 110, 48, 4.0)
+                if iv > 0.7:
+                    thump(tt + 0.5 * 60 / (mood["bpm"] * (0.8 + 0.7 * iv)), a * 0.55, 90, 40, 6.0)
+            elif mood["drums"] == "swell":
+                thump(tt, a * 0.8, 70, 32, 2.6, 0.0)
+            else:  # a heartbeat: two beats close together
+                thump(tt, a, 90, 42, 6.0)
+                thump(tt + 0.27, a * 0.6, 80, 40, 7.0)
+            if iv > 0.78:
+                thump(tt + 30 / (mood["bpm"] * (0.8 + 0.7 * iv)), a * 0.35, 120, 60, 9.0)
+        tt += 60.0 / (mood["bpm"] * (0.8 + 0.7 * iv))
+
+    # 4) reveals: riser -> a moment of near silence -> impact with a long tail
+    hit = np.zeros(n)
+    dip = np.ones(n)
+    for r, strength in plan["reveals"]:
+        if r < 1.0 or r > total - 0.5:
+            continue
+        rl = min(2.2, r - 0.2)
+        i0 = int((r - rl) * sr)
+        i1 = int(r * sr)
+        tau = np.arange(i1 - i0) / sr
+        ramp = (tau / rl) ** 2
+        sweep = np.sin(2 * np.pi * np.cumsum(80 + 650 * (tau / rl) ** 1.6) / sr)
+        nz = lowpass(rng.standard_normal(i1 - i0), 2500)
+        hit[i0:i1] += strength * ramp * (0.30 * sweep + 0.22 * nz)
+        dm = np.clip((t - (r - 0.32)) / 0.1, 0, 1) * (1 - np.clip((t - r) / 0.05, 0, 1))
+        dip *= 1 - 0.85 * dm  # the whole bed drops away for a heartbeat before the hit
+        m = min(int(3.2 * sr), n - i1)
+        if m > 100:
+            tau = np.arange(m) / sr
+            sub = np.sin(2 * np.pi * np.cumsum(28 + 40 * np.exp(-tau * 6)) / sr) * np.exp(-tau * 1.5)
+            burst = lowpass(rng.standard_normal(m), 1400) * np.exp(-tau * 7)
+            ring = sum(np.sin(2 * np.pi * f * tau) * np.exp(-tau * d_) for f, d_ in ((181, 1.6), (273, 2.0), (409, 2.6)))
+            hit[i1:i1 + m] += strength * (1.0 * sub + 0.65 * burst + 0.07 * ring)
+
+    # a little room around the hits and the pad
+    ir_len = int(1.9 * sr)
+    tau = np.arange(ir_len) / sr
+    size = 1 << int(np.ceil(np.log2(n + ir_len)))
+    def reverb(x, seed):
+        ir = np.random.default_rng(seed).standard_normal(ir_len) * np.exp(-tau * 2.6)
+        return np.fft.irfft(np.fft.rfft(x, size) * np.fft.rfft(ir / np.sqrt(np.sum(ir ** 2)), size), size)[:n]
+    wet = reverb(hit, 3)
+    L = (drone + padL + perc) * dip + hit * 0.8 + wet * 0.35
+    R = (drone * 0.97 + padR + perc) * dip + hit * 0.8 + reverb(hit, 5) * 0.35
+    # the very end: a low chord that fades away
+    tail = np.clip((t - (total - 3.0)) / 1.0, 0, 1) * np.clip((total - t) / 2.6, 0, 1)
+    low = 0.10 * (np.sin(2 * np.pi * root * t) + 0.5 * np.sin(2 * np.pi * root * 1.5 * t)) * tail
+    L, R = L + low, R + low
+    st = np.stack([L, R], 1)
+    peak = np.max(np.abs(st)) or 1.0
+    st = np.tanh(st / peak * 1.4) / np.tanh(1.4) * 0.8
+    pcm = (st * 32767).astype("<i2")
+    with wave.open(str(out_path), "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes(pcm.tobytes())
+    return str(out_path)
+
+
+def ramp_score(total):
+    """A gentle score for the formats without timed reveals: it just grows as the video goes on."""
+    return {"mood": "nature", "reveals": [], "scenes": [(0, total * 0.3, 0.30), (total * 0.3, total * 0.4, 0.55), (total * 0.7, total * 0.3, 0.75)]}
+
+
+def score_plan(story, beats, durs, impacts):
+    """The score's map of this story: a mood for the genre, an intensity per scene and the moments of the reveals."""
+    stype = story.get("story_type")
+    if stype in NATURE_TYPES:
+        mood = "nature"
+    else:
+        mood = {"modern": "modern", "prehistoric": "prehistoric"}.get(story.get("format"), "legend")
+    scenes, reveals, at = [], [], 0.0
+    for i, (b, d) in enumerate(zip(beats, durs)):
+        iv = BEAT_INTENSITY.get(b, 0.45)
+        if i == 0:
+            iv = min(iv, 0.35)  # the hook is quiet and curious
+        if i == len(beats) - 1:
+            iv *= 0.7
+        scenes.append((at, d, iv))
+        if b == "attack":
+            reveals.append((at + impacts.get(i, d * 0.6), 1.0))
+        elif b in REVEAL_AT and i > 0:
+            reveals.append((at + d * REVEAL_AT[b], 0.6 + 0.4 * iv))
+        at += d
+    reveals = sorted(reveals, key=lambda x: -x[1])[:4]  # only the strongest reveals get a hit, so they still mean something
+    kept = []
+    for r in sorted(reveals):
+        if not kept or r[0] - kept[-1][0] > 5.0:
+            kept.append(r)
+    return {"mood": mood, "scenes": scenes, "reveals": kept}
+
+
+def build_audio(voice_name, total, events, ambient, out_wav, quiet=None, score=None):
+    """Mix narration, timed effects, ambience, and background music. Music is the user's own track if one is supplied,
+    otherwise the original score generated for this story (when a score plan is given)."""
     music = find_music_track()
+    generated = False
+    if not music and score:
+        try:
+            music = make_score(total, score, WORK / "score.wav")
+            generated = True
+        except Exception as e:  # music is a bonus: never lose the video because of it
+            log(f"Score failed ({e}); continuing without it.")
+            music = None
     cmd = ["ffmpeg", "-y", "-i", voice_name, "-stream_loop", "-1", "-i", ambient]
     fmt = "aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo"
-    parts = [f"[0:a]aresample=44100,{fmt},asplit=2[v][voicekey]",
+    split = "asplit=2[v][voicekey]" if music else "anull[v]"  # the voice is only split when there is music to duck
+    parts = [f"[0:a]aresample=44100,{fmt},{split}",
              f"[1:a]aresample=44100,{fmt},atrim=0:{total + 1:.2f},volume=0.14"
              + "".join(f",volume='if(between(t,{a:.2f},{b:.2f}),0,1)':eval=frame" for a, b in (quiet or [])) + "[amb]"]
     labels = ["[v]", "[amb]"]
@@ -870,7 +1064,12 @@ def build_audio(voice_name, total, events, ambient, out_wav, quiet=None):
         build_end = max(total * 0.65, intro_end + 0.5)
         peak_end = max(total * 0.85, build_end + 0.25)
         fade_start = max(total - 2.0, 0.0)
-        music_filter = (
+        if generated:  # the score already follows the story; it only needs a level, a dip at the silent moments and fades
+            music_filter = (f"aresample=44100,{fmt},atrim=0:{total + 0.25:.2f},volume=0.62"
+                            + "".join(f",volume='if(between(t,{a:.2f},{b:.2f}),0.3,1)':eval=frame" for a, b in (quiet or []))
+                            + f",afade=t=in:st=0:d=1.5,afade=t=out:st={max(total - 2.2, 0):.2f}:d=2.2[musicraw]")
+        else:
+          music_filter = (
             f"aresample=44100,{fmt},atrim=0:{total + 0.25:.2f},"
             f"volume='if(lt(t,{intro_end:.2f}),0.055,if(lt(t,{build_end:.2f}),"
             f"0.095,if(lt(t,{peak_end:.2f}),0.14,0.07)))':eval=frame,"
@@ -879,15 +1078,15 @@ def build_audio(voice_name, total, events, ambient, out_wav, quiet=None):
         )
         parts.append(f"[{music_idx}:a]{music_filter}")
         parts.append(
-            "[musicraw][voicekey]sidechaincompress=threshold=0.025:ratio=8:"
-            "attack=20:release=350:makeup=1[duckedmusic]"
+            "[musicraw][voicekey]sidechaincompress=threshold=0.02:ratio=5:"
+            "attack=40:release=700:makeup=1[duckedmusic]"
         )
         labels.append("[duckedmusic]")
     parts.append("".join(labels) + f"amix=inputs={len(labels)}:duration=first:normalize=0:"
                  "dropout_transition=0,alimiter=limit=0.95:level=0[mix]")
     cmd += ["-filter_complex", ";".join(parts), "-map", "[mix]", out_wav]
     if music:
-        log(f"Background score: adaptive mix enabled ({pathlib.Path(music).name})")
+        log("Background score: original score generated for this story" if generated else f"Background score: adaptive mix enabled ({pathlib.Path(music).name})")
     else:
         log("No background score found; using narration, ambience, and sound effects only. "
             "Add a licensed track to music/ or set MUSIC_FILE.")
@@ -1247,7 +1446,8 @@ def build_video(scenes, assets, audio_name, captions_name, out_path):
     run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "list.txt", "-i", audio_name,
          "-vf", vf, "-map", "0:v", "-map", "1:a",
          "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
-         "-c:a", "aac", "-b:a", "160k", "-shortest", "-t", "59", str(out_path)], cwd=WORK)
+         "-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-ac", "2", "-ar", "44100",
+         "-c:a", "aac", "-b:a", "192k", "-shortest", "-t", "59", str(out_path)], cwd=WORK)
 
 
 def sound_events(scenes, sounds, hunt=None):
@@ -1329,7 +1529,7 @@ def main():
     # --- voice
     words = None
     audio_name = "voice.wav"
-    if not gemini_tts(narration, WORK / "voice.wav"):
+    if not gemini_tts(narration, WORK / "voice.wav", style=NARRATOR_STYLE):
         log("Falling back to the basic free voice.")
         audio_name = "voice.mp3"
         words = asyncio.run(edge_voice(narration, str(WORK / "voice.mp3")))
@@ -1375,7 +1575,7 @@ def main():
     # --- sound
     sounds = prepare_sounds(a, b, ambient_query)
     events = sound_events(scenes, sounds)
-    build_audio(audio_name, total, events, sounds["ambient"], "mix.wav")
+    build_audio(audio_name, total, events, sounds["ambient"], "mix.wav", score=ramp_score(total))
 
     out_path = OUT / "short.mp4"
     build_video(scenes, assets, "mix.wav", "captions.ass" if has_caps else None, out_path)
@@ -2197,8 +2397,30 @@ FOLK_STYLE = ("a warm, soft-spoken person telling a story out loud, naturally an
               "tones with an uneven human rhythm, small pauses and quiet breaths, a little smile in the voice at the start that "
               "slowly turns quiet and serious when it gets frightening. Soft and close to the microphone, never robotic, never "
               "announcer-like, not reading from a page, no theatrical movie-trailer voice")
+DRAMATIC_STYLE = ("a deep, calm, dramatic cinematic storyteller telling an intense story. Slow, deliberate pacing with real "
+                  "pauses at full stops and at ellipses. Hushed and tense during the build-up, growing in weight and intensity "
+                  "toward the frightening reveal, strongest on the key word, then a quiet, calm, final line. Low and controlled, "
+                  "never shouting, never excited, not a nature documentary, no announcer sing-song, no smile in the voice")
+NARRATOR_STYLE = DRAMATIC_STYLE if os.environ.get("VOICE_TONE", "dramatic") != "warm" else FOLK_STYLE
+REVEAL_BEATS = ("hallway", "woods", "road", "jump", "birth", "loom", "curtain", "window", "giant", "tsunami", "ocean", "lake",
+                "lava", "erupt", "clash", "mirror", "lamp", "transform", "attack")
+
+
+def paced_text(sentences, idx, beats=None):
+    """The narration with deliberate pauses: a held breath before the sentence that shows the monster."""
+    out = []
+    for x in idx:
+        txt = sentences[x]["text"].strip()
+        if beats and x > 0 and beats[x] in REVEAL_BEATS and (x == 0 or beats[x - 1] != beats[x]):
+            txt = "... " + txt
+            if out and not out[-1].endswith("..."):
+                out[-1] = out[-1].rstrip(".!?") + "..."
+        out.append(txt)
+    return " ".join(out)
+
+
 # a light touch only: a bit of warmth in the low-mids, a softer top end, gentle levelling. No pitch change, no echo.
-SCARY_CHAIN = ("aresample=44100,highpass=f=60,equalizer=f=190:t=q:w=1:g=2.5,equalizer=f=3800:t=q:w=1.2:g=-1.5,"
+SCARY_CHAIN = ("aresample=44100,highpass=f=60,equalizer=f=140:t=q:w=1:g=3.5,equalizer=f=190:t=q:w=1:g=1.5,equalizer=f=3800:t=q:w=1.2:g=-1.5,"
                "acompressor=threshold=-22dB:ratio=2:attack=15:release=250:makeup=1.5,loudnorm=I=-19:TP=-2:LRA=11,"
                "aformat=sample_fmts=s16:channel_layouts=mono")
 
@@ -2340,7 +2562,7 @@ def make_story_voice(sentences, beats, narrator):
     return "voice.wav", starts, durs, gaps, delivs
 
 
-def make_mixed_voice(sentences, narrator):
+def make_mixed_voice(sentences, narrator, beats=None):
     """The narrator reads the story in one calm voice (as before). Spoken lines inside the story get their own voice:
     a different human voice for 'person', and a deep, slowed, echoing voice for the 'creature'.
     Returns (wav name, per-sentence starts, per-sentence lengths) or raises, so the caller can fall back."""
@@ -2369,10 +2591,10 @@ def make_mixed_voice(sentences, narrator):
     parts, starts, lens, at = [], [0.0] * n, [0.0] * n, 0.0
     for r, (a, b) in enumerate(runs):
         spk = sentences[a].get("speaker", "narrator")
-        text = " ".join(sentences[x]["text"] for x in range(a, b + 1))
+        text = paced_text(sentences, range(a, b + 1), beats) if spk == "narrator" else " ".join(sentences[x]["text"] for x in range(a, b + 1))
         raw, dst = WORK / f"mv_raw{r}.wav", f"mv_{r}.wav"
         if spk == "narrator":
-            ok = gemini_tts(text, raw, style=FOLK_STYLE, voice=narr_voice)
+            ok = gemini_tts(text, raw, style=NARRATOR_STYLE, voice=narr_voice)
             chain = SCARY_CHAIN
         elif spk == "creature":
             ok = gemini_tts(text, raw, style="a low, inhuman, slow whisper that does not sound alive, cold and patient, "
@@ -2697,7 +2919,7 @@ def build_folk_main(plan):
         mixed_ok = False
         if VOICE_MODE != "acted" and GEMINI_API_KEY and any(sn.get("speaker", "narrator") != "narrator" for sn in sentences):
             try:  # the narrator plus separate voices for the spoken lines
-                audio_name, m_starts, m_lens = make_mixed_voice(sentences, story.get("narrator") or {})
+                audio_name, m_starts, m_lens = make_mixed_voice(sentences, story.get("narrator") or {}, beats)
                 words = []
                 for i, sn in enumerate(sentences):
                     words += [(m_starts[i] + a, m_starts[i] + b, w) for a, b, w in even_words(sn["text"], m_lens[i])]
@@ -2708,7 +2930,8 @@ def build_folk_main(plan):
                 words, durs, audio_name = None, None, "voice.wav"
         if mixed_ok:
             pass
-        elif not gemini_tts(narration, WORK / "voice.wav"):
+        elif not gemini_tts(paced_text(sentences, range(len(sentences)), beats), WORK / "voice.wav", style=NARRATOR_STYLE,
+                            voice=os.environ.get("GEMINI_VOICE") or GEMINI_VOICE):
             log("Falling back to the basic free voice.")
             audio_name = "voice.mp3"
             words = asyncio.run(edge_voice(narration, str(WORK / "voice.mp3")))
@@ -2821,7 +3044,13 @@ def build_folk_main(plan):
     sounds = prepare_sounds(animal, animal, ambient_query)
     quiet = []
     events = folk_sound_events(durs, beats, impacts, sounds, hits, quiet, origin)
-    build_audio(audio_name, total, events, sounds["ambient"], "mix.wav", quiet)
+    try:
+        splan = score_plan(story, beats, durs, impacts)
+        log("Score: " + splan["mood"] + ", reveals at " + ", ".join(f"{r:.1f}s" for r, _ in splan["reveals"]))
+    except Exception as e:
+        log(f"Score plan failed ({e})")
+        splan = None
+    build_audio(audio_name, total, events, sounds["ambient"], "mix.wav", quiet, score=splan)
     out_path = OUT / "short.mp4"
     build_video(scenes, {"h": {"plate": None, "sprite": None, "clip": None}}, "mix.wav",
                 "captions.ass" if has_caps else None, out_path)
@@ -2959,7 +3188,7 @@ def build_main():
     # --- voice
     words = None
     audio_name = "voice.wav"
-    if not gemini_tts(narration, WORK / "voice.wav"):
+    if not gemini_tts(narration, WORK / "voice.wav", style=NARRATOR_STYLE):
         log("Falling back to the basic free voice.")
         audio_name = "voice.mp3"
         words = asyncio.run(edge_voice(narration, str(WORK / "voice.mp3")))
@@ -3022,7 +3251,7 @@ def build_main():
     # --- sound
     sounds = prepare_sounds(a, b, ambient_query)
     events = sound_events(scenes, sounds, hunt_info)
-    build_audio(audio_name, total, events, sounds["ambient"], "mix.wav")
+    build_audio(audio_name, total, events, sounds["ambient"], "mix.wav", score=ramp_score(total))
 
     out_path = OUT / "short.mp4"
     build_video(scenes, assets, "mix.wav", "captions.ass" if has_caps else None, out_path)
