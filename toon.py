@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import numpy as np
 
 W, H = 1080, 1920       # drawing size
-OW, OH = 720, 1280      # size sent to ffmpeg (it scales up, which gives a soft film look)
+OW, OH = 1080, 1920     # size sent to ffmpeg: native, no upscaling (the film look is added in the final grade)
 GROUND = 1360
 FPS = 30
 
@@ -1580,8 +1580,9 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1):
             if _BOXES:
                 box = [min(b[0] for b in _BOXES), min(b[1] for b in _BOXES), max(b[2] for b in _BOXES), max(b[3] for b in _BOXES)]
             push, shake = getattr(world, "push", 0.0), getattr(world, "shake", 0.0)
-            if push or shake:
-                z = 1.0 + push * (u * u * (3 - 2 * u)) + (0.05 if shake else 0.0)
+            pull = getattr(world, "pull", 0.0)  # a pull-back: the camera starts close and drifts away
+            if push or shake or pull:
+                z = 1.0 + push * (u * u * (3 - 2 * u)) + pull * (1 - u * u * (3 - 2 * u)) + (0.05 if shake else 0.0)
                 cw, ch = W / z, H / z
                 cx = W / 2 + shake * math.sin(t * 61) * 1.0
                 cy = min(max(H * getattr(world, "focus_y", 0.62) + shake * math.cos(t * 53), ch / 2), H - ch / 2)
@@ -4304,3 +4305,160 @@ for _name, _secs in EMERGE_SCENES.items():
     _fn = globals().get(_name + "_scene")
     if _fn is not None:
         globals()[_name + "_scene"] = _with_emerge(_fn, _secs)
+
+
+# ---------------------------------------------------------------- cutaway shots (inserted between the main scenes for variety)
+def _eye_pair(d, x, y, s, t, ec, appear, hybrid=True, blink_seed=0.3):
+    """Two glowing eyes in the dark. They fade in, blink, and the glow breathes."""
+    ph = (t * 0.55 + blink_seed) % 1.0
+    lid = 1.0 - min(1.0, abs(ph - 0.955) / 0.03) if ph > 0.925 else 0.0   # a quick blink
+    amp = appear * (1 - lid)
+    if amp <= 0.01:
+        return
+    gap = 62 * s
+    glow = 0.85 + 0.15 * math.sin(t * 7 + blink_seed)
+    for sx in (-1, 1):
+        ex = x + sx * gap
+        for r, a in ((95, 18), (58, 44), (34, 90)):
+            rr = r * s * glow
+            d.ellipse((ex - rr, y - rr * 0.7, ex + rr, y + rr * 0.7), fill=(ec[0], ec[1], ec[2], int(a * amp)))
+        w, h = 20 * s, (10 + 8 * (1 - lid)) * s
+        d.ellipse((ex - w, y - h, ex + w, y + h), fill=(min(255, ec[0] + 40), min(255, ec[1] + 50), min(255, ec[2] + 60), int(255 * amp)))
+        if hybrid:  # a thin, slit pupil
+            d.ellipse((ex - 3.5 * s, y - h * 0.95, ex + 3.5 * s, y + h * 0.95), fill=(14, 6, 4, int(255 * amp)))
+
+
+def _mist(d, t, seed, strength=1.0, tint=(150, 160, 190)):
+    rnd = random.Random(seed)
+    for _ in range(9):
+        x0, y0, sp_, sz = rnd.uniform(0, W), rnd.uniform(300, H - 200), rnd.uniform(15, 50), rnd.uniform(200, 420)
+        x = (x0 + t * sp_) % (W + 700) - 350
+        d.ellipse((x - sz, y0 - sz * 0.35, x + sz, y0 + sz * 0.35), fill=tint + (int(20 * strength),))
+
+
+def eyes_scene(out, dur, world, sp, cwd=None):
+    """Extreme close-up: nothing but the world swallowed by darkness and a pair of eyes moving closer through the mist."""
+    ec = sp.get("eye", (255, 190, 40))
+    rnd = random.Random(int(dur * 100) % 997)
+    x0, y0 = rnd.choice((330, 760)), rnd.choice((880, 1010))
+    world.push = 0.06
+
+    def paint(im, d, t, u, cam):
+        dim(im, 222)
+        _mist(d, t, 3, 1.0)
+        k = _sm(u)
+        s = 0.55 + 1.5 * k
+        x = x0 + (540 - x0) * 0.75 * k + 14 * math.sin(t * 0.8)
+        y = y0 + (860 - y0) * 0.6 * k
+        _eye_pair(d, x, y, s, t, ec, _sm(u / 0.22), bool(sp.get("hybrid")), blink_seed=0.3)
+        _vignette(im, 215)
+    write_video(out, dur, paint, world, cwd, cam_dir=0.0)
+    return {"hits": [dur * 0.4]}
+
+
+def lantern_scene(out, dur, world, sp, cwd=None):
+    """Close-up of a lantern on a chain, swinging, a moth fluttering around the flame. In the 'drop' version the chain
+    snaps, the lantern falls, the glass shatters and the flame dies."""
+    mode = getattr(world, "variant", "swing")
+    drop_at = dur * 0.55
+    rnd = random.Random(21)
+    shards = [(rnd.uniform(-1, 1), rnd.uniform(0.4, 1.0), rnd.uniform(6, 16)) for _ in range(16)]
+    pivot_x, pivot_y, L = 540, 150, 760
+
+    def lamp_at(t):
+        if mode == "swing" or t < drop_at:
+            a = 0.34 * math.sin(t * 2.3) * (1.0 + 0.1 * math.sin(t * 5.1))
+            return pivot_x + L * math.sin(a), pivot_y + L * math.cos(a), a, 1.0
+        tt = t - drop_at
+        x = pivot_x + L * math.sin(0.34 * math.sin(drop_at * 2.3))
+        y0 = pivot_y + L * math.cos(0.34 * math.sin(drop_at * 2.3))
+        y = y0 + 900 * tt * tt
+        if y > 1560:
+            y = 1560
+        return x, y, 0.6 * min(tt * 3, 1.0), max(0.0, 1 - max(0.0, tt - 0.5) / 0.9)
+
+    def paint(im, d, t, u, cam):
+        d.rectangle((0, 0, W, H), fill=(7, 5, 9, 255))
+        d.rectangle((0, 1590, W, H), fill=(20, 13, 11, 255))
+        x, y, a, flame = lamp_at(t)
+        fl = (0.78 + 0.22 * math.sin(t * 17) + 0.08 * math.sin(t * 29)) * flame
+        for r, al in ((1000, 14), (680, 26), (420, 46), (240, 80)):
+            d.ellipse((x - r, y - r, x + r, y + r), fill=(255, 150, 50, int(al * fl)))
+        if mode == "swing" or t < drop_at:
+            d.line((pivot_x, -20, x, y - 150), fill=(46, 36, 30, 255), width=9)
+        c, sn = math.cos(a), math.sin(a)
+
+        def P(px, py):
+            return (x + px * c - py * sn, y + px * sn + py * c)
+        glass = (255, int(170 + 40 * fl), int(70 + 30 * fl), 235)
+        broken = mode == "drop" and t > drop_at + 0.55
+        d.polygon([P(-70, -130), P(70, -130), P(95, 120), P(-95, 120)], fill=(30, 22, 18, 255))
+        if not broken:
+            d.polygon([P(-52, -105), P(52, -105), P(72, 100), P(-72, 100)], fill=glass)
+            d.ellipse((P(0, 20)[0] - 30 * fl, P(0, 20)[1] - 60 * fl, P(0, 20)[0] + 30 * fl, P(0, 20)[1] + 60 * fl), fill=(255, 245, 190, int(255 * flame)))
+        for bx in (-52, 0, 52):
+            d.line((P(bx, -110), P(bx * 1.35, 108)), fill=(12, 9, 8, 255), width=8)
+        d.polygon([P(-60, -130), P(60, -130), P(30, -180), P(-30, -180)], fill=(20, 15, 12, 255))
+        d.polygon([P(-100, 120), P(100, 120), P(80, 160), P(-80, 160)], fill=(20, 15, 12, 255))
+        for k in range(3):  # a moth around the flame
+            ph = t * (3.0 + k) + k * 2
+            mx, my = x + 150 * math.sin(ph) * (0.6 + 0.4 * k), y - 40 + 110 * math.sin(ph * 1.3 + k)
+            d.ellipse((mx - 5, my - 4, mx + 5, my + 4), fill=(20, 14, 12, 255))
+        if mode == "drop" and t > drop_at:
+            tt = t - drop_at
+            if y >= 1555:
+                for sx, sv, sz in shards:
+                    px = x + sx * 340 * min(tt, 1.2) * sv
+                    py = 1570 - 260 * sv * (1 - (min(tt, 1.0) * 2 - 1) ** 2) * max(0.0, 1 - tt / 1.2)
+                    d.polygon([(px, py), (px + sz, py + sz * 0.4), (px + sz * 0.3, py + sz)], fill=(255, 200, 120, int(220 * max(0.15, 1 - tt / 2.0))))
+                for r, al in ((300, 30), (170, 60)):
+                    d.ellipse((x - r, 1590 - r * 0.25, x + r, 1590 + r * 0.25), fill=(255, 140, 40, int(al * flame)))
+        _vignette(im, 200)
+    write_video(out, dur, paint, world, cwd, cam_dir=0.0)
+    return {"hits": [drop_at] if mode == "drop" else [dur * 0.3, dur * 0.65]}
+
+
+def notice_scene(out, dur, world, sp, cwd=None):
+    """A person walks into frame with a lantern, stops, raises it, and stares at something in the dark. Far off, two eyes
+    open. The camera slowly pushes in towards them."""
+    ec = sp.get("eye", (255, 190, 40))
+    world.push, world.focus_y = 0.24, 0.62
+    stop_u = 0.38
+
+    def paint(im, d, t, u, cam):
+        ph = t * STEP * 0.5
+        moving = u < stop_u
+        x = 130 + 380 * _sm(u / stop_u) if moving else 510 + 6 * math.sin(t * 1.3)
+        sc = 1.1 + (0.0 if moving else 0.01 * math.sin(t * 2.2))  # breathing
+        draw_human(d, x, GROUND + 20, ph if moving else 0.35 + 0.05 * math.sin(t * 2.0), 1, sc, cast=False)
+        k = _sm((u - 0.5) / 0.15)
+        _eye_pair(d, 880, GROUND - 330, 0.55, t, ec, k, bool(sp.get("hybrid")), blink_seed=0.6)
+    write_video(out, dur, paint, world, cwd, cam_dir=0.35)
+    return {"hits": [dur * stop_u, dur * 0.55]}
+
+
+def establish_scene(out, dur, world, sp, cwd=None):
+    """A wide shot of the place with a tiny figure for scale. Several camera moves: pan, push-in, pull-back, storm, low angle."""
+    v = getattr(world, "variant", "pan")
+    cam_dir, tiny = 1.2, True
+    if v == "push":
+        world.push, cam_dir = 0.34, 0.2
+    elif v == "pull":
+        world.pull, cam_dir = 0.34, 0.2
+    elif v == "storm":
+        world.storm, world.push, cam_dir = True, 0.1, 1.8
+    elif v == "low":
+        world.focus_y, world.push, cam_dir, tiny = 0.86, 0.14, 0.5, False
+    else:
+        cam_dir = 1.3
+
+    def paint(im, d, t, u, cam):
+        if tiny:
+            ph = t * STEP * 0.5
+            draw_human(d, 640 + 160 * u if v == "pan" else 700, GROUND + 20, ph if v in ("pan", "storm") else 0.3, 1, 0.42, cast=False)
+        dim(im, 40)
+    write_video(out, dur, paint, world, cwd, cam_dir=cam_dir)
+    return {"hits": [dur * 0.1]}
+
+
+INSERT_FUNCS = {"valley": valley_scene, "eyes": eyes_scene, "lantern": lantern_scene, "notice": notice_scene, "establish": establish_scene}
