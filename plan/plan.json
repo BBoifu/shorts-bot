@@ -1,65 +1,81 @@
 {
- "series": "hybrid",
- "key": "crocodile+gorilla@the deep ocean",
- "a": "crocodile",
- "b": "gorilla",
- "place": [
-  "the deep ocean",
-  "the dark deep sea floor with faint blue light",
-  "underwater ambience",
-  "dim murky blue light from above",
-  "teal"
- ],
+ "series": "folklore",
+ "key": "folk:bull:The Eye in the Gale|dragon|storm|ash|The Kansas plains, 12:37 PM|",
+ "episode": 19,
  "story": {
-  "title": "Deep Sea Gorilla Croc Will Terrify You",
-  "creature_name": "Goricoc",
-  "prey": "giant squid",
-  "signature_move": "Using gorilla-like chest-pounding to create powerful sonar pulses, it stuns the squid before a lightning-fast crocodile death roll.",
-  "hybrid_look": "A terrifying apex predator with a massive muscular gorilla torso covered in armored crocodile scales, glowing amber eyes, battle scars, and massive crushing jaws.",
+  "legend_name": "The Eye in the Gale",
+  "region": "The Kansas plains, 12:37 PM",
+  "time": "12:37",
+  "animal": "bull",
+  "title": "The Tornado That Stared Back",
+  "narrator": {
+   "gender": "male",
+   "persona": "a storm chaser recording his final log"
+  },
+  "hero": "traveller",
+  "people": "alone",
+  "monster": {
+   "body": "dragon",
+   "palette": "ash",
+   "eyes": "red",
+   "size": "huge",
+   "horn": null,
+   "spine": "bone",
+   "eye_count": "2"
+  },
   "sentences": [
    {
-    "text": "This terrifying deep sea beast creates shockwaves to crush its helpless prey.",
-    "image": "Pitch black abyssal trench with crushing high pressure and freezing hydrothermal vents venting black smoke"
+    "text": "Have you ever felt someone watching you from inside a wall of black wind?",
+    "beat": "road",
+    "delivery": "hushed",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "Meet the imaginary Goricoc, combining massive gorilla upper body strength with armored crocodile scales.",
-    "image": "Submerged underwater volcanic ridge glowing with dim red magma in total darkness"
+    "text": "My partner yelled over the roar of the engine to check the radar.",
+    "beat": "road",
+    "delivery": "urgent",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "It stalks the crushing darkness of the midnight zone where sunlight never reaches.",
-    "image": "Endless murky blue ocean water with cascading underwater snow and floating marine debris"
+    "text": "Look at how fast it shifted toward us!",
+    "beat": "tornado",
+    "delivery": "shout",
+    "speaker": "person",
+    "voice": "man"
    },
    {
-    "text": "To survive extreme freezing temperatures, it uses thick gorilla fur beneath heavy osteoderm armor.",
-    "image": "Vast freezing polar deep ocean trenches surrounded by jagged black basalt pillars"
+    "text": "The funnel stopped spinning like a normal storm and flattened out into a massive vertical tunnel.",
+    "beat": "tornado",
+    "delivery": "trembling",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "Using gorilla chest-pounding to create powerful sonar pulses, it stuns the squid before a lightning-fast crocodile death roll.",
-    "image": "Swirling underwater whirlpools and turbulent ocean currents kicking up dark silt from the seabed"
+    "text": "Right through the revolving debris and green lightning, a pair of gigantic red eyes locked onto my windshield.",
+    "beat": "road",
+    "delivery": "dread",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "Navigating blinding pressure currents requires specialized inner ear adaptations found in neither parent.",
-    "image": "Violent deep sea brine pools churning heavy liquid methane under immense oceanic pressure"
+    "text": "It was not just wind tearing up the soil; it was a living colossus pulling the earth up into its throat.",
+    "beat": "giant",
+    "delivery": "awe",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "Despite its terrifying strength, it must surface every hour to breathe air, making it completely helpless at the surface. What should I combine next? Tell me in the comments.",
-    "image": "Bright turquoise surface water lit by distant sunlight far above the dark abyss"
+    "text": "Would you have stayed in your car once the sky turned around to hunt you?",
+    "beat": "giant",
+    "delivery": "calm",
+    "speaker": "narrator",
+    "voice": ""
    }
-  ]
- },
- "episode": 21,
- "clips": [
-  {
-   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in the deep ocean: the dark deep sea floor with faint blue light. A terrifying apex predator with a massive muscular gorilla torso covered in armored crocodile scales, glowing amber eyes, battle scars, and massive crushing jaws. It is menacing and dominant."
-  },
-  {
-   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In the dark deep sea floor with faint blue light, the same hybrid creature goes after giant squid. Using gorilla-like chest-pounding to create powerful sonar pulses, it stuns the squid before a lightning-fast crocodile death roll.. Fast, powerful movement, camera follows the action. A terrifying apex predator with a massive muscular gorilla torso covered in armored crocodile scales, glowing amber eyes, battle scars, and massive crushing jaws."
-  },
-  {
-   "title": "Clip 3 - the close-up (plays at the end)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A terrifying apex predator with a massive muscular gorilla torso covered in armored crocodile scales, glowing amber eyes, battle scars, and massive crushing jaws."
-  }
- ]
+  ],
+  "story_type": "storm",
+  "format": "modern",
+  "origin": ""
+ }
 }
