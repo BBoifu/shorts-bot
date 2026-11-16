@@ -1,65 +1,267 @@
 {
  "series": "hybrid",
- "key": "elephant+gorilla@a land of active volcanoes",
- "a": "elephant",
- "b": "gorilla",
+ "key": "dragonfly+eagle@the Sahara desert",
+ "a": "dragonfly",
+ "b": "eagle",
  "place": [
-  "a land of active volcanoes",
-  "black rock and glowing red lava rivers",
-  "volcano rumble",
-  "glowing orange light from lava and smoke",
-  "red"
+  "the Sahara desert",
+  "endless sand dunes under a blazing sun",
+  "desert wind",
+  "harsh golden afternoon sunlight with long shadows",
+  "warm"
  ],
  "story": {
-  "title": "The Volcano Behemoth That Crushes Stone",
-  "creature_name": "Goricant",
-  "prey": "magma badger",
-  "signature_move": "It uses massive gorilla knuckles to shatter the obsidian shell of a magma badger before lifting it away with an elephant trunk.",
-  "hybrid_look": "A terrifying apex predator with the hulking, muscular upper body of a silverback gorilla, bearing massive jagged tusks, glowing amber eyes, and a thick hide scarred by ancient lava flows.",
+  "title": "The Desert Predator That Can Fly Sideways",
+  "creature_name": "Saharan Aerofly",
+  "prey": "desert jerboa",
+  "signature_move": "It hovers silently above the dunes, then darts sideways in a blink to snatch the running rodent with its hooked legs.",
+  "hybrid_look": "It features a long, jewel-blue segmented body and dragonfly eyes joined with an eagle head, moving on six thin hooked legs and bird wings.",
   "sentences": [
    {
-    "text": "This colossal beast punches through solid rock just to reach its prey.",
-    "image": "a glowing river of orange lava cutting through jagged black volcanic rock fields"
+    "text": "This invisible nightmare strikes desert prey without making a single sound.",
+    "image": "a vast expanse of shimmering golden dunes under a blazing midday sun"
    },
    {
-    "text": "Meet the Goricant, an entirely imaginary monster blending the crushing trunk of an elephant with the bone-breaking arm strength of a gorilla.",
-    "image": "dense plumes of dark smoke billowing upward from a massive crater under a blood-red sky"
+    "text": "Meet the Aerofly, an imaginary hybrid inheriting a dragonfly's segmented body and an eagle's wings.",
+    "image": "a howling sandstorm swallowing red sandstone pillars in the distance"
    },
    {
-    "text": "Roaming the burning caldera fields requires immense endurance against toxic gas clouds, which it filters through its specialized nasal passages.",
-    "image": "swirling yellow sulfur clouds hugging the cracked earth around a bubbling mud pool"
+    "text": "It hovers silently above the dunes, then darts sideways in a blink to snatch the running rodent with its hooked legs.",
+    "image": "cracked clay pans shimmering with intense desert heat waves"
    },
    {
-    "text": "Navigating rivers of molten rock is perilous, so it uses its heavy knuckle-dragging fists to test ground stability before crossing.",
-    "image": "wide fields of hardened dark basalt with glowing fissures of red heat beneath the surface"
+    "text": "Intense heat threatens to overheat its flight muscles during long patrols.",
+    "image": "barren rocky plateaus reflecting blinding white sunlight"
    },
    {
-    "text": "When hunting beneath falling ash, it uses its massive gorilla knuckles to shatter the obsidian shell of a magma badger before lifting it away with an elephant trunk.",
-    "image": "thick grey volcanic ash falling heavily across a barren landscape of steep mountain slopes"
+    "text": "To solve this, it uses shimmering glassy armour mixed with feathers to reflect solar rays.",
+    "image": "deep canyons carved into ancient sandstone under a pale blue sky"
    },
    {
-    "text": "Extreme heat threatens to overheat massive bodies, but its oversized ears radiate excess thermal energy efficiently to keep it cool.",
-    "image": "shimmering heat waves rising off a vast plain of sharp black volcanic glass debris"
+    "text": "Sudden gusts of wind constantly risk throwing it off balance in midair.",
+    "image": "sharp mountain ridges battered by howling dry winds"
    },
    {
-    "text": "Despite its terrifying armor and incredible strength, it panics at the sound of buzzing insects, and What should I combine next? Tell me in the comments.",
-    "image": "a steep volcanic ridge silhouetted against a brilliant orange and purple twilight horizon"
+    "text": "Its broad tail fan stabilizes every sharp turn through unpredictable air currents.",
+    "image": "endless pebble plains stretching toward a shimmering hazy horizon"
+   },
+   {
+    "text": "Astonishingly, morning dew can completely freeze its delicate wings, and What should I combine next? Tell me in the comments.",
+    "image": "a lonely acacia tree standing on a cracked salt flat at dawn"
    }
   ]
  },
- "episode": 23,
+ "episode": 24,
+ "design": {
+  "hybrid": true,
+  "parents": [
+   "dragonfly",
+   "eagle"
+  ],
+  "dominant": "dragonfly",
+  "secondary": "eagle",
+  "dom_weight": 0.62,
+  "torso": [
+   "tube",
+   305.8384843865462,
+   71.10273996784048,
+   0.13999999999999999
+  ],
+  "arch": 0.0,
+  "legs": [
+   "insect",
+   6,
+   73.76704435090478,
+   8.100000000000001
+  ],
+  "foot": "tipclaw",
+  "gait": "hover",
+  "legs_from": "dragonfly",
+  "arms": null,
+  "head": {
+   "skull": [
+    38.67042714753827,
+    34.987529323963194
+   ],
+   "snout": [
+    "beak_hook",
+    64,
+    26,
+    12,
+    0.0
+   ],
+   "teeth": "none",
+   "ears": [
+    "none",
+    0
+   ],
+   "eyes": "fierce",
+   "brow": 0.4,
+   "extras": [
+    "mandibles"
+   ],
+   "eyecol": [
+    240,
+    190,
+    40
+   ]
+  },
+  "neck": [
+   29.00321114743075,
+   0.39
+  ],
+  "neck_bow": 0.12,
+  "tail": "fan",
+  "tail_len": 0.9264676365574473,
+  "wings": [
+   "bird",
+   405.8581179297752
+  ],
+  "wingfly": true,
+  "shell": null,
+  "dorsal": [],
+  "skin": "chitin",
+  "skin2": "feathers",
+  "pal": [
+   [
+    74,
+    146,
+    141
+   ],
+   [
+    246,
+    246,
+    242
+   ],
+   [
+    133,
+    202,
+    201
+   ]
+  ],
+  "pat": "bands",
+  "hover": 154.08157174909394,
+  "temper": "savage",
+  "glow": false,
+  "strike": "dive",
+  "sig": [
+   "wings",
+   "a pair of enormous wings"
+  ],
+  "sigscale": {
+   "wings": 1.3
+  },
+  "donors": {
+   "body": "dragonfly",
+   "legs": "dragonfly",
+   "head": "eagle",
+   "face": "dragonfly",
+   "mouth": "eagle",
+   "tail": "eagle",
+   "wings": "eagle",
+   "skin": "dragonfly",
+   "palette": [
+    "dragonfly",
+    "eagle"
+   ]
+  },
+  "flies": false,
+  "words": {},
+  "name": "dragonfly-eagle",
+  "fingerprint": {
+   "prof": "tube",
+   "pitch": 0,
+   "L": 2,
+   "H": 0,
+   "legs": "insect",
+   "nlegs": 6,
+   "legh": 1,
+   "neck": 0,
+   "snout": "beak_hook",
+   "snoutl": 1,
+   "teeth": "none",
+   "ears": "none",
+   "eyes": "fierce",
+   "tail": "fan",
+   "wings": "bird",
+   "shell": "none",
+   "dorsal": "none",
+   "skin": "chitin",
+   "skin2": "feathers",
+   "pat": "bands",
+   "hue": 5,
+   "light": 1,
+   "gait": "hover",
+   "hover": true,
+   "arms": "none",
+   "extras": "mandibles"
+  },
+  "fp_distance": 99.0,
+  "attempt": 0
+ },
+ "profile": {
+  "hybrid_name": "dragonfly-eagle",
+  "parent_a": "dragonfly",
+  "parent_b": "eagle",
+  "dominant_parent": "dragonfly",
+  "dominant": [
+   "dragonfly body structure"
+  ],
+  "secondary": [
+   "dragonfly eyes and face details",
+   "eagle tail",
+   "eagle wings"
+  ],
+  "proportions": "tube torso, 305x71, horizontal posture, neck 29, legs insect x6",
+  "head": "a eagle-shaped head and the dragonfly's eyes",
+  "limbs": "insect x6",
+  "texture": "chitin body, feathers limbs and tail",
+  "colour": {
+   "main": [
+    74,
+    146,
+    141
+   ],
+   "accent": [
+    246,
+    246,
+    242
+   ],
+   "belly": [
+    133,
+    202,
+    201
+   ],
+   "pattern": "bands"
+  },
+  "silhouette": "tube-wings-fan",
+  "locomotion": "hovers, then darts sideways in a blink, hovers off the ground, beats its wings",
+  "gait": "hover",
+  "hovers": true,
+  "signature_ability": "dive",
+  "temperament": "savage",
+  "signature_feature": "a pair of enormous wings",
+  "summary": [
+   "a long, jewel-blue segmented body (from the dragonfly)",
+   "a eagle-shaped head and the dragonfly's eyes",
+   "six thin hooked legs (from the dragonfly)",
+   "bird wings (from the eagle)",
+   "a broad tail fan (from the eagle)",
+   "shining glassy armour mixed with feathers texture"
+  ]
+ },
  "clips": [
   {
    "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in a land of active volcanoes: black rock and glowing red lava rivers. A terrifying apex predator with the hulking, muscular upper body of a silverback gorilla, bearing massive jagged tusks, glowing amber eyes, and a thick hide scarred by ancient lava flows. It is menacing and dominant."
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in the Sahara desert: endless sand dunes under a blazing sun. It features a long, jewel-blue segmented body and dragonfly eyes joined with an eagle head, moving on six thin hooked legs and bird wings. It is menacing and dominant."
   },
   {
    "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In black rock and glowing red lava rivers, the same hybrid creature goes after magma badger. It uses massive gorilla knuckles to shatter the obsidian shell of a magma badger before lifting it away with an elephant trunk.. Fast, powerful movement, camera follows the action. A terrifying apex predator with the hulking, muscular upper body of a silverback gorilla, bearing massive jagged tusks, glowing amber eyes, and a thick hide scarred by ancient lava flows."
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In endless sand dunes under a blazing sun, the same hybrid creature goes after desert jerboa. It hovers silently above the dunes, then darts sideways in a blink to snatch the running rodent with its hooked legs.. Fast, powerful movement, camera follows the action. It features a long, jewel-blue segmented body and dragonfly eyes joined with an eagle head, moving on six thin hooked legs and bird wings."
   },
   {
    "title": "Clip 3 - the close-up (plays at the end)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A terrifying apex predator with the hulking, muscular upper body of a silverback gorilla, bearing massive jagged tusks, glowing amber eyes, and a thick hide scarred by ancient lava flows."
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. It features a long, jewel-blue segmented body and dragonfly eyes joined with an eagle head, moving on six thin hooked legs and bird wings."
   }
  ]
 }
