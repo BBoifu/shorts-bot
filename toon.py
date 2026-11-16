@@ -1032,6 +1032,8 @@ def sauro_spec(color=(84, 92, 72)):
 def head_anchor(sp):
     """Where the face is, in creature units (used to zoom in on it)."""
     tr, k = sp["traits"], sp["kind"]
+    if k == "chimera":
+        return sp["head0"]
     if k in HEAD_AT:
         return HEAD_AT[k]
     if k == "quad":
@@ -1129,7 +1131,7 @@ def _draw_emerging(img_draw, sp, cx, gy, phase, facing, scale, st, s, k):
     y0, y1 = int(max(0, gy - 1300 * s)), int(min(im.height, gy + 90 * s))
     if x1 - x0 < 4 or y1 - y0 < 4:
         return
-    if sp["hybrid"] and st.get("aura", True):  # the red glow comes up with the body
+    if sp["hybrid"] and sp.get("aura", True) and st.get("aura", True):  # the red glow comes up with the body
         al = _sm((k - 0.4) / 0.6)
         for kk, a_ in ((1.0, 22), (0.78, 26), (0.56, 30)):
             img_draw.ellipse((cx - 380 * s * kk, gy - 640 * s * kk, cx + 380 * s * kk, gy + 40 * s * kk), fill=(170, 10, 14, int(a_ * al)))
@@ -1165,13 +1167,13 @@ def draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=None, fo
         if k < 0.999:
             _draw_emerging(img_draw, sp, cx, gy, phase, facing, scale, st, s, k)
             return
-    if sp["hybrid"] and st.get("aura", True):
+    if sp["hybrid"] and sp.get("aura", True) and st.get("aura", True):
         for k, a in ((1.0, 22), (0.78, 26), (0.56, 30)):
             img_draw.ellipse((cx - 380 * s * k, gy - 640 * s * k, cx + 380 * s * k, gy + 40 * s * k), fill=(170, 10, 14, a))
     ox, oy = _REC_OFF
     _BOXES.append((cx + ox - 330 * s, gy + oy - 1050 * s, cx + ox + 330 * s, gy + oy + 40 * s))
     pen = Pen(img_draw, cx, gy, s, facing, rimfn)
-    if st.get("noshadow"):
+    if st.get("noshadow") or sp["kind"] == "chimera":
         pass
     elif sp["kind"] not in ("swim", "float", "wraith") and sp["kind"] != "bird" or (sp["kind"] == "bird" and "flying" not in sp["traits"]):
         shadow(img_draw, cx, gy, 150 * s)
@@ -1689,7 +1691,7 @@ def hunt_scene(out, dur, world, sp, prey_text="", cwd=None):
             if u < 0.9:
                 blood_burst(d, 790, GROUND - 70, (u - 0.68) / 0.22, seed=3, power=0.6)
         draw_creature(d, sp, hx + sx, GROUND + 20 + sy, t * STEP * 0.5, 1, 1.0 + 0.1 * lunge,
-                      {"t": t, "crouch": crouch, "roar": roar, "moving": moving, "headup": roar})
+                      {"t": t, "crouch": crouch, "roar": roar, "moving": moving, "headup": roar, "lunge": lunge})
         if flash > 0:
             return Image.blend(im, Image.new("RGB", im.size, (255, 255, 255)), flash)
     write_video(out, dur, paint, world, cwd, cam_dir=1)
@@ -4462,3 +4464,2164 @@ def establish_scene(out, dur, world, sp, cwd=None):
 
 
 INSERT_FUNCS = {"valley": valley_scene, "eyes": eyes_scene, "lantern": lantern_scene, "notice": notice_scene, "establish": establish_scene}
+
+
+# =====================================================================================================
+#  HYBRID DESIGN SYSTEM  (Impossible Animals)
+#  1) SPECIES: what each real animal really looks like and how it moves (the parent analysis)
+#  2) design_hybrid(): invents ONE new body out of two parents (nothing generic is added)
+#  3) draw_chimera(): draws any design (the parents themselves are drawn by the same code)
+# =====================================================================================================
+import hashlib
+import json
+
+
+def _H(skull=(55, 50), snout=("snout", 80, 34, 24, 0.0), teeth="rows", ears=("point", 60), eyes="round",
+       brow=0.1, extras=(), eyecol=(235, 190, 60)):
+    return dict(skull=skull, snout=snout, teeth=teeth, ears=ears, eyes=eyes, brow=brow,
+                extras=list(extras), eyecol=eyecol)
+
+
+def _S(**k):
+    d = dict(torso=("barrel", 320, 150, 0.0), legs=("digi", 4, 170, 30), foot="paw", neck=(50, 0.3),
+             head=_H(), tail="stub", wings=None, shell=None, dorsal=(), skin="fur", gait="trot", hover=0,
+             pal=((140, 120, 100), (80, 60, 50), (200, 180, 160)), pat="plain", arms=None,
+             temper="stoic", strike="pounce", flies=False, words={}, arch=0.0, tail_len=1.0)
+    d.update(k)
+    return d
+
+
+# torso = (profile, length, height, pitch)   legs = (style, count, length, thickness)
+# wings = (kind, size)    arms = (kind, length)    pal = (main, accent, belly)
+SPECIES = {
+    "wolf": _S(torso=("sleek", 330, 125, 0.0), legs=("digi", 4, 205, 28), foot="paw", neck=(58, 0.4),
+               head=_H((60, 54), ("snout", 105, 36, 24, 0.0), "rows", ("point", 72), "round", 0.18, eyecol=(235, 190, 60)),
+               tail="bushy", skin="fur", gait="trot", pal=((128, 134, 146), (62, 66, 80), (204, 207, 212)), pat="mask",
+               temper="stoic", strike="pounce",
+               words=dict(body="a lean, deep-chested wolf body", head="a long wolf muzzle with pointed ears",
+                          limbs="long, tireless running legs", tail="a thick brush of a tail", skin="thick grey fur",
+                          move="lopes in a tireless trot", ability="a pack-hunter's endless stamina")),
+    "fox": _S(torso=("sleek", 270, 100, 0.0), legs=("digi", 4, 165, 20), neck=(46, 0.4),
+              head=_H((50, 44), ("snout", 95, 28, 16, 0.0), "rows", ("point", 100), "slit", 0.05, eyecol=(240, 170, 40)),
+              tail="bushy", skin="fur", gait="trot", pal=((214, 112, 48), (40, 30, 28), (246, 236, 220)), pat="socks",
+              temper="sly", strike="pounce",
+              words=dict(body="a slim fox body", head="a sharp fox face with huge ears", limbs="slim black-socked legs",
+                         tail="a huge white-tipped brush of a tail", skin="russet fur", move="trots with a silent, sly step",
+                         ability="razor-sharp hearing")),
+    "cheetah": _S(torso=("sleek", 340, 105, 0.0), legs=("digi", 4, 240, 24), neck=(62, 0.3),
+                  head=_H((48, 44), ("snout", 40, 34, 28, 0.0), "fangs", ("round", 38), "round", 0.1,
+                          extras=("tearmarks",), eyecol=(220, 160, 40)),
+                  tail="whip", skin="fur", gait="bound", pal=((224, 174, 78), (50, 36, 22), (242, 228, 192)), pat="spots",
+                  arch=0.5, temper="alert", strike="pounce",
+                  words=dict(body="a whip-thin sprinter's body", head="a small round cat face with black tear lines",
+                             limbs="very long sprinting legs", tail="a long ringed tail for balance",
+                             skin="spotted golden fur", move="bounds in great loping leaps", ability="explosive speed")),
+    "lion": _S(torso=("barrel", 340, 165, 0.0), legs=("digi", 4, 180, 38), neck=(50, 0.35),
+               head=_H((66, 62), ("snout", 50, 44, 36, 0.0), "fangs", ("round", 36), "round", 0.15, extras=("mane",),
+                       eyecol=(230, 170, 40)),
+               tail="tuft", skin="fur", gait="prowl", pal=((208, 160, 84), (112, 62, 30), (232, 204, 154)), pat="plain",
+               temper="regal", strike="pounce",
+               words=dict(body="a heavy, muscular big-cat body", head="a broad face ringed by a great mane",
+                          limbs="thick, padded paws", tail="a long tail ending in a dark tuft", skin="tawny fur",
+                          move="prowls with slow, heavy confidence", ability="a thunderous roar")),
+    "bear": _S(torso=("barrel", 335, 195, 0.05), legs=("pillar", 4, 150, 46), foot="bigpaw", neck=(40, 0.2),
+               head=_H((64, 60), ("snout", 70, 40, 30, 0.05), "rows", ("round", 30), "beady", 0.1),
+               tail="stub", skin="fur", gait="lumber", pal=((94, 66, 50), (54, 38, 30), (112, 82, 62)), pat="plain",
+               temper="brooding", strike="pounce",
+               words=dict(body="a massive barrel-chested bear body", head="a heavy bear head with small round ears",
+                          limbs="thick pillar legs with huge clawed paws", tail="a stub of a tail", skin="shaggy brown fur",
+                          move="lumbers with swaying power", ability="crushing strength")),
+    "polar bear": _S(torso=("barrel", 350, 178, 0.05), legs=("pillar", 4, 150, 44), foot="bigpaw", neck=(62, 0.15),
+                     head=_H((56, 48), ("snout", 90, 34, 26, 0.08), "rows", ("round", 24), "beady", 0.05),
+                     tail="stub", skin="fur", gait="lumber", pal=((232, 238, 240), (170, 186, 196), (244, 246, 248)),
+                     pat="plain", temper="patient", strike="pounce",
+                     words=dict(body="a long, heavy polar-bear body", head="a long, flat white head with a black nose",
+                                limbs="huge webbed paws", tail="a short tail", skin="dense white fur",
+                                move="pads silently across the ice", ability="a patient ambush-hunter's focus")),
+    "gorilla": _S(torso=("barrel", 250, 235, 0.6), legs=("pillar", 2, 115, 50), foot="bigpaw", neck=(18, 0.1),
+                  head=_H((62, 58), ("snout", 40, 42, 36, 0.0), "flat", ("round", 18), "beady", 0.3,
+                          extras=("browridge", "crown"), eyecol=(110, 70, 40)),
+                  tail="none", skin="fur", gait="knuckle", arms=("ape", 290), pal=((52, 52, 60), (28, 28, 34), (74, 72, 80)),
+                  pat="plain", temper="brooding", strike="claw",
+                  words=dict(body="a broad, hunched gorilla torso", head="a heavy brow and a bony crown",
+                             limbs="arms so long they brush the ground", tail="no tail", skin="coarse black fur",
+                             move="knuckle-walks, swinging its great arms", ability="enormous arm strength")),
+    "camel": _S(torso=("barrel", 330, 160, 0.0), legs=("digi", 4, 255, 24), foot="pad", neck=(190, 1.0),
+                head=_H((44, 40), ("snout", 76, 28, 24, 0.25), "flat", ("round", 22), "sleepy", 0.0, eyecol=(80, 50, 30)),
+                tail="tuft", dorsal=("hump",), skin="fur", gait="pace", neck_bow=0.2,
+                pal=((206, 166, 106), (150, 110, 70), (224, 192, 142)), pat="plain", temper="aloof", strike="snap",
+                words=dict(body="a tall, deep-bodied camel frame with a fat hump", head="a droopy-lipped long face with sleepy eyes",
+                           limbs="stilt-long legs with wide padded feet", tail="a short tuft", skin="sandy fur",
+                           move="paces in a rolling, swaying stride", ability="surviving weeks without water")),
+    "elephant": _S(torso=("barrel", 390, 235, 0.0), legs=("pillar", 4, 200, 60), foot="flat", neck=(24, 0.0),
+                   head=_H((82, 78), ("trunk", 170, 34, 18, 0.0), "none", ("flap", 150), "beady", 0.0,
+                           extras=("tusks",), eyecol=(70, 50, 40)),
+                   tail="whip", skin="wrinkled", gait="lumber", pal=((142, 142, 152), (110, 110, 122), (162, 162, 170)),
+                   pat="plain", temper="gentle", strike="claw",
+                   words=dict(body="a vast, grey, pillar-legged body", head="a huge head with fan-like ears, a long trunk and tusks",
+                              limbs="four tree-trunk legs", tail="a thin tufted tail", skin="deeply wrinkled grey hide",
+                              move="walks with slow, earth-shaking steps", ability="a trunk that can lift, smash or sniff out anything")),
+    "bull": _S(torso=("barrel", 330, 190, 0.0), legs=("digi", 4, 172, 36), foot="hoof", neck=(34, 0.1),
+               head=_H((60, 56), ("snout", 60, 42, 38, 0.05), "flat", ("point", 46), "beady", 0.3,
+                       extras=("horns_bull",), eyecol=(150, 40, 30)),
+               tail="whip", skin="fur", gait="trot", pal=((62, 52, 54), (212, 202, 182), (84, 72, 74)), pat="plain",
+               temper="savage", strike="pounce",
+               words=dict(body="a thick, muscled shoulder-heavy body", head="a broad head crowned by curving horns",
+                          limbs="hard-hoofed legs", tail="a swishing tufted tail", skin="dark coarse hide",
+                          move="trots and charges head-down", ability="a battering-ram charge")),
+    "giraffe": _S(torso=("barrel", 290, 150, 0.12), legs=("digi", 4, 310, 22), foot="hoof", neck=(270, 1.15),
+                  head=_H((40, 35), ("snout", 56, 26, 22, 0.0), "flat", ("point", 30), "round", 0.0,
+                          extras=("ossicones",), eyecol=(90, 60, 40)),
+                  tail="whip", skin="fur", gait="pace", neck_bow=0.1,
+                  pal=((216, 172, 88), (112, 66, 32), (238, 214, 152)), pat="patches", temper="serene", strike="snap",
+                  words=dict(body="a short, sloping body on stilts", head="a small head on the tallest neck of any animal",
+                             limbs="impossibly long legs", tail="a thin tufted tail", skin="patchwork-patterned hide",
+                             move="paces with long, floating strides", ability="seeing everything from above")),
+    "rhino": _S(torso=("barrel", 365, 205, 0.0), legs=("pillar", 4, 130, 52), foot="flat", neck=(26, -0.15),
+                head=_H((68, 56), ("snout", 105, 46, 36, 0.14), "flat", ("point", 38), "beady", 0.2,
+                        extras=("horn_nose",), eyecol=(60, 40, 30)),
+                tail="whip", skin="plated", gait="lumber", pal=((132, 130, 134), (92, 90, 96), (152, 150, 154)),
+                pat="plain", temper="savage", strike="pounce",
+                words=dict(body="a bulldozer body wrapped in armoured folds", head="a low head with a great horn on its nose",
+                           limbs="stout, flat-footed legs", tail="a thin tail", skin="thick plated grey armour-hide",
+                           move="plods, then charges like a locomotive", ability="an unstoppable charge")),
+    "hippo": _S(torso=("barrel", 335, 205, 0.0), legs=("pillar", 4, 90, 56), foot="flat", neck=(18, 0.0),
+                head=_H((70, 56), ("blunt", 100, 62, 60, 0.05), "flat", ("round", 18), "periscope", 0.0,
+                        extras=("tusk_row",), eyecol=(70, 40, 40)),
+                tail="stub", skin="smooth", gait="lumber", pal=((142, 112, 122), (200, 150, 150), (170, 132, 134)),
+                pat="plain", temper="brooding", strike="snap",
+                words=dict(body="a barrel-shaped, short-legged body", head="a vast square mouth and periscope eyes",
+                           limbs="four stubby pillars", tail="a short paddle of a tail", skin="smooth, pink-grey hide",
+                           move="plods and wades", ability="a jaw that opens almost twice as wide as a lion's")),
+    "kangaroo": _S(torso=("teardrop", 250, 170, 0.75), legs=("bigdigi", 2, 205, 46), foot="longfoot", neck=(52, 0.6),
+                   head=_H((44, 40), ("snout", 72, 28, 20, 0.0), "flat", ("big", 95), "round", 0.05, eyecol=(80, 50, 30)),
+                   tail="thick", tail_len=1.2, arms=("small", 90), skin="fur", gait="hop",
+                   pal=((192, 132, 88), (122, 82, 52), (228, 198, 164)), pat="plain", temper="alert", strike="kick",
+                   words=dict(body="an upright body that balances on its tail", head="a deer-like face with tall ears",
+                              limbs="huge spring-loaded hind legs and small grasping arms", tail="a thick tail used as a third leg",
+                              skin="soft russet fur", move="bounds in enormous hops", ability="a kick that can break bone")),
+    "armadillo": _S(torso=("round", 255, 160, 0.0), legs=("sprawl", 4, 62, 30), foot="claw", neck=(8, 0.0),
+                    head=_H((40, 34), ("snout", 78, 22, 12, 0.15), "none", ("round", 26), "beady", 0.0, eyecol=(40, 30, 30)),
+                    tail="thick", shell="banded", skin="plated", gait="scurry",
+                    pal=((152, 132, 122), (100, 86, 80), (202, 182, 172)), pat="plain", temper="timid", strike="claw",
+                    words=dict(body="a low, banded armoured body", head="a small pointed snout with tiny eyes",
+                               limbs="short, digging, clawed legs", tail="a thick tapering tail", skin="hard bony plates",
+                               move="scurries low to the ground", ability="armour that rolls into a ball")),
+    "porcupine": _S(torso=("round", 270, 170, 0.0), legs=("sprawl", 4, 82, 28), foot="claw", neck=(8, 0.0),
+                    head=_H((40, 38), ("snout", 46, 26, 18, 0.1), "none", ("round", 18), "beady", 0.0, eyecol=(50, 36, 30)),
+                    tail="stub", dorsal=("quills",), skin="fur", gait="waddle",
+                    pal=((86, 72, 64), (242, 238, 222), (112, 96, 84)), pat="plain", temper="wary", strike="claw",
+                    words=dict(body="a round, low body", head="a blunt little face", limbs="short clawed legs",
+                               tail="a short tail", skin="a coat of long barbed quills",
+                               move="waddles warily, quills rattling", ability="a coat of detachable quills")),
+    "crocodile": _S(torso=("tube", 430, 100, 0.0), legs=("sprawl", 4, 72, 36), foot="webbed", neck=(14, 0.0),
+                    head=_H((50, 40), ("snout", 215, 36, 34, 0.0), "rows", ("none", 0), "bump", 0.25,
+                            extras=("nostril_bump",), eyecol=(220, 190, 60)),
+                    tail="thick", tail_len=1.5, dorsal=("osteoderm",), skin="scutes", gait="sprawl",
+                    pal=((92, 118, 70), (58, 78, 48), (206, 204, 146)), pat="plain", temper="cold", strike="snap",
+                    words=dict(body="a long, low, armoured body", head="a huge toothy snout with eyes on top",
+                               limbs="short, sprawling legs", tail="a thick, powerful swimming tail",
+                               skin="bony scutes in tough rows", move="crawls low, then explodes forward",
+                               ability="the strongest bite of any living animal")),
+    "lizard": _S(torso=("tube", 300, 85, 0.0), legs=("sprawl", 4, 62, 20), foot="claw", neck=(24, 0.2),
+                 head=_H((38, 32), ("snout", 62, 26, 16, 0.0), "needle", ("none", 0), "slit", 0.1, eyecol=(220, 180, 50)),
+                 tail="whip", tail_len=1.4, dorsal=("ridge",), skin="scales", gait="scurry",
+                 pal=((132, 152, 86), (72, 92, 50), (204, 204, 142)), pat="bands", temper="cold", strike="tongue",
+                 words=dict(body="a long, low, scaly body", head="a wedge-shaped head with slit-pupil eyes",
+                            limbs="short sprawling legs", tail="a very long whip of a tail", skin="fine overlapping scales",
+                            move="scurries and freezes", ability="a darting tongue")),
+    "gecko": _S(torso=("tube", 250, 75, 0.0), legs=("sprawl", 4, 56, 18), foot="pad", neck=(16, 0.0),
+                head=_H((44, 36), ("snout", 44, 26, 20, 0.0), "needle", ("none", 0), "bigslit", 0.0, eyecol=(200, 220, 90)),
+                tail="whip", tail_len=1.2, skin="scales", gait="scurry",
+                pal=((172, 186, 108), (110, 92, 60), (216, 222, 162)), pat="bands", temper="alert", strike="tongue",
+                words=dict(body="a slim, flat body", head="a broad head with huge slit-pupil eyes",
+                           limbs="wide sticky toe-pads", tail="a tail that can break off", skin="velvety scales",
+                           move="darts and clings to anything", ability="feet that stick to any surface")),
+    "chameleon": _S(torso=("round", 230, 150, 0.0), legs=("sprawl", 4, 95, 18), foot="zygo", neck=(12, 0.0),
+                    head=_H((42, 40), ("snout", 38, 22, 18, 0.0), "none", ("none", 0), "turret", 0.0,
+                            extras=("casque",), eyecol=(230, 200, 60)),
+                    tail="curl", skin="scales", gait="sway", arch=0.8,
+                    pal=((106, 170, 82), (232, 200, 60), (172, 212, 122)), pat="bands", temper="watchful", strike="tongue",
+                    words=dict(body="a narrow, leaf-thin body", head="swivelling turret eyes under a tall helmet-crest",
+                               limbs="pincer-gripping feet", tail="a tightly curled tail", skin="colour-shifting scales",
+                               move="sways like a leaf, one slow step at a time", ability="a tongue that shoots out like a spear")),
+    "snake": _S(torso=("tube", 560, 56, 0.0), legs=("none", 0, 0, 0), neck=(0, 0.0),
+                head=_H((36, 30), ("snout", 46, 24, 20, 0.0), "fangs", ("none", 0), "slit", 0.2, eyecol=(240, 200, 40)),
+                tail="taper", skin="scales", gait="slither", pal=((112, 152, 74), (56, 76, 40), (224, 212, 152)),
+                pat="diamond", temper="cold", strike="snap",
+                words=dict(body="a limbless, endlessly long body", head="a diamond-shaped head with flickering tongue",
+                           limbs="no legs at all", tail="a tapering tail", skin="smooth patterned scales",
+                           move="slithers in smooth S-curves", ability="a strike faster than the eye")),
+    "turtle": _S(torso=("dome", 300, 200, 0.0), legs=("pillar", 4, 62, 42), foot="flat", neck=(62, 0.1),
+                 head=_H((36, 30), ("beak_turtle", 34, 20, 14, 0.0), "none", ("none", 0), "beady", 0.2, eyecol=(230, 200, 60)),
+                 tail="stub", shell="dome", skin="scales", gait="plod",
+                 pal=((112, 140, 86), (62, 74, 44), (212, 202, 152)), pat="plain", temper="patient", strike="snap",
+                 words=dict(body="a heavy, domed body", head="a small beaked head on a wrinkled neck",
+                            limbs="stumpy, tough legs", tail="a short tail", skin="a hard domed shell",
+                            move="plods on, unstoppable", ability="a shell nothing can crack")),
+    "frog": _S(torso=("round", 240, 160, 0.25), legs=("frog", 4, 118, 36), foot="webbed", neck=(0, 0.0),
+               head=_H((68, 44), ("wide", 82, 40, 20, 0.0), "none", ("none", 0), "bulge", 0.0, eyecol=(230, 190, 60)),
+               tail="none", skin="warty", gait="hop", pal=((98, 174, 78), (40, 92, 42), (224, 232, 172)), pat="spots",
+               temper="comical", strike="tongue",
+               words=dict(body="a squat, round body", head="a vast, wide mouth under bulging domed eyes",
+                          limbs="huge folded hind legs for jumping", tail="no tail", skin="damp, warty skin",
+                          move="hops in huge leaps", ability="a tongue that snaps out in a blink")),
+    "axolotl": _S(torso=("tube", 285, 100, 0.0), legs=("sprawl", 4, 50, 22), foot="toed", neck=(10, 0.0),
+                  head=_H((56, 38), ("wide", 42, 32, 26, 0.0), "none", ("none", 0), "beady", 0.0,
+                          extras=("gills_frill",), eyecol=(30, 20, 30)),
+                  tail="paddle", tail_len=1.3, skin="smooth", gait="crawl",
+                  pal=((238, 172, 192), (232, 100, 130), (252, 218, 228)), pat="plain", temper="serene", strike="snap",
+                  words=dict(body="a soft, slim, tadpole-like body", head="a wide smiling face crowned by feathery gills",
+                             limbs="tiny four-fingered legs", tail="a long swimming-fin tail", skin="smooth, pale pink skin",
+                             move="paddles and crawls", ability="regrowing any lost body part")),
+    "shark": _S(torso=("teardrop", 450, 130, 0.0), legs=("none", 0, 0, 0), neck=(0, 0.0),
+                head=_H((50, 42), ("cone", 125, 40, 12, 0.0), "rows", ("none", 0), "beady", 0.2,
+                        extras=("gills",), eyecol=(10, 10, 14)),
+                tail="lunate", wings=("fin", 140), dorsal=("fin_big",), skin="smooth", gait="swim", hover=175,
+                pal=((112, 132, 152), (70, 90, 112), (228, 234, 238)), pat="countershade", temper="cold", strike="snap",
+                words=dict(body="a streamlined torpedo body", head="a pointed snout filled with rows of triangle teeth",
+                           limbs="no legs, only stiff fins", tail="a crescent tail fin", skin="smooth sandpaper hide",
+                           move="glides in effortless, sweeping S-curves", ability="a nose that smells one drop in a million")),
+    "whale": _S(torso=("teardrop", 500, 205, 0.0), legs=("none", 0, 0, 0), neck=(0, 0.0),
+                head=_H((72, 70), ("blunt", 95, 82, 70, 0.1), "none", ("none", 0), "beady", 0.0,
+                        extras=("barnacles",), eyecol=(20, 20, 26)),
+                tail="fluke", wings=("fin", 150), dorsal=("fin_small",), skin="smooth", gait="swim", hover=195,
+                pal=((74, 102, 132), (50, 70, 96), (192, 206, 216)), pat="countershade", temper="gentle", strike="snap",
+                words=dict(body="a gigantic streamlined body", head="a vast blunt head and a great curved mouth",
+                           limbs="long paddle fins", tail="a broad horizontal tail fluke", skin="smooth blue-grey skin",
+                           move="swims in slow, powerful sweeps", ability="a song that carries across oceans")),
+    "seal": _S(torso=("teardrop", 330, 135, 0.1), legs=("flipper", 2, 70, 40), foot="none", neck=(34, 0.2),
+               head=_H((50, 46), ("snout", 32, 34, 28, 0.0), "none", ("none", 0), "round", 0.0,
+                       extras=("whiskers",), eyecol=(30, 24, 24)),
+               tail="stub", skin="smooth", gait="hump", pal=((130, 140, 150), (92, 100, 110), (192, 198, 206)),
+               pat="mottled", temper="comical", strike="snap",
+               words=dict(body="a sleek, tapering body", head="a round face with long whiskers and big dark eyes",
+                          limbs="flippers instead of legs", tail="paired rear flippers", skin="sleek mottled fur",
+                          move="humps itself forward on its flippers", ability="whiskers that feel a fish's wake")),
+    "octopus": _S(torso=("round", 205, 195, 0.35), legs=("tentacle", 8, 130, 28), neck=(0, 0.0),
+                  head=_H((0, 0), ("none", 0, 0, 0, 0), "beak", ("none", 0), "slitbulge", 0.0, eyecol=(240, 200, 60)),
+                  tail="none", skin="smooth", gait="ripple", hover=0,
+                  pal=((178, 72, 98), (112, 42, 72), (232, 142, 162)), pat="mottled", temper="eerie", strike="grab",
+                  words=dict(body="a soft bulb of a body", head="two huge slit-pupil eyes set in the bulb of its head",
+                             limbs="eight boneless tentacles", tail="no tail", skin="colour-changing skin",
+                             move="flows over the ground on eight rippling arms", ability="changing colour in an instant")),
+    "jellyfish": _S(torso=("bell", 240, 170, 0.0), legs=("tentacle", 9, 190, 12), neck=(0, 0.0),
+                    head=_H((0, 0), ("none", 0, 0, 0, 0), "none", ("none", 0), "none", 0.0, eyecol=(255, 255, 255)),
+                    tail="none", skin="translucent", gait="pulse", hover=215,
+                    pal=((160, 216, 255), (224, 182, 255), (212, 242, 255)), pat="plain", temper="eerie", strike="sting",
+                    words=dict(body="a glowing, see-through bell", head="no head and no eyes",
+                               limbs="a curtain of trailing stinging tentacles", tail="no tail", skin="glassy translucent flesh",
+                               move="drifts and pulses through the air", ability="a sting that paralyses")),
+    "penguin": _S(torso=("teardrop", 235, 200, 1.3), legs=("webbed", 2, 54, 26), foot="webbed", neck=(8, 0.5),
+                  head=_H((36, 34), ("beak_short", 58, 16, 8, 0.0), "none", ("none", 0), "round", 0.1),
+                  tail="stub", wings=("flipper", 150), skin="feathers", gait="waddle",
+                  pal=((38, 46, 62), (244, 204, 64), (242, 242, 246)), pat="countershade", temper="comical", strike="snap",
+                  words=dict(body="an upright, bowling-pin body", head="a small head with a short sharp beak",
+                             limbs="short webbed feet", tail="a stiff stub tail", skin="dense waterproof feathers",
+                             move="waddles upright, side to side", ability="gliding on its belly at high speed")),
+    "owl": _S(torso=("teardrop", 225, 175, 1.0), legs=("bird", 2, 72, 16), foot="talon", neck=(10, 0.0),
+              head=_H((60, 58), ("beak_hook", 34, 16, 10, 0.0), "none", ("tufts", 40), "owl", 0.0,
+                      extras=("facial_disc",), eyecol=(240, 170, 30)),
+              tail="fan_short", wings=("bird", 250), skin="feathers", gait="strut", flies=True,
+              pal=((152, 114, 78), (232, 216, 184), (228, 210, 178)), pat="barring", temper="eerie", strike="dive",
+              words=dict(body="a round, upright, feathered body", head="a flat disc of a face with enormous forward eyes",
+                         limbs="feathered legs ending in talons", tail="a short fan of tail feathers",
+                         skin="soft barred feathers", move="struts upright, head swivelling",
+                         ability="silent flight and a head that turns almost all the way round")),
+    "eagle": _S(torso=("teardrop", 255, 125, 0.7), legs=("bird", 2, 95, 16), foot="talon", neck=(42, 0.6),
+                head=_H((42, 38), ("beak_hook", 64, 26, 12, 0.0), "none", ("none", 0), "fierce", 0.4, eyecol=(240, 190, 40)),
+                tail="fan", wings=("bird", 340), skin="feathers", gait="strut", flies=True,
+                pal=((106, 76, 48), (246, 246, 242), (152, 114, 78)), pat="head_white", temper="savage", strike="dive",
+                words=dict(body="a broad-chested raptor's body", head="a hooked beak under a fierce, frowning brow",
+                           limbs="powerful legs with hooked talons", tail="a broad tail fan",
+                           skin="layered brown feathers", move="struts proudly, wings half-open",
+                           ability="eyesight that spots prey from two miles up")),
+    "hummingbird": _S(torso=("teardrop", 150, 70, 0.35), legs=("bird", 2, 30, 8), foot="talon", neck=(10, 0.3),
+                      head=_H((30, 27), ("beak_needle", 125, 6, 3, 0.0), "none", ("none", 0), "beady", 0.0, eyecol=(10, 10, 10)),
+                      tail="fan_short", wings=("bird", 150), skin="feathers", gait="hover", hover=185, flies=True,
+                      pal=((52, 178, 130), (224, 42, 72), (212, 232, 212)), pat="throat", temper="alert", strike="stab",
+                      words=dict(body="a tiny, jewel-bright body", head="a needle-thin beak as long as its body",
+                                 limbs="tiny, almost useless feet", tail="a short fan tail", skin="shimmering iridescent feathers",
+                                 move="hovers and darts in any direction", ability="wings that beat eighty times a second")),
+    "peacock": _S(torso=("teardrop", 235, 130, 0.6), legs=("bird", 2, 125, 16), foot="talon", neck=(115, 0.9),
+                  head=_H((28, 26), ("beak_short", 36, 14, 8, 0.0), "none", ("none", 0), "round", 0.0,
+                          extras=("crest_fan",), eyecol=(30, 24, 20)),
+                  tail="train", wings=("bird", 110), skin="feathers", gait="strut", neck_bow=0.25,
+                  pal=((34, 112, 152), (44, 172, 112), (30, 92, 132)), pat="eyespots", temper="vain", strike="snap",
+                  words=dict(body="a slim, long-necked body", head="a tiny head with a fan-shaped crest",
+                             limbs="long strutting legs", tail="a gigantic train of eyed feathers",
+                             skin="iridescent blue-green feathers", move="struts in proud, stiff steps",
+                             ability="a tail that stares back with a hundred eyes")),
+    "flamingo": _S(torso=("teardrop", 200, 120, 0.5), legs=("bird", 2, 270, 10), foot="webbed", neck=(190, 0.95),
+                   head=_H((30, 26), ("beak_bent", 52, 14, 10, 0.0), "none", ("none", 0), "round", 0.0, eyecol=(240, 220, 90)),
+                   tail="fan_short", wings=("bird", 230), skin="feathers", gait="strut", neck_bow=0.35,
+                   pal=((242, 134, 152), (28, 28, 34), (250, 174, 184)), pat="plain", temper="serene", strike="snap",
+                   words=dict(body="a slim body on stilt legs", head="a tiny head with a sharply bent beak",
+                              limbs="legs as thin and tall as reeds", tail="a short tail", skin="rose-pink feathers",
+                              move="wades with slow, high-stepping grace", ability="filtering food with its upside-down beak")),
+    "bat": _S(torso=("round", 135, 105, 0.45), legs=("bird", 2, 42, 9), foot="talon", neck=(12, 0.2),
+              head=_H((40, 38), ("snout", 36, 24, 16, 0.0), "fangs", ("big", 115), "beady", 0.2,
+                      extras=("noseleaf",), eyecol=(240, 60, 50)),
+              tail="whip", wings=("bat", 330), skin="fur", gait="hover", hover=205, flies=True,
+              pal=((68, 56, 84), (142, 100, 122), (98, 86, 108)), pat="plain", temper="eerie", strike="dive",
+              words=dict(body="a small, furry body", head="a pug face with huge funnel ears",
+                         limbs="thumb-claws and hook feet", tail="a thin tail", skin="velvet fur and leathery skin",
+                         move="flutters and hangs in the dark", ability="seeing with sound")),
+    "dragonfly": _S(torso=("tube", 370, 34, 0.0), legs=("insect", 6, 72, 6), foot="tipclaw", neck=(5, 0.0),
+                    head=_H((32, 30), ("tiny", 14, 12, 10, 0.0), "none", ("none", 0), "compound", 0.0,
+                            extras=("mandibles",), eyecol=(60, 200, 190)),
+                    tail="none", wings=("insect4", 270), skin="chitin", gait="hover", hover=215, flies=True,
+                    pal=((62, 192, 202), (40, 112, 172), (152, 222, 222)), pat="bands", temper="alert", strike="dive",
+                    words=dict(body="a long, jewel-blue segmented body", head="a head that is almost all giant glittering eyes",
+                               limbs="six thin hooked legs", tail="a long jointed abdomen", skin="shining glassy armour",
+                               move="hovers, then darts sideways in a blink", ability="four wings that move independently")),
+    "butterfly": _S(torso=("tube", 140, 36, 0.2), legs=("insect", 6, 42, 5), foot="tipclaw", neck=(6, 0.0),
+                    head=_H((22, 22), ("tiny", 12, 10, 8, 0.0), "none", ("none", 0), "compound", 0.0,
+                            extras=("antennae_club",), eyecol=(30, 20, 20)),
+                    tail="none", wings=("butterfly", 300), skin="chitin", gait="flutter", hover=205, flies=True,
+                    pal=((240, 150, 44), (30, 24, 28), (66, 44, 32)), pat="eyespots", temper="serene", strike="dive",
+                    words=dict(body="a thin, fuzzy body", head="a tiny head with club-tipped antennae",
+                               limbs="six dainty legs", tail="no tail", skin="powdery scale-covered wings",
+                               move="flutters in lazy, tumbling loops", ability="huge patterned wings with false eyes")),
+    "mantis": _S(torso=("tube", 310, 38, 0.35), legs=("insect", 4, 150, 8), foot="tipclaw", neck=(66, 0.9),
+                 head=_H((34, 30), ("tiny", 18, 14, 10, 0.0), "none", ("none", 0), "compound", 0.0,
+                         extras=("antennae", "triangle"), eyecol=(200, 230, 120)),
+                 tail="none", wings=("insect2", 190), arms=("raptor", 170), skin="chitin", gait="sway",
+                 pal=((132, 178, 72), (196, 214, 104), (192, 212, 122)), pat="plain", temper="cold", strike="claw",
+                 words=dict(body="a long, leaf-thin body", head="a triangular head that turns to watch you",
+                            limbs="folded, spiked, grasping forelegs", tail="no tail", skin="leaf-green armour",
+                            move="rocks like a leaf in the wind, then strikes", ability="forelegs that snap shut in a blur")),
+    "ant": _S(torso=("pear", 235, 72, 0.0), legs=("insect", 6, 125, 8), foot="tipclaw", neck=(14, 0.0),
+              head=_H((44, 38), ("tiny", 20, 14, 10, 0.0), "none", ("none", 0), "beady", 0.2,
+                      extras=("mandibles", "antennae"), eyecol=(20, 16, 16)),
+              tail="none", skin="chitin", gait="skitter", pal=((112, 58, 38), (72, 34, 22), (132, 72, 46)),
+              pat="plain", temper="driven", strike="snap",
+              words=dict(body="a three-part segmented body", head="a head with powerful pincer jaws and bending antennae",
+                         limbs="six long, quick legs", tail="a swollen rear segment", skin="glossy red-brown armour",
+                         move="skitters in a fast, unstoppable tripod gait", ability="carrying fifty times its own weight")),
+    "spider": _S(torso=("pear", 255, 135, 0.0), legs=("arach", 8, 210, 9), foot="tipclaw", neck=(10, 0.0),
+                 head=_H((40, 34), ("tiny", 22, 16, 12, 0.0), "none", ("none", 0), "multi", 0.0,
+                         extras=("chelicerae", "pedipalps"), eyecol=(220, 40, 40)),
+                 tail="none", skin="chitin", gait="skitter", pal=((48, 40, 54), (176, 32, 42), (68, 58, 72)),
+                 pat="mark", temper="cold", strike="pounce",
+                 words=dict(body="a swollen abdomen behind a small armoured front", head="a cluster of eyes above venom fangs",
+                            limbs="eight jointed legs that arch high above the body", tail="no tail",
+                            skin="dark, hairy armour", move="skitters on eight silent legs", ability="silk and venom")),
+    "scorpion": _S(torso=("pear", 250, 80, 0.0), legs=("arach", 8, 100, 10), foot="tipclaw", neck=(10, 0.0),
+                   head=_H((30, 26), ("tiny", 16, 12, 10, 0.0), "none", ("none", 0), "multi", 0.0, eyecol=(30, 20, 20)),
+                   tail="stinger", tail_len=1.2, arms=("pincers", 190), skin="chitin", gait="skitter",
+                   pal=((164, 120, 66), (92, 62, 30), (184, 138, 78)), pat="plain", temper="cold", strike="stab",
+                   words=dict(body="a flat, segmented armoured body", head="a tiny head with a cluster of eyes",
+                              limbs="eight walking legs and two big pincers", tail="a curved tail tipped with a venom stinger",
+                              skin="glossy armour plates", move="skitters low with pincers raised",
+                              ability="a stinger that arcs over its back")),
+    "crab": _S(torso=("flatdome", 285, 112, 0.0), legs=("crab", 8, 112, 12), foot="tipclaw", neck=(0, 0.0),
+               head=_H((0, 0), ("none", 0, 0, 0, 0), "none", ("none", 0), "stalk", 0.0, eyecol=(20, 14, 14)),
+               tail="none", arms=("pincers", 215), skin="chitin", gait="scuttle", shell="carapace",
+               pal=((218, 90, 66), (152, 50, 40), (234, 152, 112)), pat="plain", temper="testy", strike="claw",
+               words=dict(body="a wide, flat armoured shell", head="two eyes on stalks",
+                          limbs="eight bent walking legs and two huge claws", tail="no tail", skin="a hard red carapace",
+                          move="scuttles sideways, claws high", ability="claws that crush shell and bone")),
+    "stingray": _S(torso=("flat", 390, 62, 0.0), legs=("none", 0, 0, 0), neck=(0, 0.0),
+                   head=_H((0, 0), ("none", 0, 0, 0, 0), "none", ("none", 0), "toplook", 0.0, eyecol=(20, 20, 20)),
+                   tail="whip_barb", tail_len=1.5, wings=("disc", 260), skin="smooth", gait="glide", hover=130,
+                   pal=((150, 120, 90), (84, 66, 48), (232, 226, 212)), pat="spots", temper="eerie", strike="stab",
+                   words=dict(body="a flat, diamond-shaped body", head="eyes on top and a mouth underneath",
+                              limbs="no legs, just wide wing-like fins", tail="a long whip tail with a venom barb",
+                              skin="smooth, sand-coloured skin", move="glides like a ghost", ability="a barbed tail")),
+    "anglerfish": _S(torso=("round", 300, 235, 0.0), legs=("none", 0, 0, 0), neck=(0, 0.0),
+                     head=_H((0, 0), ("none", 0, 0, 0, 0), "needle", ("none", 0), "round", 0.4,
+                             extras=("lure", "bigmouth"), eyecol=(240, 230, 120)),
+                     tail="fan_fin", wings=("fin", 90), skin="smooth", gait="swim", hover=165,
+                     pal=((62, 52, 64), (120, 255, 220), (92, 80, 96)), pat="plain", temper="eerie", strike="snap",
+                     words=dict(body="a swollen, lumpy body", head="an enormous mouth full of needle fangs and a glowing lure",
+                                limbs="no legs, stubby fins", tail="a ragged tail fin", skin="dark, lumpy skin",
+                                move="drifts in the dark", ability="a glowing lure on a stalk")),
+}
+
+ALL_SPECIES = sorted(SPECIES)
+
+
+# ---------------------------------------------------------------- the designer
+ARTHROPOD = ("insect", "arach", "crab")
+DISTINCT_SNOUTS = ("beak_hook", "beak_needle", "beak_short", "beak_bent", "beak_turtle", "trunk", "cone", "wide", "blunt")
+DISTINCT_EYES = ("owl", "fierce", "bulge", "periscope", "turret", "compound", "multi", "bigslit", "slit", "stalk",
+                 "slitbulge", "toplook", "sleepy", "bump")
+FLY_WINGS = ("bird", "bat", "insect4", "insect2", "butterfly")
+BODY_WINGS = ("fin", "flipper", "disc")
+
+
+def _seed(*parts):
+    return int(hashlib.md5("|".join(str(p) for p in parts).encode()).hexdigest()[:8], 16)
+
+
+def _lerp(a, b, k):
+    return a + (b - a) * k
+
+
+def _mixc(a, b, k):
+    return tuple(int(a[i] * (1 - k) + b[i] * k) for i in range(3))
+
+
+def _has_legs(S):
+    return S["legs"][0] != "none" and S["legs"][1] > 0
+
+
+def _headless(S):
+    return S["head"]["skull"][0] <= 0
+
+
+def _tuplify(x):
+    if isinstance(x, (list, tuple)):
+        return tuple(_tuplify(i) for i in x)
+    if isinstance(x, dict):
+        return {k: _tuplify(v) for k, v in x.items()}
+    return x
+
+
+def _clip(v, lo, hi):
+    return max(lo, min(hi, v))
+
+
+def _finish(g):
+    """Fill in everything the drawing code needs so that a design can be drawn on its own."""
+    d = _S()
+    for k, v in d.items():
+        g.setdefault(k, v)
+    g.setdefault("glow", False)
+    g.setdefault("sig", None)
+    g.setdefault("sigscale", {})
+    g.setdefault("hybrid", False)
+    g.setdefault("donors", {})
+    g.setdefault("wingfly", False)
+    g.setdefault("skin2", g.get("skin", "fur"))
+    return g
+
+
+def pure_design(name):
+    """A normal, un-mixed animal: it looks like itself (used for the two parents)."""
+    S = SPECIES[name]
+    g = copy_design(S)
+    g["wingfly"] = bool(S["wings"] and S["wings"][0] in FLY_WINGS and S["flies"])
+    g["hybrid"] = False
+    g["parents"] = (name,)
+    g["name"] = name
+    g["donors"] = {k: name for k in ("body", "head", "face", "legs", "tail", "wings", "skin", "palette")}
+    return _finish(g)
+
+
+def copy_design(S):
+    return _deep(S)
+
+
+def _deep(x):
+    if isinstance(x, dict):
+        return {k: _deep(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return tuple(_deep(v) for v in x) if isinstance(x, tuple) else [_deep(v) for v in x]
+    return x
+
+
+def _compose(a, b, rnd):
+    A, B = SPECIES[a], SPECIES[b]
+    if rnd.random() < 0.5:
+        D, O, dn, on = A, B, a, b
+    else:
+        D, O, dn, on = B, A, b, a
+    w = rnd.choice([0.88, 0.75, 0.62])      # how strongly the body parent dominates
+    g = {"hybrid": True, "parents": (a, b), "dominant": dn, "secondary": on, "dom_weight": w}
+    don = {}
+
+    # ---- torso: normally the dominant parent's, sometimes the other's
+    TN, T, TO, ton = (dn, D, O, on)
+    if rnd.random() < 0.22 and O["torso"][0] != D["torso"][0]:
+        TN, T, TO, ton = on, O, D, dn
+    don["body"] = TN
+    prof = T["torso"][0]
+    L = _lerp(T["torso"][1], TO["torso"][1], 1 - w) * rnd.uniform(0.9, 1.12)
+    Hh = _lerp(T["torso"][2], TO["torso"][2], 1 - w) * rnd.uniform(0.9, 1.14)
+    pitch = _lerp(T["torso"][3], TO["torso"][3], 0.2)
+    if prof in ("pear", "tube", "flat") and TO["torso"][0] in ("barrel", "sleek", "round", "teardrop") and rnd.random() < 0.4:
+        Hh = max(Hh, TO["torso"][2] * 0.7)
+    g["torso"] = (prof, L, Hh, pitch)
+    g["arch"] = T["arch"]
+
+    # ---- legs
+    if _has_legs(T):
+        LG, lgn = T, TN
+        if _has_legs(TO) and TO["legs"][0] in ARTHROPOD and T["legs"][0] not in ARTHROPOD and rnd.random() < 0.42:
+            LG, lgn = TO, ton
+        elif _has_legs(TO) and TO["legs"][0] in ("frog", "bigdigi", "bird", "pillar", "digi") and \
+                T["legs"][0] != TO["legs"][0] and rnd.random() < 0.28:
+            LG, lgn = TO, ton
+    elif _has_legs(TO):
+        LG, lgn = TO, ton
+    else:
+        LG, lgn = None, None
+    if LG is not None:
+        st, n, ln, th = LG["legs"]
+        refH = LG["torso"][2]
+        th = th * _clip((Hh / max(refH, 1)) ** 0.5, 0.65, 1.35)
+        ln = ln * rnd.uniform(0.88, 1.15) * (_clip((L / max(LG["torso"][1], 1)) ** 0.3, 0.8, 1.25))
+        if st in ("tentacle", "flipper"):
+            ln *= 0.9
+        g["legs"] = (st, n, ln, th)
+        g["foot"] = LG["foot"]
+        g["gait"] = LG["gait"]
+        g["legs_from"] = lgn
+        don["legs"] = lgn
+    else:
+        g["legs"] = ("none", 0, 0, 0)
+        g["foot"] = "none"
+        g["gait"] = D["gait"] if not _has_legs(D) else TO["gait"]
+        if g["gait"] not in ("swim", "slither", "glide", "pulse", "hover", "flutter"):
+            g["gait"] = "swim"
+        don["legs"] = None
+    # ---- arms / claws
+    arms = None
+    for S, nm in ((D, dn), (O, on)):
+        if S["arms"] and (arms is None or rnd.random() < 0.5):
+            arms = (S["arms"][0], S["arms"][1] * rnd.uniform(0.9, 1.15) * _clip((Hh / 150) ** 0.2, 0.9, 1.2))
+            don["arms"] = nm
+    if arms and arms[0] == "ape" and g["legs"][1] == 4:
+        g["legs"] = (g["legs"][0], 2, g["legs"][2], g["legs"][3])
+    if arms and arms[0] == "small":
+        arms = None
+    g["arms"] = arms
+
+    # ---- head: shape from one parent, face details from the other
+    HD, hdn, FD, fdn = (D, dn, O, on) if rnd.random() < 0.5 else (O, on, D, dn)
+    if _headless(HD):
+        HD, hdn, FD, fdn = FD, fdn, HD, hdn
+    if _headless(HD):                       # two headless parents: build a plain head
+        head = _H((46, 42), ("snout", 70, 32, 22, 0.0), "rows")
+        hdn = None
+    else:
+        head = _deep(HD["head"])
+    face_sp = FD["head"]
+    don["head"] = hdn
+    don["face"] = fdn
+    hs = _clip((Hh / max(HD["torso"][2], 1)) ** 0.3, 0.85, 1.2) * rnd.uniform(0.92, 1.1)
+    head["skull"] = (head["skull"][0] * hs, head["skull"][1] * hs)
+    sn = list(head["snout"])
+    # a very distinctive mouth (beak, trunk, cone...) from the other parent replaces the plain snout
+    fsn = face_sp["snout"]
+    if fsn[0] in DISTINCT_SNOUTS and fsn[0] != sn[0] and rnd.random() < 0.6 and not _headless(FD):
+        k = head["skull"][0] / max(face_sp["skull"][0], 1)
+        sn = [fsn[0], fsn[1] * _clip(k, 0.8, 1.5), fsn[2] * k, fsn[3] * k, fsn[4]]
+        head["teeth"] = face_sp["teeth"]
+        don["mouth"] = fdn
+    else:
+        if fsn[0] == "snout" and sn[0] == "snout" and rnd.random() < 0.5:   # blend two snouts
+            sn = [sn[0], _lerp(sn[1], fsn[1], 0.4), _lerp(sn[2], fsn[2], 0.4), _lerp(sn[3], fsn[3], 0.4), _lerp(sn[4], fsn[4], 0.5)]
+        elif face_sp["teeth"] not in ("none",) and head["teeth"] in ("none", "flat") and rnd.random() < 0.5:
+            head["teeth"] = face_sp["teeth"]
+        don["mouth"] = hdn
+    head["snout"] = tuple(sn)
+    # eyes
+    if face_sp["eyes"] in DISTINCT_EYES and (head["eyes"] not in DISTINCT_EYES or rnd.random() < 0.7):
+        head["eyes"] = face_sp["eyes"]
+        head["brow"] = face_sp["brow"]
+        head["eyecol"] = face_sp["eyecol"]
+    elif rnd.random() < 0.3:
+        head["eyecol"] = face_sp["eyecol"]
+    # ears
+    if face_sp["ears"][0] != "none" and (head["ears"][0] == "none" or rnd.random() < 0.4):
+        head["ears"] = (face_sp["ears"][0], face_sp["ears"][1] * hs)
+    elif head["ears"][0] in ("tufts", "flap", "big") and rnd.random() < 0.3:
+        head["ears"] = ("point", 60 * hs)
+    # extras (horns, mane, tusks, lure, casque, antennae...)
+    ex = list(head["extras"])
+    for e in face_sp["extras"]:
+        if e not in ex and rnd.random() < 0.8:
+            ex.append(e)
+    rnd.shuffle(ex)
+    head["extras"] = ex[:3]
+    g["head"] = head
+    # neck
+    nk = _lerp(HD["neck"][0], T["neck"][0], 0.35)
+    nu = _lerp(HD["neck"][1], T["neck"][1], 0.35)
+    if HD["neck"][0] >= 150:
+        nk, nu = HD["neck"]
+    g["neck"] = (nk * rnd.uniform(0.9, 1.1), nu)
+    g["neck_bow"] = HD.get("neck_bow", 0.12)
+
+    # ---- tail
+    tails = [(D["tail"], D.get("tail_len", 1.0), dn), (O["tail"], O.get("tail_len", 1.0), on)]
+    real = [t for t in tails if t[0] not in ("stub", "none")]
+    pick = rnd.choice(real) if real else tails[0]
+    if len(real) == 2 and rnd.random() < 0.6:
+        pick = real[1] if real[0][2] == TN else real[0]    # often the tail of the *other* parent than the body
+    g["tail"], g["tail_len"] = pick[0], pick[1] * rnd.uniform(0.9, 1.15)
+    don["tail"] = pick[2]
+
+    # ---- wings
+    cand = []
+    for S, nm in ((D, dn), (O, on)):
+        if S["wings"]:
+            cand.append((S["wings"], nm, S))
+    g["wings"], g["wingfly"] = None, False
+    if cand:
+        fly = [c for c in cand if c[0][0] in FLY_WINGS]
+        wing, wn, WS = (rnd.choice(fly) if fly else rnd.choice(cand))
+        kind, size = wing
+        if kind in FLY_WINGS:
+            size = max(size * _clip((L / max(WS["torso"][1], 1)) ** 0.55, 0.8, 1.6), 0.82 * L) * rnd.uniform(0.95, 1.2)
+            size = min(size, L * (0.95 if kind == "butterfly" else 1.45))   # wings must not swallow the body or the frame
+            g["wingfly"] = True
+        else:
+            size = size * _clip((L / max(WS["torso"][1], 1)) ** 0.6, 0.7, 1.4)
+        g["wings"] = (kind, size)
+        don["wings"] = wn
+    # ---- shell / armour
+    g["shell"] = None
+    for S, nm in ((D, dn), (O, on)):
+        if S["shell"] and (nm == TN or rnd.random() < 0.7):
+            g["shell"] = S["shell"]
+            don["shell"] = nm
+            break
+    # ---- dorsal features
+    dors = list(D["dorsal"]) + [d for d in O["dorsal"] if rnd.random() < 0.7]
+    g["dorsal"] = tuple(dict.fromkeys(dors))[:2]
+
+    # ---- skin and texture
+    g["skin"] = T["skin"]
+    sk2 = [x["skin"] for x in (D, O) if x["skin"] != T["skin"]]
+    g["skin2"] = sk2[0] if sk2 else T["skin"]
+    don["skin"] = TN
+
+    # ---- colour: a new palette inspired by both parents
+    m1, a1, b1 = D["pal"]
+    m2, a2, b2 = O["pal"]
+    k = rnd.uniform(0.28, 0.45)
+    main = _mixc(m1, m2, k)
+    acc = a2 if rnd.random() < 0.55 else _mixc(a1, a2, 0.5)
+    acc = _mixc(acc, (255, 255, 255), 0.0)
+    belly = b1 if sum(b1) > sum(b2) else b2
+    belly = _mixc(belly, main, 0.25)
+    # keep it from becoming mud: push the colour away from grey a little
+    avg = sum(main) / 3
+    main = tuple(int(_clip(avg + (c - avg) * 1.12, 20, 245)) for c in main)
+    g["pal"] = (main, acc, belly)
+    g["pat"] = O["pat"] if (O["pat"] != "plain" and rnd.random() < 0.6) or D["pat"] == "plain" else D["pat"]
+    if g["pat"] in ("head_white", "socks", "throat", "mark"):
+        g["pat"] = rnd.choice(["spots", "stripes", "bands", "mottled", "countershade"])
+    don["palette"] = (dn, on)
+
+    # ---- hovering / flying
+    g["hover"] = 0
+    if g["wingfly"] and g["wings"][1] > 0.7 * L:
+        light = Hh < 150 and L < 330
+        g["hover"] = (170 + rnd.uniform(-20, 30)) if light else rnd.uniform(70, 120)
+        g["gait"] = "hover" if light else g["gait"]
+    elif g["gait"] in ("swim", "glide", "pulse", "hover", "flutter"):
+        g["hover"] = max(D["hover"], O["hover"], 150)
+    if g["legs"][0] == "none" and g["hover"] == 0 and g["gait"] != "slither":
+        g["hover"] = 150
+
+    # ---- character
+    g["temper"] = D["temper"] if rnd.random() < 0.6 else O["temper"]
+    g["glow"] = g["temper"] in ("savage", "eerie", "cold") and rnd.random() < 0.55
+    pstrike = [S["strike"] for S in (D, O)]
+    g["strike"] = rnd.choice(pstrike)
+    if arms and arms[0] == "pincers":
+        g["strike"] = "claw"
+    if g["tail"] == "stinger" and rnd.random() < 0.7:
+        g["strike"] = "stab"
+    if g["head"]["snout"][0] == "beak_needle":
+        g["strike"] = "stab"
+    # one signature feature, drawn larger than life
+    pool = []
+    if g["wings"] and g["wingfly"]:
+        pool.append(("wings", "a pair of enormous wings"))
+    if g["tail"] in ("stinger", "train", "bushy", "fan", "lunate", "fluke", "whip_barb"):
+        pool.append(("tail", "an oversized " + g["tail"].replace("_", " ") + " tail"))
+    if arms and arms[0] in ("pincers", "raptor", "ape"):
+        pool.append(("arms", "huge " + arms[0] + " arms"))
+    for e in g["head"]["extras"]:
+        if e in ("mane", "horns_bull", "horn_nose", "tusks", "lure", "casque", "antennae", "ossicones", "crest_fan",
+                 "facial_disc", "mandibles", "gills_frill", "noseleaf"):
+            pool.append((e, "a striking " + e.replace("_", " ")))
+    for e in g["dorsal"]:
+        pool.append((e, "a prominent " + e.replace("_", " ")))
+    if g["shell"]:
+        pool.append(("shell", "a heavy " + g["shell"] + " shell"))
+    if g["head"]["snout"][0] in ("beak_needle", "beak_hook", "trunk", "cone"):
+        pool.append(("snout", "a " + g["head"]["snout"][0].replace("_", " ") + " snout"))
+    sig = rnd.choice(pool) if pool else ("head", "a face unlike any real animal")
+    g["sig"] = sig
+    g["sigscale"] = {sig[0]: 1.3}
+    g["donors"] = don
+    return g
+
+
+# ---------------------------------------------------------------- comparing designs (no two hybrids may look alike)
+def _bin(v, edges):
+    return sum(1 for e in edges if v >= e)
+
+
+def fingerprint(g):
+    prof, L, Hh, pitch = g["torso"]
+    hue = _hue(g["pal"][0])
+    fp = {
+        "prof": prof, "pitch": _bin(pitch, (0.25, 0.6, 0.95)), "L": _bin(L, (200, 290, 380, 450)),
+        "H": _bin(Hh, (80, 120, 170, 210)), "legs": g["legs"][0], "nlegs": g["legs"][1],
+        "legh": _bin(g["legs"][2], (60, 110, 170, 230)), "neck": _bin(g["neck"][0], (30, 80, 150)),
+        "snout": g["head"]["snout"][0], "snoutl": _bin(g["head"]["snout"][1], (40, 90, 150)),
+        "teeth": g["head"]["teeth"], "ears": g["head"]["ears"][0], "eyes": g["head"]["eyes"],
+        "tail": g["tail"], "wings": g["wings"][0] if g["wings"] else "none", "shell": g["shell"] or "none",
+        "dorsal": "+".join(sorted(g["dorsal"])) or "none", "skin": g["skin"], "skin2": g["skin2"], "pat": g["pat"],
+        "hue": hue, "light": _bin(sum(g["pal"][0]) / 3, (80, 140, 190)), "gait": g["gait"],
+        "hover": g["hover"] > 40, "arms": g["arms"][0] if g["arms"] else "none",
+        "extras": "+".join(sorted(g["head"]["extras"])),
+    }
+    return fp
+
+
+def _hue(c):
+    import colorsys
+    h, s, v = colorsys.rgb_to_hsv(c[0] / 255, c[1] / 255, c[2] / 255)
+    return -1 if s < 0.12 else int(h * 12) % 12
+
+
+FP_WEIGHTS = {"prof": 2.2, "pitch": 1.2, "L": 1.2, "H": 1.2, "legs": 2.2, "nlegs": 1.6, "legh": 1.0, "neck": 1.2,
+              "snout": 1.8, "snoutl": 0.8, "teeth": 0.5, "ears": 1.0, "eyes": 1.0, "tail": 1.8, "wings": 2.2,
+              "shell": 1.6, "dorsal": 1.8, "skin": 1.0, "skin2": 0.5, "pat": 1.0, "hue": 1.6, "light": 0.8,
+              "gait": 1.0, "hover": 1.2, "arms": 1.5, "extras": 1.0}
+FP_MIN_DISTANCE = 11.0
+
+
+def fp_distance(f1, f2):
+    d = 0.0
+    for k, w in FP_WEIGHTS.items():
+        a, b = f1.get(k), f2.get(k)
+        if a == b:
+            continue
+        if k == "hue" and a != -1 and b != -1 and min((a - b) % 12, (b - a) % 12) == 1:
+            d += w * 0.4
+        elif isinstance(a, int) and isinstance(b, int) and not isinstance(a, bool):
+            d += w * min(1.0, abs(a - b) * 0.6)
+        else:
+            d += w
+    return d
+
+
+# ---------------------------------------------------------------- description (the identity profile)
+def _pick_words(name, key):
+    S = SPECIES.get(name)
+    return (S["words"].get(key) if S else "") or ""
+
+
+def describe(g):
+    don = g["donors"]
+    a, b = g["parents"][0], g["parents"][-1]
+    bits = []
+    TN = don.get("body")
+    bits.append(f"{_pick_words(TN, 'body')} (from the {TN})")
+    if don.get("head") or don.get("face"):
+        hn, fn = don.get("head"), don.get("face")
+        sn = g["head"]["snout"][0]
+        face = f"a {hn}-shaped head" if hn else "a head"
+        if don.get("mouth") and don.get("mouth") != hn:
+            face += f" with the {don['mouth']}'s mouth"
+        if fn and fn != hn:
+            face += f" and the {fn}'s eyes"
+        bits.append(face)
+    if don.get("legs"):
+        bits.append(f"{_pick_words(don['legs'], 'limbs')} (from the {don['legs']})")
+    else:
+        bits.append("no legs")
+    if g.get("arms"):
+        bits.append({"pincers": "two huge pincers", "raptor": "spiked grasping forelegs", "ape": "long knuckle-walking arms"}.get(g["arms"][0], "strong arms"))
+    if g["wings"]:
+        bits.append(f"{g['wings'][0].replace('4', '').replace('2', '')} wings (from the {don.get('wings')})")
+    if g["shell"]:
+        bits.append(f"a {g['shell']} shell")
+    bits.append(f"{_pick_words(don.get('tail'), 'tail')} (from the {don.get('tail')})")
+    if g["dorsal"]:
+        bits.append("a back with " + " and ".join(d.replace("_", " ") for d in g["dorsal"]))
+    bits.append(f"{_pick_words(TN, 'skin')} mixed with {g['skin2']} texture")
+    return bits
+
+
+def describe_move(g):
+    parts = [_pick_words(g["donors"].get("legs") or g["donors"].get("body"), "move")]
+    if g["hover"] > 40:
+        parts.append("hovers off the ground")
+    if g["wingfly"]:
+        parts.append("beats its wings")
+    return ", ".join(p for p in parts if p)
+
+
+def design_profile(g, name=""):
+    """The identity profile: one place that says exactly what this creature is. Saved with the plan."""
+    prof, L, Hh, pitch = g["torso"]
+    a, b = g["parents"][0], g["parents"][-1]
+    return {
+        "hybrid_name": name, "parent_a": a, "parent_b": b, "dominant_parent": g.get("dominant"),
+        "dominant": [f"{g['donors'].get('body')} body structure"],
+        "secondary": [x for x in (f"{g['donors'].get('face')} eyes and face details" if g["donors"].get("face") else "",
+                                  f"{g['donors'].get('tail')} tail", f"{g['donors'].get('wings')} wings" if g["wings"] else "") if x],
+        "proportions": f"{prof} torso, {int(L)}x{int(Hh)}, {'upright' if pitch > 0.6 else 'horizontal'} posture, "
+                       f"neck {int(g['neck'][0])}, legs {g['legs'][0]} x{g['legs'][1]}",
+        "head": describe(g)[1] if len(describe(g)) > 1 else "",
+        "limbs": f"{g['legs'][0]} x{g['legs'][1]}" + (f", {g['arms'][0]} arms" if g["arms"] else ""),
+        "texture": f"{g['skin']} body, {g['skin2']} limbs and tail",
+        "colour": {"main": g["pal"][0], "accent": g["pal"][1], "belly": g["pal"][2], "pattern": g["pat"]},
+        "silhouette": "-".join(str(v) for v in (prof, "wings" if g["wings"] else "", g["tail"], "shell" if g["shell"] else "",
+                                                  "+".join(g["dorsal"])) if v),
+        "locomotion": describe_move(g), "gait": g["gait"], "hovers": g["hover"] > 40,
+        "signature_ability": g["strike"], "temperament": g["temper"],
+        "signature_feature": g["sig"][1] if g["sig"] else "",
+        "summary": describe(g),
+    }
+
+
+def design_hybrid(a, b, avoid=(), seed=0, tries=60):
+    """Invent a creature from parents a and b. `avoid` = fingerprints of earlier hybrids; the new design must
+    differ from all of them (not just in name or colour, but in body, silhouette, face and movement)."""
+    best = None
+    for attempt in range(tries):
+        rnd = random.Random(_seed(a, b, seed, attempt))
+        g = _finish(_compose(a, b, rnd))
+        g["name"] = f"{a}-{b}"
+        fp = fingerprint(g)
+        dist = min([fp_distance(fp, f) for f in avoid] or [99.0])
+        if best is None or dist > best[0]:
+            best = (dist, g, fp, attempt)
+        if dist >= FP_MIN_DISTANCE:
+            break
+    dist, g, fp, attempt = best
+    g["fingerprint"] = fp
+    g["fp_distance"] = round(dist, 1)
+    g["attempt"] = attempt
+    return g
+
+
+# ---------------------------------------------------------------- drawing helpers
+def _tube(pen, pts, w0, w1, col, rim=True, cap=True, prof=None):
+    """A smooth tapering tube along pts. prof(u) (0..1) can reshape the width."""
+    n = len(pts)
+    if n < 2:
+        return
+    Lp, Rp = [], []
+    for i, (x, y) in enumerate(pts):
+        a = pts[max(0, i - 1)]
+        b = pts[min(n - 1, i + 1)]
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        m = math.hypot(dx, dy) or 1.0
+        nx, ny = -dy / m, dx / m
+        u = i / (n - 1)
+        w = (w0 + (w1 - w0) * u) * (prof(u) if prof else 1.0) / 2
+        Lp.append((x + nx * w, y + ny * w))
+        Rp.append((x - nx * w, y - ny * w))
+    pen.poly(Lp + Rp[::-1], col, rim=rim)
+    if cap:
+        pen.ell(pts[0][0], pts[0][1], w0 / 2 * (prof(0) if prof else 1), w0 / 2 * (prof(0) if prof else 1), col, rim=False)
+        e = (w1 / 2) * (prof(1) if prof else 1)
+        pen.ell(pts[-1][0], pts[-1][1], e, e, col, rim=False)
+
+
+def _ik(hx, hy, fx, fy, l1, l2, bend):
+    dx, dy = fx - hx, fy - hy
+    d = math.hypot(dx, dy)
+    d = max(1e-3, min(d, l1 + l2 - 1e-3))
+    a = (l1 * l1 - l2 * l2 + d * d) / (2 * d)
+    h = math.sqrt(max(0.0, l1 * l1 - a * a))
+    ux, uy = dx / math.hypot(dx, dy) if math.hypot(dx, dy) > 1e-6 else 0.0, dy / math.hypot(dx, dy) if math.hypot(dx, dy) > 1e-6 else 1.0
+    return hx + ux * a - uy * h * bend, hy + uy * a + ux * h * bend
+
+
+def _ellpts(cx, cy, rx, ry, n=22):
+    return [(cx + rx * math.cos(2 * math.pi * i / n), cy + ry * math.sin(2 * math.pi * i / n)) for i in range(n)]
+
+
+def _prof(name, u):
+    """(top, bottom) half-thickness (0..1) at u along the torso, 0 = tail end, 1 = chest end."""
+    s = math.sin
+    if name == "barrel":
+        t = 0.6 + 0.4 * s(math.pi * min(1, max(0, u * 0.92 + 0.04))) ** 0.7
+        return t, t * 0.92
+    if name == "sleek":
+        t = 0.56 + 0.44 * math.exp(-((u - 0.76) / 0.28) ** 2) + 0.10 * math.exp(-((u - 0.1) / 0.16) ** 2)
+        return min(1.0, t), min(1.0, t) * 0.78
+    if name == "round":
+        v = math.sqrt(max(0.0, 1 - (2 * u - 1) ** 2))
+        t = 0.1 + 0.9 * v
+        return t, t
+    if name == "tube":
+        tf = math.sqrt(max(0.0, 1 - ((u - 0.84) / 0.16) ** 2)) if u > 0.84 else 1.0
+        t = max(0.14, (0.84 + 0.16 * u) * tf)
+        return t, t * 0.9
+    if name == "pear":
+        v1 = math.sqrt(max(0.0, 1 - ((u - 0.27) / 0.29) ** 2))
+        v2 = 0.62 * math.sqrt(max(0.0, 1 - ((u - 0.77) / 0.21) ** 2))
+        t = max(v1, v2, 0.24 if 0.5 < u < 0.62 else 0.08)
+        return t, t
+    if name == "teardrop":
+        t = 0.1 + 0.9 * s(math.pi * (0.05 + 0.8 * u ** 1.3)) ** 0.8
+        return t, t
+    if name in ("dome", "bell"):
+        t = max(0.08, s(math.pi * min(1, max(0, u))) ** (0.55 if name == "dome" else 0.7))
+        return t, t * (0.2 if name == "dome" else 0.14)
+    if name == "flatdome":
+        t = max(0.08, s(math.pi * u) ** 0.5)
+        return t, t * 0.42
+    if name == "flat":
+        t = max(0.1, s(math.pi * u) ** 0.8)
+        return t, t
+    return 0.8, 0.8
+
+
+def _foot(pen, fx, fy, kind, w, col, dk, lift=0.0):
+    claw = (235, 230, 214)
+    if kind == "none":
+        return
+    if kind in ("paw", "bigpaw"):
+        r = w * (0.9 if kind == "paw" else 1.2)
+        pen.ell(fx + r * 0.35, fy, r, r * 0.45, dk, rim=False)
+        for k in range(3):
+            pen.poly([(fx + r * (1.0 + k * 0.05) + k * 5, fy - 3 + k * 4), (fx + r * 1.5 + k * 5, fy + 3 + k * 4), (fx + r * 0.95 + k * 5, fy + 7 + k * 4)], claw, rim=False)
+    elif kind == "hoof":
+        pen.poly([(fx - w * 0.5, fy - w * 0.9), (fx + w * 0.6, fy - w * 0.9), (fx + w * 0.7, fy + 3), (fx - w * 0.45, fy + 3)], (34, 28, 30), rim=False)
+    elif kind == "flat":
+        pen.ell(fx + w * 0.2, fy - 2, w * 1.1, w * 0.45, dk, rim=False)
+        for k in range(3):
+            pen.ell(fx + w * (0.6 + k * 0.35), fy - 4, w * 0.16, w * 0.16, (224, 214, 190), rim=False)
+    elif kind == "pad":
+        pen.ell(fx + w * 0.4, fy - 2, w * 1.2, w * 0.4, dk, rim=False)
+    elif kind in ("webbed", "toed"):
+        pen.poly([(fx - w * 0.2, fy - w * 0.4), (fx + w * 1.6, fy + 2), (fx + w * 1.2, fy + w * 0.3), (fx - w * 0.2, fy + w * 0.3)], dk, rim=False)
+        for k in range(3):
+            pen.line([(fx, fy - 2), (fx + w * (1.3 + 0.1 * k), fy - 3 + k * 3)], 3, light(dk, 0.2))
+    elif kind == "talon":
+        for k in range(3):
+            pen.line([(fx, fy - 4), (fx + w * 2.4, fy + k * 3 - 2), (fx + w * 2.9, fy + 5)], 4, (216, 190, 80))
+        pen.line([(fx, fy - 4), (fx - w * 1.6, fy + 3)], 4, (216, 190, 80))
+    elif kind == "longfoot":
+        pen.poly([(fx - w * 0.2, fy - w * 0.5), (fx + w * 3.2, fy + 1), (fx + w * 3.4, fy + 6), (fx - w * 0.2, fy + 6)], dk, rim=False)
+        pen.poly([(fx + w * 3.2, fy), (fx + w * 3.9, fy + 6), (fx + w * 3.2, fy + 6)], claw, rim=False)
+    elif kind == "claw":
+        for k in range(3):
+            pen.poly([(fx + k * 6, fy - 4), (fx + w * 1.3 + k * 6, fy + 3), (fx + k * 6 + 2, fy + 4)], claw, rim=False)
+    elif kind == "zygo":
+        pen.poly([(fx - 5, fy - 6), (fx + 18, fy + 2), (fx - 5, fy + 4)], dk, rim=False)
+        pen.poly([(fx - 4, fy - 6), (fx - 20, fy + 3), (fx - 4, fy + 4)], dk, rim=False)
+    elif kind == "tipclaw":
+        pen.poly([(fx - 4, fy - 3), (fx + 14, fy + 3), (fx - 4, fy + 4)], (30, 24, 24), rim=False)
+
+
+# ---------------------------------------------------------------- patterns and textures on the body
+def _body_marks(pen, g, spine, top, bot, col, dk, lt, rseed, scale=1.0):
+    pat, skin = g["pat"], g["skin"]
+    rnd = random.Random(rseed)
+    n = len(spine)
+    pcol = mix(col, (14, 10, 12), 0.42)
+    acc = g["pal"][1]
+    def T(i, v):   # v 0 = back, 1 = belly; i may fall between two rings
+        i0 = int(i); i1 = min(i0 + 1, len(top) - 1); f = i - i0
+        tx = top[i0][0] * (1 - f) + top[i1][0] * f; ty = top[i0][1] * (1 - f) + top[i1][1] * f
+        bx = bot[i0][0] * (1 - f) + bot[i1][0] * f; by = bot[i0][1] * (1 - f) + bot[i1][1] * f
+        return (tx * (1 - v) + bx * v, ty * (1 - v) + by * v)
+    if pat == "spots":
+        for _ in range(16):
+            i = rnd.randint(1, n - 3)
+            x, y = T(i, rnd.uniform(0.12, 0.6))
+            r = rnd.uniform(6, 12) * scale
+            pen.dot(x, y, r, pcol)
+    elif pat == "stripes":
+        for i in range(2, n - 2, 2):
+            a, b = T(i, 0.0), T(i, 0.78)
+            a2, b2 = T(i + 1, 0.0), T(i + 1, 0.7)
+            pen.poly([a, a2, b2, b], pcol, rim=False)
+    elif pat == "bands":
+        for i in range(2, n - 3, 3):
+            pen.poly([T(i, 0.0), T(i + 1, 0.0), T(i + 1, 0.85), T(i, 0.85)], mix(col, acc, 0.45), rim=False)
+    elif pat == "mottled":
+        for _ in range(24):
+            i = rnd.randint(1, n - 3)
+            x, y = T(i, rnd.uniform(0.05, 0.7))
+            r = rnd.uniform(8, 20) * scale
+            pen.ell(x, y, r, r * 0.7, mix(col, acc if rnd.random() < 0.5 else (20, 16, 20), 0.35), rim=False)
+    elif pat == "diamond":
+        for i in range(2, n - 2, 3):
+            x, y = T(i, 0.3)
+            pen.poly([(x - 14, y), (x, y - 16), (x + 14, y), (x, y + 16)], mix(col, acc, 0.3), rim=False)
+    elif pat == "patches":
+        for _ in range(11):
+            i = rnd.randint(1, n - 3)
+            x, y = T(i, rnd.uniform(0.15, 0.55))
+            pen.poly([(x + math.cos(a) * rnd.uniform(14, 26), y + math.sin(a) * rnd.uniform(12, 22)) for a in
+                      [k * 1.05 for k in range(6)]], mix(col, acc, 0.65), rim=False)
+    elif pat == "barring":
+        for i in range(2, n - 2, 2):
+            for v in (0.25, 0.55):
+                x, y = T(i, v)
+                pen.line([(x - 10, y - 5), (x, y + 5), (x + 10, y - 5)], 4, pcol)
+    elif pat == "eyespots":
+        for _ in range(7):
+            i = rnd.randint(2, n - 3)
+            x, y = T(i, rnd.uniform(0.2, 0.55))
+            pen.ell(x, y, 15 * scale, 15 * scale, acc, rim=False)
+            pen.ell(x, y, 9 * scale, 9 * scale, (30, 30, 60), rim=False)
+            pen.dot(x + 2, y - 2, 3, (240, 240, 255))
+    elif pat == "mark":
+        i = n // 3
+        x, y = T(i, 0.35)
+        pen.poly([(x - 22, y - 10), (x + 22, y - 10), (x, y + 30)], acc, rim=False)
+    # ---- texture of the skin
+    if skin == "scales" or skin == "scutes":
+        step = 2
+        for r_, v in enumerate((0.12, 0.3, 0.48, 0.66, 0.82)):
+            for i in range(1 + (r_ % 2), n - 2, step):
+                x, y = T(i, v)
+                s = 7.5 * scale
+                pen.poly([(x - s, y), (x, y - s * 0.8), (x + s, y), (x, y + s * 0.8)], lt if (i + r_) % 2 else dk, rim=False)
+    elif skin == "feathers":
+        for r_, v in enumerate((0.12, 0.3, 0.48, 0.66, 0.82)):
+            for i in range(1 + (r_ % 2), n - 2, 2):
+                x, y = T(i, v)
+                pen.ell(x, y, 12 * scale, 8 * scale, mix(col, dk, 0.35), rim=False)
+                pen.line([(x - 8 * scale, y + 2), (x + 8 * scale, y + 2)], 2, lt)
+    elif skin == "chitin":
+        for i in range(2, n - 2, 2):
+            pen.line([T(i, 0.0), T(i, 0.5), T(i, 1.0)], 3, dk)
+        pen.line([T(2, 0.22), T(n // 2, 0.2), T(n - 3, 0.22)], 3, lt)
+    elif skin == "wrinkled":
+        for _ in range(22):
+            i = rnd.randint(1, n - 3)
+            x, y = T(i, rnd.uniform(0.1, 0.9))
+            pen.line([(x - 12, y - 3), (x, y + 4), (x + 12, y - 3)], 3, dk)
+    elif skin == "plated":
+        for i in range(2, n - 2, 3):
+            pen.line([T(i, 0.05), T(i + 0.5, 0.5), T(i, 0.95)], 5, dk)
+        pen.line([T(1, 0.35), T(n // 2, 0.3), T(n - 2, 0.35)], 5, dk)
+    elif skin == "warty":
+        for _ in range(26):
+            i = rnd.randint(1, n - 2)
+            x, y = T(i, rnd.uniform(0.05, 0.7))
+            pen.dot(x, y, rnd.uniform(3, 6) * scale, dk)
+    elif skin == "translucent":
+        for i in range(2, n - 2, 2):
+            x, y = T(i, 0.3)
+            pen.dot(x, y, 6, lt)
+    elif skin == "smooth" or skin == "scales":
+        pen.line([T(2, 0.2), T(n // 2, 0.12), T(n - 2, 0.22)], 6, lt)
+
+
+def _fur_tufts(pen, top, bot, col, scale=1.0):
+    lt = light(col, 0.18)
+    for pts, sgn in ((top, 1), (bot, -1)):
+        for i in range(1, len(pts) - 1):
+            x, y = pts[i]
+            tx, ty = pts[i + 1][0] - pts[i - 1][0], pts[i + 1][1] - pts[i - 1][1]
+            m = math.hypot(tx, ty) or 1
+            tx, ty = tx / m, ty / m
+            ox, oy = ty * sgn, -tx * sgn          # points away from the body
+            pen.poly([(x - tx * 9, y - ty * 9), (x + tx * 9, y + ty * 9),
+                      (x - tx * 5 + ox * 15 * scale, y - ty * 5 + oy * 15 * scale)], lt, rim=False)
+
+
+# ---------------------------------------------------------------- head: a face built from the parts both parents gave it
+BEAKCOL = (236, 190, 70)
+
+
+def _head(pen, hx, hy, rot, g, roar, t, st):
+    hd = g["head"]
+    rx, ry = hd["skull"]
+    col, acc, belly = [tuple(c) for c in g["pal"]]
+    hcol = acc if g["pat"] == "head_white" else col
+    dk, lt = dark(hcol, 0.62), light(hcol, 0.25)
+    cr, sr = math.cos(rot), math.sin(rot)
+
+    def P(x, y):
+        return (hx + x * cr - y * sr, hy + x * sr + y * cr)
+
+    def poly(pts, fill, rim=True):
+        pen.poly([P(*p) for p in pts], fill, rim=rim)
+
+    def E(x, y, a, b, fill, rim=True):
+        poly(_ellpts(x, y, a, b, 20), fill, rim)
+
+    def line(pts, w, fill):
+        pen.line([P(*p) for p in pts], w, fill)
+
+    sk = hd["snout"]
+    kind, ln, bb, tp, dr = sk
+    teeth = hd["teeth"]
+    temper_open = 0.1 if g["temper"] in ("savage", "cold", "eerie") else 0.0
+    opn = max(roar * 0.55, temper_open) if not kind.startswith("beak") else max(roar * 0.42, 0.0)
+    if kind in ("tiny", "none", "trunk"):
+        opn = roar * 0.5
+    eyes = hd["eyes"]
+    ex_, ey_ = rx * 0.34, -ry * 0.26
+    ear_k, ear_s = hd["ears"]
+    extras = hd["extras"]
+    sig = g["sigscale"]
+    bone = (232, 224, 200)
+
+    # ---- things behind the skull
+    if "mane" in extras:
+        k = sig.get("mane", 1.0)
+        mc = mix(acc, (60, 30, 12), 0.35)
+        for i in range(16):
+            a = i * 0.42 + 0.4
+            E(-rx * 0.15 + math.cos(a) * rx * 0.95 * k, math.sin(a) * ry * 1.0 * k, rx * 0.55, rx * 0.5, mix(mc, col, 0.1 * (i % 3)), rim=False)
+    if "gills_frill" in extras:
+        for j in range(3):
+            for k_ in range(4):
+                a = -0.9 + j * 0.55 + k_ * 0.07 * 0
+                pts = [(-rx * 0.5, -ry * 0.2 + j * ry * 0.3), (-rx * 0.5 - 40 - k_ * 6, -ry * 0.5 + j * ry * 0.3 - 28 * math.sin(t * 3 + j + k_))]
+                line(pts, 6 - k_ * 0.8, mix(acc, (255, 130, 160), 0.4))
+            E(-rx * 0.5 - 52, -ry * 0.5 + j * ry * 0.3, 9, 7, mix(acc, (255, 130, 160), 0.4), rim=False)
+    if ear_k == "flap":
+        E(-rx * 0.45, ry * 0.1, ear_s * 0.55, ear_s * 0.72, mix(col, (160, 110, 110), 0.22))
+    if "crest_fan" in extras:
+        for j in range(9):
+            a = -1.9 + j * 0.3
+            ex2, ey2 = math.cos(a) * 52 * sig.get("crest_fan", 1.0), math.sin(a) * 52 * sig.get("crest_fan", 1.0)
+            line([(0, -ry * 0.8), (ex2, -ry * 0.8 + ey2)], 3, (30, 30, 40))
+            E(ex2, -ry * 0.8 + ey2, 8, 8, acc, rim=False)
+    if "antennae" in extras or "antennae_club" in extras:
+        for j, ph_ in ((0, 0.0), (1, 1.4)):
+            sw = 12 * math.sin(t * 2.2 + ph_)
+            pts = [(rx * 0.1, -ry * 0.7), (rx * 0.5 + sw * 0.3, -ry * 1.6), (rx * 1.3 + sw, -ry * 2.1 + sw * 0.4)]
+            line(pts, 3.5, dark(col, 0.5))
+            if "antennae_club" in extras:
+                E(pts[-1][0], pts[-1][1], 7, 7, dark(col, 0.5), rim=False)
+    if "casque" in extras:
+        k = sig.get("casque", 1.0)
+        poly([(-rx * 0.9, -ry * 0.2), (-rx * 0.8, -ry * (1.6 + 0.5 * k)), (rx * 0.05, -ry * (1.0 + 0.3 * k)), (rx * 0.4, -ry * 0.5)], acc)
+    if ear_k == "big":
+        for off, c2 in ((0.2, dark(col, 0.8)), (0.0, col)):
+            poly([(-rx * (0.5 - off * 0.2), -ry * 0.55), (-rx * 0.1 + off * 4, -ry * 0.7), (-rx * 0.4 + off * 6, -ry * 0.7 - ear_s)], c2)
+        poly([(-rx * 0.42, -ry * 0.62), (-rx * 0.2, -ry * 0.7), (-rx * 0.36, -ry * 0.7 - ear_s * 0.72)], mix(col, (230, 150, 160), 0.5), rim=False)
+    elif ear_k == "point":
+        for off, c2 in ((0.16, dark(col, 0.78)), (0.0, col)):
+            poly([(-rx * 0.62 + off * 10, -ry * 0.6), (rx * 0.05 + off * 8, -ry * 0.7), (-rx * 0.28 + off * 12, -ry * 0.62 - ear_s)], c2)
+        poly([(-rx * 0.45, -ry * 0.64), (-rx * 0.12, -ry * 0.7), (-rx * 0.28, -ry * 0.64 - ear_s * 0.62)], mix(col, (220, 150, 150), 0.4), rim=False)
+    elif ear_k == "round":
+        E(-rx * 0.35, -ry * 0.72, ear_s * 0.45, ear_s * 0.45, col)
+        E(-rx * 0.35, -ry * 0.72, ear_s * 0.26, ear_s * 0.26, mix(col, (220, 150, 150), 0.4), rim=False)
+    elif ear_k == "tufts":
+        poly([(-rx * 0.3, -ry * 0.8), (-rx * 0.05, -ry * 0.9), (-rx * 0.55, -ry * 0.9 - ear_s)], dark(col, 0.8))
+        poly([(rx * 0.0, -ry * 0.85), (rx * 0.3, -ry * 0.8), (rx * 0.05, -ry * 0.85 - ear_s * 0.9)], col)
+    if "horns_bull" in extras:
+        k = sig.get("horns_bull", 1.0)
+        for off, c2 in ((0.25, dark(bone, 0.8)), (0.0, bone)):
+            pts = [(-rx * (0.1 - off * 0.3), -ry * 0.8), (-rx * 0.3, -ry * 1.5 * k), (rx * 0.35, -ry * 2.1 * k), (rx * 0.85, -ry * 2.2 * k)]
+            _tube(pen, [P(*p) for p in pts], rx * 0.36, rx * 0.04, c2, rim=True)
+    if "ossicones" in extras:
+        for off, c2 in ((0.3, dark(col, 0.7)), (0.0, col)):
+            line([(-rx * 0.1 + off * rx * 0.5, -ry * 0.8), (-rx * 0.15 + off * rx * 0.5, -ry * 1.8)], 8, c2)
+            E(-rx * 0.15 + off * rx * 0.5, -ry * 1.9, 9, 9, dark(col, 0.5), rim=False)
+    if "crown" in extras:
+        poly([(-rx * 0.6, -ry * 0.55), (-rx * 0.1, -ry * 1.45), (rx * 0.3, -ry * 0.8)], dark(col, 0.75))
+
+    # ---- the skull
+    E(0, 0, rx, ry, hcol)
+    if g["skin"] == "fur" and ear_k != "none":
+        for i in range(4):
+            a = 2.3 + i * 0.45
+            poly([(math.cos(a) * rx * 0.95, math.sin(a) * ry * 0.95), (math.cos(a + 0.3) * rx * 0.95, math.sin(a + 0.3) * ry * 0.95),
+                  (math.cos(a + 0.15) * rx * 1.25, math.sin(a + 0.15) * ry * 1.25)], light(hcol, 0.1), rim=False)
+    if g["pat"] == "mask":
+        E(rx * 0.22, -ry * 0.18, rx * 0.5, ry * 0.36, dark(col, 0.55), rim=False)
+    elif g["pat"] == "throat":
+        E(rx * 0.1, ry * 0.65, rx * 0.5, ry * 0.3, acc, rim=False)
+    elif g["pat"] in ("stripes", "bands"):
+        for j in range(2):
+            line([(-rx * 0.1 + j * rx * 0.4, -ry * 0.9), (rx * 0.1 + j * rx * 0.4, -ry * 0.1)], 6, dark(col, 0.55))
+    elif g["pat"] in ("spots", "mottled", "patches"):
+        for dx, dy in ((-rx * 0.3, -ry * 0.4), (-rx * 0.05, -ry * 0.55), (-rx * 0.45, ry * 0.1)):
+            E(dx, dy, 7, 7, dark(col, 0.6), rim=False)
+    elif g["pat"] == "eyespots":
+        E(-rx * 0.3, -ry * 0.2, 10, 10, acc, rim=False)
+
+    # ---- the mouth: upper jaw, lower jaw, interior and teeth
+    def jaw_rot(px, py, o):
+        c, s = math.cos(o), math.sin(o)
+        return lambda x, y: (px + (x - px) * c - (y - py) * s, py + (x - px) * s + (y - py) * c)
+
+    lowcol = mix(hcol, belly, 0.55)
+    gum = (112, 18, 28)
+
+    if kind in ("snout", "wide", "blunt", "cone"):
+        x0, yc = rx * 0.3, ry * 0.22
+        yt = yc + dr * ln
+        sc_ = sig.get("snout", 1.0)
+        ln *= sc_
+        yt = yc + dr * ln
+        if kind == "cone":
+            upper = [(x0 - 4, yc - bb), (x0 + ln * 0.5, yc - bb * 0.5 + dr * ln * 0.5), (x0 + ln, yt - 3), (x0 + ln, yt), (x0, yc)]
+            lw = [(x0, yc), (x0 + ln * 0.82, yt), (x0 + ln * 0.74, yt + 11), (x0 + ln * 0.3, yc + bb * 0.55), (x0 - 2, yc + bb * 0.6)]
+        elif kind == "wide":
+            upper = [(x0 - 4, yc - bb), (x0 + ln * 0.5, yc - bb * 0.85), (x0 + ln, yt - tp), (x0 + ln + 3, yt - 2), (x0 + ln, yt), (x0 - rx * 0.4, yc - 2)]
+            lw = [(x0 - rx * 0.4, yc - 2), (x0 + ln * 0.97, yt), (x0 + ln * 0.9, yt + tp * 0.55 + 4), (x0 + ln * 0.4, yc + bb * 0.35), (x0 - 2, yc + bb * 0.5)]
+        else:
+            upper = [(x0 - 4, yc - bb), (x0 + ln * 0.5, yc - (bb + tp) * 0.47 + dr * ln * 0.5), (x0 + ln, yt - tp),
+                     (x0 + ln + 4, yt - tp * 0.25), (x0 + ln, yt), (x0, yc)]
+            lw = [(x0, yc), (x0 + ln * 0.97, yt), (x0 + ln * 0.92, yt + tp * 0.6), (x0 + ln * 0.45, yc + (bb * 0.55 + tp * 0.5) * 0.5 + dr * ln * 0.45), (x0 - 2, yc + bb * 0.6)]
+        o = opn * (1.2 if kind in ("wide", "blunt") else 1.0)
+        rotf = jaw_rot(x0 * 0.4, yc + 2, o)
+        lwr = [rotf(*p) for p in lw]
+        if o > 0.04:
+            poly([(x0 * 0.4, yc + 2), (x0 + ln * 0.98, yt), lwr[1], (x0 * 0.4, yc + 6)], gum, rim=False)
+            tx_, ty_ = (x0 + ln * 0.5), yc + dr * ln * 0.5
+            E(tx_, ty_ + 14 + 24 * o, ln * 0.25, 7 + 6 * o, (190, 70, 84), rim=False)
+        poly(lwr, lowcol)
+        # lower teeth
+        if o > 0.08 and teeth not in ("none",):
+            nt = max(3, int(ln / 22))
+            for i in range(nt):
+                fx_ = x0 + ln * (0.2 + 0.7 * i / max(1, nt - 1))
+                fy_ = yc + dr * ln * (fx_ - x0) / ln
+                p1, p2 = rotf(fx_, fy_), rotf(fx_ + 7, fy_ + dr * 7)
+                hgt = 10 + bb * 0.22 if teeth != "needle" else 14 + bb * 0.3
+                tip = rotf(fx_ + 3, fy_ - hgt)
+                pen.poly([(hx + p1[0] * cr - p1[1] * sr, hy + p1[0] * sr + p1[1] * cr),
+                          (hx + p2[0] * cr - p2[1] * sr, hy + p2[0] * sr + p2[1] * cr),
+                          (hx + tip[0] * cr - tip[1] * sr, hy + tip[0] * sr + tip[1] * cr)], (244, 240, 226), rim=False)
+        poly(upper, hcol)
+        if g["pat"] == "mask":
+            poly([(x0, yc - bb), (x0 + ln * 0.6, yc - bb * 0.7 + dr * ln * 0.5), (x0 + ln * 0.6, yc - bb * 0.2 + dr * ln * 0.5), (x0, yc - 2)], dark(col, 0.6), rim=False)
+        # upper teeth
+        if teeth not in ("none",):
+            tt = (244, 240, 226)
+            if teeth == "fangs":
+                for fx_, hg in ((0.78, 1.0), (0.95, 0.42), (0.6, 0.35)):
+                    xx = x0 + ln * fx_
+                    yy = yc + dr * ln * fx_
+                    poly([(xx - 6, yy - 1), (xx + 6, yy - 1), (xx + 1, yy + (16 + bb * 0.55) * hg * (1 + 0.5 * opn))], tt, rim=False)
+            elif teeth == "flat":
+                for i in range(5):
+                    xx = x0 + ln * (0.55 + i * 0.09)
+                    yy = yc + dr * ln * (0.55 + i * 0.09)
+                    poly([(xx - 4, yy - 1), (xx + 4, yy - 1), (xx + 4, yy + 6), (xx - 4, yy + 6)], tt, rim=False)
+            else:
+                nt = max(4, int(ln / 15))
+                for i in range(nt):
+                    fx_ = 0.18 + 0.8 * i / max(1, nt - 1)
+                    xx, yy = x0 + ln * fx_, yc + dr * ln * fx_
+                    hgt = (9 + bb * 0.22) * (1.5 if teeth == "needle" else 1.0) * (0.8 + 0.4 * ((i * 7) % 3) / 2)
+                    poly([(xx - 4, yy - 1), (xx + 4, yy - 1), (xx, yy + hgt * (1 + 0.5 * opn))], tt, rim=False)
+        nx_, ny_ = x0 + ln * 0.88, yt - tp * 0.7 - 2
+        E(nx_, ny_ - 1, 5, 3.5, (20, 14, 18), rim=False)
+        if "nostril_bump" in extras:
+            E(x0 + ln * 0.93, yt - tp - 4, 12, 10, hcol)
+        if "noseleaf" in extras:
+            poly([(x0 + ln * 0.9, yt - tp), (x0 + ln * 0.95, yt - tp - 28), (x0 + ln * 1.05, yt - tp - 2)], mix(col, (220, 140, 150), 0.5))
+        if "horn_nose" in extras:
+            k = sig.get("horn_nose", 1.0)
+            poly([(x0 + ln * 0.5, yc - bb * 0.9 + dr * ln * 0.45), (x0 + ln * 0.9, yt - tp), (x0 + ln * 0.78, yc - bb * 0.9 - 72 * k + dr * ln * 0.8)], (210, 200, 180))
+        if "whiskers" in extras:
+            for j in range(3):
+                line([(x0 + ln * 0.5, yc - 4 + j * 4), (x0 + ln * 0.95, yc + 6 + j * 14), (x0 + ln * 1.1, yc + 10 + j * 22)], 2.5, (230, 230, 230))
+        if "tusks" in extras or "tusk_row" in extras:
+            k = sig.get("tusks", 1.0)
+            poly([(x0 + ln * 0.55, yc + 3), (x0 + ln * 0.63, yc + 3), (x0 + ln * 0.8 + 20 * k, yc + 40 * k + dr * ln * 0.6)], bone)
+        if "mandibles" in extras:
+            pass
+    elif kind.startswith("beak"):
+        x0, yc = rx * 0.5, ry * 0.2
+        hook = {"beak_hook": bb * 1.35, "beak_short": bb * 0.4, "beak_needle": 2, "beak_bent": bb * 0.3, "beak_turtle": bb * 0.9}.get(kind, bb * 0.4)
+        bend = ln * 0.5 if kind == "beak_bent" else 0.0
+        bcol = (150, 130, 90) if kind == "beak_turtle" else BEAKCOL
+        if kind == "beak_hook" and g["pat"] != "plain" and "owl" in hd["eyes"]:
+            bcol = (200, 180, 130)
+
+        def bendp(p):
+            return (p[0], p[1] + bend * max(0.0, (p[0] - (x0 + ln * 0.45)) / (ln * 0.55)) ** 1.6)
+        sc_ = sig.get("snout", 1.0)
+        ln2 = ln * sc_
+        upper = [(x0 - 8, yc - bb), (x0 + ln2 * 0.55, yc - bb * 0.78), (x0 + ln2 * 0.93, yc - bb * 0.1 + hook * 0.3), (x0 + ln2, yc + hook),
+                 (x0 + ln2 * 0.86, yc + hook * 0.4 + 2), (x0 + ln2 * 0.5, yc + 1), (x0, yc + 1)]
+        lw = [(x0, yc + 1), (x0 + ln2 * 0.86, yc + hook * 0.4 + 3), (x0 + ln2 * 0.74, yc + bb * 0.62 + hook * 0.3 + 4), (x0, yc + bb * 0.7)]
+        upper = [bendp(p) if i > 1 else p for i, p in enumerate(upper)] if bend else upper
+        lw = [bendp(p) for p in lw] if bend else lw
+        o = opn
+        rotf = jaw_rot(x0, yc + 2, o)
+        lwr = [rotf(*p) for p in lw]
+        if o > 0.05:
+            poly([(x0, yc + 1), (x0 + ln2, yc + hook), lwr[1], (x0, yc + 4)], gum, rim=False)
+        poly(lwr, mix(bcol, (80, 60, 40), 0.2))
+        poly(upper, bcol)
+        E(x0 + ln2 * 0.25, yc - bb * 0.55, 3, 2.2, (50, 36, 24), rim=False)
+        if "noseleaf" in extras:
+            poly([(x0 + ln2 * 0.1, yc - bb), (x0 + ln2 * 0.15, yc - bb - 22), (x0 + ln2 * 0.3, yc - bb)], mix(col, (220, 140, 150), 0.5))
+    elif kind == "trunk":
+        x0, yc = rx * 0.55, ry * 0.2
+        pts = []
+        for j in range(9):
+            u = j / 8
+            pts.append((x0 + ln * (0.3 * u + 0.14 * math.sin(2.2 * u + t * 1.4)),
+                        yc + ln * (0.95 * u - 1.5 * roar * u * (1 - 0.3 * u))))
+        _tube(pen, [P(*p) for p in pts], rx * 0.5, rx * 0.2, hcol, rim=True)
+        for j in range(1, 8, 2):
+            a, b_ = pts[j], pts[j + 1] if j + 1 < len(pts) else pts[j]
+            line([(a[0] - rx * 0.2, a[1]), (a[0] + rx * 0.2, a[1] + 2)], 2, dk)
+        if "tusks" in extras:
+            k = sig.get("tusks", 1.0)
+            for off in (0.0, 0.2):
+                _tube(pen, [P(x0 + 4 + off * 20, yc + 6), P(x0 + ln * 0.18 + off * 20, yc + ln * 0.25 * k), P(x0 + ln * 0.5, yc + ln * 0.2 * k)], rx * 0.2, rx * 0.04, bone)
+    elif kind == "tiny":
+        x0, yc = rx * 0.5, ry * 0.2
+        E(x0, yc, ln * 0.9, ry * 0.5, mix(hcol, belly, 0.2))
+        if "mandibles" in extras:
+            k = sig.get("mandibles", 1.0)
+            o = 0.25 + opn * 0.9
+            for sgn in (1, -1):
+                pts = [(x0 + 6, yc + 4), (x0 + 30 * k, yc + 14 + sgn * 16 * (1 + o)), (x0 + 50 * k, yc + 4 + sgn * 6 * (1 + o))]
+                _tube(pen, [P(*p) for p in pts], 12, 3, dark(col, 0.45))
+        if "chelicerae" in extras:
+            for j, off in enumerate((-8, 8)):
+                _tube(pen, [P(x0 + 4 + off * 0.3, yc + 8), P(x0 + 14, yc + 28 + off * 0.2), P(x0 + 18 + off * 0.4, yc + 44 + opn * 18)], 11, 2, dark(col, 0.5))
+                E(x0 + 18 + off * 0.4, yc + 44 + opn * 18, 3, 3, (180, 255, 90), rim=False)
+        if "pedipalps" in extras:
+            for off in (-1, 1):
+                E(x0 + 18, yc + off * 5 + 6, 8, 5, dark(col, 0.6))
+    if "lure" in extras and (kind == "none" or True):
+        k = sig.get("lure", 1.0)
+        pts = [(rx * 0.2, -ry * 0.9), (rx * 0.9, -ry * 2.0 * k), (rx * 1.9 + 8 * math.sin(t * 2), -ry * 1.9 * k)]
+        line(pts, 4, dark(col, 0.5))
+        gl = 0.7 + 0.3 * math.sin(t * 5)
+        c_ = P(*pts[-1])
+        for r_, a_ in ((28, 50), (17, 110), (9, 255)):
+            x0_, x1_ = sorted((pen.X(c_[0] - r_), pen.X(c_[0] + r_)))
+            pen.d.ellipse((x0_, pen.Y(c_[1] - r_), x1_, pen.Y(c_[1] + r_)), fill=(120, 255, 220, int(a_ * gl)))
+    if "gills" in extras:
+        for j in range(3):
+            line([(-rx * 0.15 - j * 11, -ry * 0.2), (-rx * 0.28 - j * 11, ry * 0.15), (-rx * 0.15 - j * 11, ry * 0.5)], 3, dark(col, 0.45))
+    if "barnacles" in extras:
+        for dx, dy in ((rx * 0.3, ry * 0.5), (rx * 0.5, ry * 0.3), (rx * 0.1, ry * 0.6)):
+            E(dx, dy, 6, 5, (210, 210, 200), rim=False)
+    if "browridge" in extras:
+        poly([(-rx * 0.1, -ry * 0.55), (rx * 0.7, -ry * 0.5), (rx * 0.72, -ry * 0.25), (-rx * 0.1, -ry * 0.3)], dark(col, 0.6), rim=False)
+
+    # ---- the eyes
+    ec = tuple(hd["eyecol"])
+    glow = g.get("glow", False)
+    brow = hd["brow"] + (0.25 if g["temper"] in ("savage",) else 0.0)
+    er = max(6.0, ry * 0.26)
+
+    def glow_eye(x, y, r):
+        for k_, a_ in ((3.0, 0.14), (2.0, 0.3), (1.4, 0.55)):
+            E(x, y, r * k_, r * k_, mix((20, 14, 26), ec, a_), rim=False)
+        E(x, y, r, r * 0.9, ec, rim=False)
+        E(x + 1, y, r * 0.3, r * 0.75, (40, 10, 0), rim=False)
+
+    def plain_eye(x, y, r, iris=ec, slit=False, white=True):
+        if white:
+            E(x, y, r, r * 0.92, (246, 244, 236), rim=False)
+        E(x + r * 0.12, y, r * 0.72, r * 0.72, iris, rim=False)
+        if slit:
+            E(x + r * 0.12, y, r * 0.2, r * 0.7, (12, 8, 10), rim=False)
+        else:
+            E(x + r * 0.18, y, r * 0.38, r * 0.38, (12, 8, 10), rim=False)
+        E(x + r * 0.35, y - r * 0.3, r * 0.16, r * 0.16, (255, 255, 255), rim=False)
+
+    if eyes == "none":
+        pass
+    elif glow and eyes not in ("compound", "multi", "stalk"):
+        glow_eye(ex_, ey_, er * 1.15)
+    elif eyes in ("round", "sleepy"):
+        plain_eye(ex_, ey_, er)
+        if eyes == "sleepy":
+            poly([(ex_ - er * 1.1, ey_ - er * 1.1), (ex_ + er * 1.1, ey_ - er * 1.1), (ex_ + er * 1.1, ey_ - er * 0.05), (ex_ - er * 1.1, ey_ + er * 0.05)], hcol, rim=False)
+            line([(ex_ - er * 1.1, ey_), (ex_ + er * 1.1, ey_ + 1)], 3, dk)
+            for j in range(3):
+                line([(ex_ - er * 0.3 + j * er * 0.45, ey_ - 1), (ex_ - er * 0.5 + j * er * 0.5, ey_ - er * 0.9)], 2, dk)
+    elif eyes in ("slit", "bigslit"):
+        plain_eye(ex_, ey_, er * (1.5 if eyes == "bigslit" else 1.0), iris=ec, slit=True, white=False)
+    elif eyes == "fierce":
+        plain_eye(ex_, ey_, er * 0.9, iris=(244, 196, 40), white=False)
+        E(ex_ + er * 0.15, ey_, er * 0.3, er * 0.3, (12, 8, 10), rim=False)
+        brow = max(brow, 0.5)
+    elif eyes == "beady":
+        E(ex_, ey_, er * 0.62, er * 0.62, (14, 10, 12), rim=False)
+        E(ex_ + er * 0.2, ey_ - er * 0.2, er * 0.16, er * 0.16, (255, 255, 255), rim=False)
+    elif eyes == "owl":
+        E(rx * 0.22, 0, ry * 0.95, ry * 0.92, mix(belly, (255, 255, 255), 0.25))
+        E(rx * 0.22, 0, ry * 0.52, ry * 0.52, ec, rim=False)
+        E(rx * 0.22, 0, ry * 0.26, ry * 0.26, (10, 8, 8), rim=False)
+        E(rx * 0.3, -ry * 0.12, ry * 0.1, ry * 0.1, (255, 255, 255), rim=False)
+    elif eyes in ("bulge", "periscope"):
+        k = 1.0 if eyes == "bulge" else 0.6
+        E(rx * 0.12, -ry * 0.92, rx * 0.34 * k + 6, rx * 0.3 * k + 6, hcol)
+        plain_eye(rx * 0.16, -ry * 0.96, rx * 0.2 * k + 4, iris=ec, slit=False, white=False)
+        E(rx * 0.16, -ry * 0.96, rx * 0.2 * k * 0.28 + 1, rx * 0.2 * k * 0.8 + 3, (10, 8, 8), rim=False)
+    elif eyes == "bump":
+        E(rx * 0.2, -ry * 0.95, ry * 0.42, ry * 0.38, hcol)
+        plain_eye(rx * 0.24, -ry * 1.0, ry * 0.26, iris=ec, slit=True, white=False)
+    elif eyes == "turret":
+        E(rx * 0.1, -ry * 0.1, ry * 0.7, ry * 0.7, mix(hcol, acc, 0.3))
+        E(rx * 0.1, -ry * 0.1, ry * 0.45, ry * 0.45, dark(hcol, 0.6), rim=False)
+        E(rx * 0.1, -ry * 0.1, ry * 0.16, ry * 0.16, (8, 6, 6), rim=False)
+        E(rx * 0.2, -ry * 0.18, ry * 0.07, ry * 0.07, (255, 255, 255), rim=False)
+    elif eyes == "compound":
+        E(rx * 0.25, -ry * 0.05, rx * 0.75 + 4, ry * 0.8 + 4, mix(ec, (10, 40, 50), 0.35))
+        for j in range(-2, 3):
+            line([(rx * 0.25 + j * rx * 0.28, -ry * 0.7), (rx * 0.25 + j * rx * 0.28, ry * 0.6)], 1.8, dark(ec, 0.5))
+        for j in range(-2, 3):
+            line([(rx * 0.25 - rx * 0.6, j * ry * 0.3), (rx * 0.25 + rx * 0.6, j * ry * 0.3)], 1.8, dark(ec, 0.5))
+        E(rx * 0.4, -ry * 0.3, rx * 0.12, ry * 0.12, (230, 255, 255), rim=False)
+    elif eyes == "multi":
+        for (dx, dy, r) in ((0.2, -0.45, 0.2), (0.5, -0.42, 0.16), (0.05, -0.2, 0.1), (0.35, -0.12, 0.1), (0.62, -0.18, 0.08), (0.2, 0.08, 0.07)):
+            E(rx * dx, ry * dy, ry * r + 2, ry * r + 2, (14, 10, 14))
+            E(rx * dx + 1, ry * dy - 1, ry * r * 0.3 + 0.5, ry * r * 0.3 + 0.5, (255, 255, 255), rim=False)
+            if g.get("glow"):
+                E(rx * dx, ry * dy, ry * r * 0.8, ry * r * 0.8, ec, rim=False)
+    elif eyes == "stalk":
+        for off, c2 in ((0.0, hcol), (rx * 0.55, hcol)):
+            line([(rx * 0.1 + off, -ry * 0.3), (rx * 0.1 + off, -ry * 1.1 - 4)], 8, dark(col, 0.7))
+            E(rx * 0.1 + off, -ry * 1.2 - 6, 11, 11, (14, 10, 12))
+            E(rx * 0.1 + off + 3, -ry * 1.2 - 9, 3, 3, (255, 255, 255), rim=False)
+    elif eyes == "slitbulge":
+        E(rx * 0.3, -ry * 0.28, ry * 0.32, ry * 0.34, mix(hcol, belly, 0.2))
+        plain_eye(rx * 0.3, -ry * 0.28, ry * 0.24, iris=ec, slit=False, white=False)
+        E(rx * 0.3, -ry * 0.28, ry * 0.2, ry * 0.07, (8, 6, 6), rim=False)
+    elif eyes == "toplook":
+        E(rx * 0.3, -ry * 0.3, 9, 7, (14, 10, 12))
+    elif eyes == "bump":
+        pass
+    if abs(brow) > 0.08 and eyes not in ("compound", "multi", "stalk", "bulge", "periscope", "bump", "turret", "owl", "none"):
+        b_ = brow
+        poly([(ex_ - er * 1.5, ey_ - er * (1.15 + b_ * 1.9)), (ex_ + er * 1.5, ey_ - er * (1.15 - b_ * 1.9)),
+              (ex_ + er * 1.5, ey_ - er * (0.55 - b_ * 1.9)), (ex_ - er * 1.5, ey_ - er * (0.55 + b_ * 1.9))], dark(hcol, 0.5), rim=False)
+    if "tearmarks" in extras:
+        line([(ex_ + 2, ey_ + er), (ex_ + 8, ry * 0.4), (ex_ + 24, ry * 0.5)], 6, (30, 24, 20))
+    return P(rx * 0.7, 0)
+
+
+# ---------------------------------------------------------------- wings, tails and other appendages
+FLAP_SPEED = {"hummingbird": 30.0, "dragonfly": 34.0, "butterfly": 5.0, "bat": 7.0, "eagle": 4.2, "owl": 4.6,
+              "peacock": 3.0, "flamingo": 4.0, "mantis": 0.0}
+
+
+def _wing(pen, kind, size, sx, sy, flap, col, acc, dk, far=False, pat="plain", t=0.0, fast=False):
+    k = size
+    c = dark(col, 0.62) if far else col
+    c2 = dark(acc, 0.6) if far else acc
+    if kind in ("bird", "bat"):
+        ph = 1.0 + 0.62 * flap
+        wr = (sx - math.cos(ph) * 0.5 * k, sy - math.sin(ph) * 0.5 * k)
+        ph2 = ph * 0.55 - 0.18
+        tip = (wr[0] - math.cos(ph2) * 0.58 * k, wr[1] - math.sin(ph2) * 0.58 * k)
+        tr = (sx - 0.3 * k, sy + 0.1 * k)
+        if kind == "bird":
+            pts = [(sx, sy - 6), wr, tip]
+            for i in range(1, 7):
+                u = i / 6
+                px, py = tip[0] + (tr[0] - tip[0]) * u, tip[1] + (tr[1] - tip[1]) * u
+                dxn, dyn = tr[1] - tip[1], -(tr[0] - tip[0])
+                m = math.hypot(dxn, dyn) or 1
+                pts.append((px - dxn / m * 0.08 * k * (1 if i % 2 else 0.4), py - dyn / m * 0.08 * k * (1 if i % 2 else 0.4)))
+            pts.append((sx - 0.1 * k, sy + 8))
+            pen.poly(pts, mix(c, (0, 0, 0), 0.12))
+            for i in range(3, 3 + 5):
+                pen.line([wr, pts[i]], 3, dark(c, 0.7))
+            pen.line([(sx, sy), wr, tip], 9 * k / 300 + 4, light(c, 0.1))
+        else:
+            fing = []
+            for j, a in enumerate((ph2 - 0.35, ph2 + 0.05, ph2 + 0.45)):
+                fing.append((wr[0] - math.cos(a) * 0.6 * k, wr[1] - math.sin(a) * 0.6 * k))
+            mem = [(sx, sy), wr, fing[0], ((fing[0][0] + fing[1][0]) / 2 + 6, (fing[0][1] + fing[1][1]) / 2 + 22), fing[1],
+                   ((fing[1][0] + fing[2][0]) / 2 + 6, (fing[1][1] + fing[2][1]) / 2 + 22), fing[2], (sx - 0.28 * k, sy + 0.18 * k)]
+            pen.poly(mem, mix(c, c2, 0.3))
+            for f in fing:
+                pen.line([wr, f], 4, dark(c, 0.6))
+            pen.line([(sx, sy), wr], 8, dark(c, 0.7))
+    elif kind in ("insect4", "insect2"):
+        n = 2 if kind == "insect4" else 1
+        for j in range(n):
+            for fw in (0, 1):
+                a = 0.9 + 0.5 * flap * (1 if fw == 0 else -0.8) - j * 0.0
+                ln = k * (0.62 if fw == 0 else 0.5)
+                if kind == "insect2":
+                    a = 0.05
+                    ln = k * 0.8
+                bx, by = sx - j * 0.1 * k + fw * 0.12 * k, sy - 4
+                pts = _ellpts(0, 0, ln / 2, 12 + k * 0.025, 14)
+                ca, sa = math.cos(a), math.sin(a)
+                cx_, cy_ = bx - ca * ln / 2, by - sa * ln / 2
+                dx_, dy_ = -ca, -sa
+                pp = [(cx_ + px * dx_ - py * dy_, cy_ + px * dy_ + py * dx_) for px, py in pts]
+                al = 70 if (fast and kind == "insect4") else 120
+                pen.poly(pp, (214, 240, 244, al) if not far else (150, 190, 200, 80), rim=True)
+                pen.line([(bx, by), (cx_ - math.cos(a) * ln / 2, cy_ - math.sin(a) * ln / 2)], 2, (160, 200, 210, 150))
+    elif kind == "butterfly":
+        a = 1.0 + 0.7 * flap
+        up = [(sx, sy), (sx - math.cos(a) * 0.5 * k, sy - math.sin(a) * 0.55 * k), (sx - math.cos(a - 0.35) * 0.78 * k, sy - math.sin(a - 0.35) * 0.78 * k),
+              (sx - math.cos(a - 0.9) * 0.62 * k, sy - math.sin(a - 0.9) * 0.62 * k), (sx - 0.1 * k, sy + 0.04 * k)]
+        lo = [(sx, sy + 4), (sx - math.cos(a - 1.1) * 0.5 * k, sy - math.sin(a - 1.1) * 0.5 * k + 0.1 * k),
+              (sx - math.cos(a - 1.4) * 0.4 * k, sy - math.sin(a - 1.4) * 0.3 * k + 0.2 * k), (sx - 0.05 * k, sy + 0.12 * k)]
+        for poly_ in (lo, up):
+            pen.poly(poly_, c)
+            pen.poly([(sx + (x - sx) * 0.82, sy + (y - sy) * 0.82) for x, y in poly_], mix(c, c2, 0.0), rim=False)
+        for poly_ in (up, lo):
+            m = poly_[2]
+            pen.ell(m[0] + (sx - m[0]) * 0.3, m[1] + (sy - m[1]) * 0.3, 0.06 * k, 0.06 * k, c2, rim=False)
+            pen.ell(m[0] + (sx - m[0]) * 0.3, m[1] + (sy - m[1]) * 0.3, 0.035 * k, 0.035 * k, (20, 20, 50), rim=False)
+    elif kind == "flipper":
+        a = -0.45 + 0.5 * flap
+        L_ = k * 0.55
+        tx, ty = sx - math.sin(a) * L_ * 0.5 - 6, sy + math.cos(a) * L_
+        pen.poly([(sx, sy - 10), (sx - 22, sy + 8), (tx - 8, ty), (tx + 12, ty - 4), (sx + 14, sy + 4)], c)
+    elif kind == "fin":
+        a = 0.2 * flap
+        pen.poly([(sx + 28, sy), (sx - 18, sy + 6), (sx - k * 0.55, sy + k * 0.42 + a * 20), (sx - k * 0.1, sy + k * 0.12)], c)
+    elif kind == "disc":
+        pass
+
+
+def _path(R, back, length, n, wave=0.0, wph=0.0, droop=0.0):
+    pts = []
+    bx, by = back
+    nx, ny = -by, bx
+    for i in range(n + 1):
+        u = i / n
+        w = wave * math.sin(wph - u * 4.0) * u
+        pts.append((R[0] + bx * length * u + nx * w, R[1] + by * length * u + ny * w + droop * length * u * u))
+    return pts
+
+
+def _tail(pen, g, R, back, Hh, ph, t, col, acc, dk, lt, lunge=0.0, strike=False):
+    kind = g["tail"]
+    tl = g["tail_len"] * g["sigscale"].get("tail", 1.0)
+    if kind == "none":
+        return
+    ang = math.atan2(back[1], back[0])
+    if kind == "stub":
+        pen.ell(R[0] + back[0] * 12, R[1] + back[1] * 12, 22, 18, col)
+        return
+    if kind in ("whip", "thick", "taper", "paddle", "tuft", "whip_barb"):
+        ln = {"whip": 190, "thick": 210, "taper": 220, "paddle": 170, "tuft": 190, "whip_barb": 230}[kind] * tl
+        w0 = {"whip": Hh * 0.2, "thick": Hh * 0.5, "taper": Hh * 0.24, "paddle": Hh * 0.28, "tuft": Hh * 0.16, "whip_barb": Hh * 0.2}[kind]
+        w0 = max(10, min(w0, 70))
+        pts = _path(R, back, ln, 12, wave=24 if kind != "thick" else 18, wph=ph * 1.1, droop=0.12 if kind in ("thick", "whip") else 0.0)
+        if kind == "paddle":
+            _tube(pen, pts, w0, 6, col, prof=lambda u: 1 + 0.9 * math.sin(math.pi * min(1, u * 1.1)) ** 1.2)
+            pen.line(pts[2:], 4, lt)
+        else:
+            _tube(pen, pts, w0, 5 if kind != "taper" else 2, col)
+        if kind == "tuft":
+            e = pts[-1]
+            pen.ell(e[0], e[1], 22, 15, dark(acc, 0.7))
+        if kind == "whip_barb":
+            m = pts[7]
+            pen.poly([(m[0] - 4, m[1]), (m[0] + 4, m[1]), (m[0] + back[0] * 30 - 2, m[1] - 34)], (226, 220, 200), rim=False)
+        return
+    if kind == "bushy":
+        ln = 170 * tl
+        pts = _path(R, back, ln, 10, wave=16, wph=ph * 1.0, droop=0.5)
+        _tube(pen, pts, Hh * 0.35, Hh * 0.1, col, prof=lambda u: 0.55 + 1.0 * math.sin(math.pi * min(1, u * 0.95)) ** 0.8, cap=False)
+        e = pts[-1]
+        pen.ell(e[0], e[1], 20, 20, light(col, 0.5) if g["pat"] == "socks" else dark(col, 0.85), rim=False)
+        return
+    if kind in ("fan", "fan_short", "train", "fan_fin"):
+        n = 7 if kind != "train" else 11
+        ln = {"fan": 190, "fan_short": 120, "train": 330, "fan_fin": 130}[kind] * tl
+        base = ang
+        for i in range(n):
+            u = i / (n - 1) - 0.5
+            a = base - 0.1 + u * (0.55 if kind != "train" else 1.0) + (-0.3 if kind == "train" else 0) + 0.04 * math.sin(ph + i)
+            L_ = ln * (0.8 + 0.2 * math.cos(u * 3))
+            e = (R[0] + math.cos(a) * L_, R[1] + math.sin(a) * L_)
+            mid = (R[0] + math.cos(a) * L_ * 0.5, R[1] + math.sin(a) * L_ * 0.5)
+            pen.line([R, mid, e], 8 if kind != "train" else 5, mix(col, dk, 0.3 + 0.3 * (i % 2)))
+            if kind == "train":
+                pen.ell(e[0], e[1], 22, 28, acc, rim=False)
+                pen.ell(e[0], e[1], 14, 18, (30, 90, 160), rim=False)
+                pen.ell(e[0], e[1], 7, 9, (20, 30, 60), rim=False)
+            elif kind == "fan_fin":
+                pen.ell(e[0], e[1], 8, 8, mix(col, dk, 0.4), rim=False)
+        return
+    if kind == "stinger":
+        n = 8
+        k = tl
+        a0 = ang - 0.2
+        stab = lunge if strike else 0.0
+        P0 = R
+        pts = [P0]
+        x, y = P0
+        a = a0
+        for i in range(n):
+            a += -0.5 + 0.1 * math.sin(ph * 0.9) + stab * 0.34   # curls up and over the back (and strikes forward)
+            seg = 36 * k
+            x += math.cos(a) * seg
+            y += math.sin(a) * seg
+            pts.append((x, y))
+        for i in range(n):
+            r = 20 - i * 1.4
+            pen.ell(pts[i][0], pts[i][1], r, r * 0.9, col)
+            pen.line([(pts[i][0] - r * 0.5, pts[i][1] + 2), (pts[i][0] + r * 0.5, pts[i][1] - 2)], 2, dk)
+        e = pts[-1]
+        pen.ell(e[0], e[1], 15, 15, mix(col, acc, 0.5))
+        pen.poly([(e[0] - 7, e[1] - 4), (e[0] + 7, e[1] + 5), (e[0] + math.cos(a) * 46, e[1] + math.sin(a) * 46)], (232, 226, 206), rim=False)
+        return
+    if kind == "lunate":
+        e = (R[0] + back[0] * 40, R[1] + back[1] * 40)
+        s = 120 * tl
+        sw = 18 * math.sin(ph * 1.6)
+        pen.poly([(R[0], R[1] - 8), (e[0] + back[0] * s * 0.5 - 20, e[1] - s * 0.95 + sw), (e[0] + back[0] * s * 0.25, e[1] - s * 0.1),
+                  (e[0] + back[0] * s * 0.55 - 20, e[1] + s * 0.65 + sw), (R[0], R[1] + 8)], dark(col, 0.8))
+        return
+    if kind == "fluke":
+        e = (R[0] + back[0] * 45, R[1] + back[1] * 45 + 10 * math.sin(ph * 1.6))
+        s = 130 * tl
+        pen.poly([(R[0], R[1] - 14), (e[0], e[1] - 14), (e[0] + back[0] * s * 0.7, e[1] - s * 0.28), (e[0] + back[0] * s * 0.9, e[1] - s * 0.1),
+                  (e[0] + back[0] * s * 0.35, e[1] + 6), (e[0] + back[0] * s * 0.9, e[1] + s * 0.2), (e[0] + back[0] * s * 0.7, e[1] + s * 0.32),
+                  (e[0], e[1] + 14), (R[0], R[1] + 14)], dark(col, 0.85))
+        return
+    if kind == "curl":
+        pts = []
+        x, y = R
+        a = ang
+        for i in range(14):
+            a += 0.34 * (0.6 + i * 0.07)
+            r = 18 - i * 0.8
+            x += math.cos(a) * r * 1.6
+            y += math.sin(a) * r * 1.6
+            pts.append((x, y))
+        _tube(pen, [R] + pts, 18, 5, col)
+        return
+
+
+# ---------------------------------------------------------------- the one drawing function for every creature
+GAITS = {
+    "trot": dict(bob=8, stride=0.30, lift=0.55, pat="trot", tilt=0.0, speed=1.0),
+    "bound": dict(bob=16, stride=0.42, lift=0.6, pat="bound", tilt=0.05, speed=1.15),
+    "pace": dict(bob=5, stride=0.26, lift=0.5, pat="pace", tilt=0.015, speed=0.9),
+    "lumber": dict(bob=6, stride=0.22, lift=0.35, pat="trot", tilt=0.02, speed=0.75),
+    "prowl": dict(bob=4, stride=0.26, lift=0.4, pat="trot", tilt=0.0, speed=0.75),
+    "knuckle": dict(bob=10, stride=0.28, lift=0.4, pat="pace", tilt=0.04, speed=0.9),
+    "sprawl": dict(bob=2, stride=0.38, lift=0.55, pat="trot", tilt=0.0, speed=0.9, wave=7),
+    "scurry": dict(bob=2, stride=0.4, lift=0.7, pat="trot", tilt=0.0, speed=1.5, wave=5),
+    "crawl": dict(bob=1, stride=0.3, lift=0.5, pat="trot", tilt=0.0, speed=0.8, wave=8),
+    "hop": dict(bob=0, stride=0.25, lift=0.0, pat="hop", tilt=0.0, speed=0.8),
+    "waddle": dict(bob=5, stride=0.25, lift=0.5, pat="pace", tilt=0.1, speed=0.9),
+    "plod": dict(bob=3, stride=0.22, lift=0.4, pat="pace", tilt=0.04, speed=0.6),
+    "strut": dict(bob=5, stride=0.28, lift=0.55, pat="pace", tilt=0.0, speed=1.0),
+    "skitter": dict(bob=2, stride=0.32, lift=0.9, pat="tripod", tilt=0.0, speed=1.6),
+    "scuttle": dict(bob=2, stride=0.22, lift=0.8, pat="tripod", tilt=0.0, speed=1.7),
+    "sway": dict(bob=2, stride=0.22, lift=0.6, pat="trot", tilt=0.04, speed=0.55),
+    "slither": dict(bob=0, stride=0.0, lift=0.0, pat="trot", tilt=0.0, speed=1.0, wave=34),
+    "swim": dict(bob=12, stride=0.0, lift=0.0, pat="trot", tilt=0.0, speed=1.0, wave=16),
+    "glide": dict(bob=10, stride=0.0, lift=0.0, pat="trot", tilt=0.0, speed=1.0, wave=12),
+    "pulse": dict(bob=14, stride=0.0, lift=0.0, pat="trot", tilt=0.0, speed=1.0, wave=0),
+    "hover": dict(bob=14, stride=0.0, lift=0.0, pat="trot", tilt=0.0, speed=1.0, wave=0),
+    "flutter": dict(bob=26, stride=0.0, lift=0.0, pat="trot", tilt=0.0, speed=1.0, wave=0),
+    "ripple": dict(bob=2, stride=0.3, lift=0.6, pat="tripod", tilt=0.0, speed=1.0, wave=0),
+    "hump": dict(bob=7, stride=0.2, lift=0.2, pat="pace", tilt=0.0, speed=0.8, wave=0),
+}
+STAND = {"digi": 0.95, "bigdigi": 0.92, "pillar": 0.97, "bird": 0.92, "sprawl": 0.6, "frog": 0.78, "insect": 0.78,
+         "arach": 0.8, "crab": 0.8, "webbed": 0.88, "flipper": 0.55, "tentacle": 0.35}
+BEND = {"digi": (1, -1), "bigdigi": (1, -1), "pillar": (1, 1), "bird": (1, 1), "sprawl": (-1, -1), "frog": (-1, -1),
+        "insect": (-1, -1), "arach": (-1, -1), "crab": (-1, -1), "webbed": (1, 1)}   # (front legs, hind legs): 1 = knee points back
+
+
+def _leg_phase(pat, pair, npairs, side):
+    if pat == "hop":
+        return 0.0
+    if pat == "pace":
+        return math.pi * side
+    if pat == "bound":
+        return (0.6 * math.pi if pair < npairs / 2 else 0.0) + 0.12 * math.pi * side
+    return math.pi * ((pair + side) % 2)
+
+
+def _leg_u(style, n):
+    if n <= 0:
+        return []
+    if n == 2:
+        return [0.4]
+    if n == 4:
+        return [0.17, 0.80]
+    if n == 6:
+        return [0.26, 0.53, 0.78]
+    if n == 8 and style != "tentacle":
+        return [0.14, 0.36, 0.58, 0.8]
+    npair = (n + 1) // 2
+    return [0.12 + 0.76 * i / max(1, npair - 1) for i in range(npair)]
+
+
+def _legs_draw(pen, g, hips, feet, side_far, col, dk, ph, t, moving):
+    pass
+
+
+def draw_chimera(pen, sp, ph, st):
+    g = sp["g"]
+    t = st.get("t", ph / 6.0)
+    moving = st.get("moving", True)
+    crouch, roar, headup, lunge = st.get("crouch", 0.0), st.get("roar", 0.0), st.get("headup", 0.0), st.get("lunge", 0.0)
+    col, acc, belly = [tuple(c) for c in g["pal"]]
+    dk, lt = dark(col, 0.66), light(col, 0.2)
+    gait = g["gait"]
+    GA = GAITS.get(gait, GAITS["trot"])
+    prof, L, Hh, pitch0 = g["torso"]
+    lstyle, nleg, ll, lw = g["legs"]
+    strike = g["strike"]
+    sg = g["sigscale"]
+    flying_pose = g["hover"] > 40
+    phs = ph * GA["speed"]
+    seed = _seed(g.get("name", "x"))
+
+    # ---- posture
+    bob = 0.0
+    tilt = 0.0
+    wave = GA.get("wave", 0) if (moving or gait in ("swim", "glide", "pulse", "hover", "flutter", "slither")) else GA.get("wave", 0) * 0.15
+    if moving:
+        if gait == "hop":
+            bob = -ll * 0.4 * max(0.0, math.cos(phs)) if ll else -40 * max(0.0, math.cos(phs))
+        elif flying_pose:
+            bob = math.sin(t * 2.2) * GA["bob"]
+        else:
+            bob = -abs(math.sin(phs)) * GA["bob"]
+        tilt = GA["tilt"] * math.sin(phs)
+    else:
+        bob = math.sin(t * 1.6) * (3 if not flying_pose else 9)
+    pitch = pitch0 + tilt + 0.05 * roar - 0.12 * lunge
+    n = int(_clip(L / 18, 14, 34))
+
+    def spine_at(cy):
+        pts = []
+        for i in range(n + 1):
+            u = i / n
+            sx = -L / 2 + u * L
+            sy = -g["arch"] * math.sin(math.pi * u) * L * 0.07
+            if wave:
+                if gait in ("swim", "glide", "slither"):
+                    sy += wave * math.sin(phs * 1.5 - u * (5.5 if gait == "slither" else 3.5)) * ((1 - u) ** 0.7 * 0.8 + 0.2 if gait != "slither" else 1.0)
+                else:
+                    sy += wave * 0.3 * math.sin(phs - u * 5)
+            x2 = sx * math.cos(pitch) + sy * math.sin(pitch)
+            y2 = -sx * math.sin(pitch) + sy * math.cos(pitch)
+            pts.append((x2, cy + y2))
+        return pts
+
+    spine = spine_at(0.0)
+    tops, bots, nrms = [], [], []
+    for i, (x, y) in enumerate(spine):
+        a = spine[max(0, i - 1)]
+        b = spine[min(n, i + 1)]
+        tx, ty = b[0] - a[0], b[1] - a[1]
+        m = math.hypot(tx, ty) or 1
+        nx, ny = ty / m, -tx / m                      # up
+        tt, tb = _prof(prof, i / n)
+        nrms.append((nx, ny))
+        tops.append((x + nx * tt * Hh / 2, y + ny * tt * Hh / 2))
+        bots.append((x - nx * tb * Hh / 2, y - ny * tb * Hh / 2))
+    # hips along the belly
+    us = _leg_u(lstyle, nleg)
+    hip0 = []
+    for u in us:
+        i = int(round(u * n))
+        px, py = spine[i]
+        nx, ny = nrms[i]
+        tt, tb = _prof(prof, i / n)
+        hip0.append((px - nx * tb * Hh / 2 * 0.5, py - ny * tb * Hh / 2 * 0.5))
+    stand = ll * STAND.get(lstyle, 0.9) if nleg else 0.0
+    if g["hover"] > 40:
+        dy = -(g["hover"] + Hh * 0.5)
+    elif nleg and hip0 and lstyle not in ("tentacle",):
+        dy = -stand - sum(h[1] for h in hip0) / len(hip0)
+    elif lstyle == "tentacle":
+        dy = -(ll * 0.55 + Hh * 0.3)
+    else:
+        dy = -Hh * 0.5 * 0.92
+    dy += bob + crouch * (stand * 0.32 + 12) - 6 * lunge
+    sh = lambda p: (p[0], p[1] + dy)
+    spine, tops, bots = [sh(p) for p in spine], [sh(p) for p in tops], [sh(p) for p in bots]
+    hips = [sh(h) for h in hip0]
+    # the body's footprint (for the shadow) and where its rear and chest are
+    R = spine[0]
+    F = spine[-1]
+    tx, ty = spine[1][0] - spine[0][0], spine[1][1] - spine[0][1]
+    mm = math.hypot(tx, ty) or 1
+    back = (-tx / mm, -ty / mm)
+    fwd = (-back[0], -back[1])
+
+    # ---- shadow
+    sw = max(60, L * 0.42)
+    if g["hover"] > 40:
+        h_ = max(0.0, (-(sum(s_[1] for s_ in spine) / len(spine))) - 0) / 330.0
+        a_ = int(max(30, 120 - h_ * 60))
+        pen.d.ellipse((pen.X(-sw * 0.8), pen.Y(-6), pen.X(sw * 0.8), pen.Y(12)) if pen.f == 1 else (pen.X(sw * 0.8), pen.Y(-6), pen.X(-sw * 0.8), pen.Y(12)),
+                      fill=(6, 8, 12, a_))
+    elif not st.get("noshadow"):
+        x0, x1 = sorted((pen.X(-sw), pen.X(sw)))
+        pen.d.ellipse((x0, pen.Y(-10), x1, pen.Y(14)), fill=(8, 8, 14))
+
+    # ---- legs
+    fast = FLAP_SPEED.get(g["donors"].get("wings"), 5.0) > 20
+    stride = ll * GA["stride"]
+    liftH = ll * GA["lift"] * 0.55
+    npairs = len(us)
+    leg_draws = []
+    for pi_, hip in enumerate(hips):
+        for side in (1, 0):            # far leg first
+            ph0 = _leg_phase(GA["pat"], pi_, npairs, side)
+            p = phs + ph0
+            sx_off = 0.0 if side == 0 else 14
+            if flying_pose:
+                foot = (hip[0] + (10 if side else 0) + 8 * math.sin(t * 2 + pi_), hip[1] + stand * 0.85 if stand else hip[1] + ll * 0.7)
+                if fast:
+                    foot = (hip[0] + 6, hip[1] + ll * 0.5)
+            elif lstyle == "tentacle":
+                spread = ((pi_ - (npairs - 1) / 2) * ll * 0.55 + (14 if side else -6))
+                foot = (hip[0] + spread, -4)
+            elif moving and GA["stride"] > 0:
+                s_ = math.sin(p)
+                lift = max(0.0, math.cos(p))
+                foot = (hip[0] + stride * s_ + sx_off * 0.3, -liftH * lift * (1 if GA["pat"] != "hop" else 1.8) - 2)
+                if GA["pat"] == "hop":
+                    foot = (hip[0] + stride * 0.3 + 10 * side, -liftH * lift * 1.2 - 2 - 0.0)
+            else:
+                foot = (hip[0] + (12 if side else -4) * (1 if pi_ else -1) * 0.5 + (stride * 0.25 if pi_ >= npairs / 2 else -stride * 0.25) * 0.4, -2)
+            if lstyle in ("sprawl", "insect", "arach", "crab") and not flying_pose and lstyle != "tentacle":
+                reach = (pi_ - (npairs - 1) / 2) * ll * 0.5
+                foot = (foot[0] + reach * (0.8 if lstyle != "sprawl" else 0.4), foot[1])
+            leg_draws.append((side, pi_, hip, foot))
+    far = [x for x in leg_draws if x[0] == 1]
+    near = [x for x in leg_draws if x[0] == 0]
+    skin2 = g["skin2"]
+
+    def draw_leg(side, pi_, hip, foot):
+        c = dark(col, 0.64) if side else col
+        d_ = dark(c, 0.7)
+        front = pi_ >= npairs / 2
+        bend = BEND.get(lstyle, (1, 1))[0 if front else 1]
+        if lstyle == "tentacle":
+            pts = []
+            for j in range(11):
+                u = j / 10
+                x = hip[0] + (foot[0] - hip[0]) * u + (18 if not flying_pose else 12) * math.sin(phs * 1.2 + pi_ * 1.3 + side + u * 5) * u
+                y = hip[1] + (foot[1] - hip[1]) * (u ** 0.7 if not flying_pose else u) - (math.sin(math.pi * u) * ll * 0.12 if not flying_pose else 0)
+                pts.append((x, min(y, -2) if not flying_pose else y))
+            _tube(pen, pts, lw * 1.15, 5, mix(c, acc, 0.12 * (pi_ % 2)))
+            for j in range(2, 9, 2):
+                pen.dot(pts[j][0], pts[j][1] + lw * 0.2, 3, light(c, 0.4))
+            return
+        if lstyle == "flipper":
+            a = 0.3 + 0.4 * math.sin(phs + side * 2) if moving else 0.35
+            tx_, ty_ = hip[0] - math.sin(a) * ll, hip[1] + math.cos(a) * ll * 0.8
+            pen.poly([(hip[0] - 10, hip[1] - 6), (hip[0] + 24, hip[1]), (tx_ + 16, ty_), (tx_ - 12, ty_ - 4)], c)
+            return
+        l1, l2 = ll * 0.52, ll * 0.52
+        if lstyle in ("sprawl",):
+            l1, l2 = ll * 0.72, ll * 0.8
+        elif lstyle in ("insect", "arach", "crab"):
+            l1, l2 = ll * 0.75, ll * 0.95
+        elif lstyle == "frog":
+            l1, l2 = ll * 0.72, ll * 0.72
+        elif lstyle in ("bigdigi",):
+            l1, l2 = ll * 0.46, ll * 0.5
+        w = lw * (0.62 if lstyle in ("insect", "arach", "crab", "bird") else 1.0)
+        knee = _ik(hip[0], hip[1], foot[0], foot[1], l1, l2, bend)
+        if lstyle in ("pillar",):
+            _tube(pen, [hip, knee, foot], w * 1.05, w * 0.88, c)
+        elif lstyle in ("digi", "bigdigi", "frog", "webbed"):
+            _tube(pen, [hip, knee], w * 1.25, w * 0.85, c)
+            _tube(pen, [knee, foot], w * 0.8, w * 0.5, c)
+            pen.ell(knee[0], knee[1], w * 0.5, w * 0.5, c, rim=False)
+        elif lstyle in ("insect", "arach", "crab"):
+            _tube(pen, [hip, knee], w, w * 0.7, c)
+            _tube(pen, [knee, foot], w * 0.7, w * 0.35, d_)
+            pen.ell(knee[0], knee[1], w * 0.55, w * 0.55, c, rim=False)
+        else:
+            _tube(pen, [hip, knee], w * 1.0, w * 0.75, c)
+            _tube(pen, [knee, foot], w * 0.75, w * 0.5, c)
+        if skin2 == "fur" and lstyle in ("digi", "pillar", "bigdigi"):
+            pen.ell(hip[0], hip[1] + 4, w * 0.9, w * 0.7, c, rim=False)
+        _foot(pen, foot[0], foot[1], g["foot"], lw * 0.55, c, d_)
+
+    # ---- arms (they can strike)
+    arms = g["arms"]
+
+    def draw_arm(far_side):
+        if not arms:
+            return
+        kind_, al = arms
+        al *= sg.get("arms", 1.0)
+        c = dark(col, 0.64) if far_side else col
+        i = int(0.82 * n)
+        base = (spine[i][0] + (6 if far_side else 0), spine[i][1] + Hh * 0.1)
+        sw_ = math.sin(phs + (math.pi if far_side else 0)) if moving else 0.0
+        if kind_ == "ape":
+            tipx = base[0] + 40 + 30 * sw_ + 40 * lunge
+            tip = (tipx, -6 - max(0, math.cos(phs + (math.pi if far_side else 0))) * 24 * (1 if moving else 0))
+            knee = _ik(base[0], base[1], tip[0], tip[1], al * 0.5, al * 0.5, 1)
+            _tube(pen, [base, knee], lw * 1.1, lw * 0.95, c)
+            _tube(pen, [knee, tip], lw * 0.95, lw * 0.75, c)
+            pen.ell(tip[0] + 6, tip[1], lw * 0.7, lw * 0.5, dark(c, 0.8), rim=False)
+        elif kind_ == "pincers":
+            a = -0.55 + 0.25 * math.sin(t * 2.2 + (1.5 if far_side else 0)) + 0.5 * lunge
+            reach = al * (1 + 0.2 * lunge)
+            e1 = (base[0] + math.cos(a + 0.5) * reach * 0.55, base[1] + math.sin(a + 0.5) * reach * 0.55 - 10)
+            e2 = (e1[0] + math.cos(a - 0.25) * reach * 0.5, e1[1] + math.sin(a - 0.25) * reach * 0.5)
+            wd = max(12, Hh * 0.2)
+            _tube(pen, [base, e1], wd * 0.8, wd * 0.7, dark(c, 0.8))
+            _tube(pen, [e1, e2], wd * 0.7, wd * 0.85, c)
+            op = 0.35 + 0.3 * math.sin(t * 3 + far_side) + 0.4 * lunge
+            for sgn, cc in ((-1, c), (1, dark(c, 0.8))):
+                aa = a - 0.25 + sgn * op * 0.5
+                tipp = (e2[0] + math.cos(aa) * reach * 0.42, e2[1] + math.sin(aa) * reach * 0.42)
+                pen.poly([(e2[0] - 4, e2[1] - sgn * wd * 0.45), (e2[0] + 4, e2[1] + sgn * wd * 0.45), tipp], mix(cc, acc, 0.25))
+        elif kind_ == "raptor":
+            a1 = -1.0 + 0.2 * math.sin(t * 1.4) + 0.9 * lunge
+            e1 = (base[0] + math.cos(a1) * al * 0.5, base[1] + math.sin(a1) * al * 0.5 - 10)
+            a2 = a1 + 2.2 - 1.8 * lunge
+            e2 = (e1[0] + math.cos(a2) * al * 0.55, e1[1] + math.sin(a2) * al * 0.55)
+            _tube(pen, [base, e1], 16, 12, c)
+            _tube(pen, [e1, e2], 12, 6, dark(c, 0.8))
+            for j in range(4):
+                u = (j + 1) / 5
+                px, py = e1[0] + (e2[0] - e1[0]) * u, e1[1] + (e2[1] - e1[1]) * u
+                pen.poly([(px - 3, py - 3), (px + 3, py - 3), (px + 2, py + 12)], (228, 222, 200), rim=False)
+
+    # ---- wings
+    wk = g["wings"]
+    wing_flap = 0.0
+    if wk:
+        fs = FLAP_SPEED.get(g["donors"].get("wings"), 4.5)
+        if g["wingfly"] and g["hover"] > 40:
+            wing_flap = math.sin(t * fs)
+        elif g["wingfly"]:
+            wing_flap = 0.1 + 0.18 * math.sin(t * 2.4) - (0.2 if not moving else 0.0)
+        else:
+            wing_flap = math.sin(phs) * 0.4 if moving else 0.2
+        if wk[0] == "bird" and not g["wingfly"]:
+            wing_flap = -0.3
+    wi = int(0.58 * n)
+    wsz = wk[1] * sg.get("wings", 1.0) if wk else 0
+    wroot = (spine[wi][0], (tops[wi][1] * 0.7 + spine[wi][1] * 0.3)) if wk else None
+    if wk and wk[0] in ("fin", "flipper"):
+        wroot = (bots[wi][0] * 0.55 + spine[wi][0] * 0.45, bots[wi][1] * 0.6 + spine[wi][1] * 0.4)
+    if wk and wk[0] == "flipper":
+        wroot = (spine[wi][0] + 4, spine[wi][1] - Hh * 0.05)
+
+    # ---- draw everything in order
+    for leg in far:
+        draw_leg(*leg)
+    draw_arm(True)
+    if wk and wk[0] not in ("fin", "flipper", "disc"):
+        _wing(pen, wk[0], wsz * 0.92, wroot[0] - 14, wroot[1] + 4, wing_flap * 0.85 - 0.1, col, acc, dk, far=True, pat=g["pat"], t=t, fast=fast)
+    # tail
+    stab = strike in ("stab",)
+    _tail(pen, g, R, back, Hh, phs, t, col, acc, dk, lt, lunge=lunge, strike=stab)
+    # neck behind the torso for long necks would look odd: neck is drawn after the body
+    # the torso
+    torso_poly = tops + bots[::-1]
+    pen.poly(torso_poly, col)
+    if wk and wk[0] == "disc":
+        wsz2 = wsz
+        up = [(spine[i][0], spine[i][1] - Hh * 0.45 - 12 * math.sin(phs * 1.4 - i * 0.5)) for i in range(0, n + 1)]
+        dn = [(spine[i][0], spine[i][1] + Hh * 0.45 + 12 * math.sin(phs * 1.4 - i * 0.5 + 1.5)) for i in range(n, -1, -1)]
+        pen.poly(up + dn, mix(col, dk, 0.2))
+    # belly
+    belly_pts = [((spine[i][0] * 0.82 + bots[i][0] * 0.18), (spine[i][1] * 0.82 + bots[i][1] * 0.18)) for i in range(2, n - 1)]
+    if belly_pts:
+        pen.poly(belly_pts + [bots[i] for i in range(n - 2, 1, -1)], mix(belly, col, 0.12), rim=False)
+    _body_marks(pen, g, spine, tops, bots, col, dk, lt, seed, scale=max(0.7, Hh / 150))
+    if g["skin"] == "fur":
+        _fur_tufts(pen, tops, bots, col, scale=max(0.7, Hh / 160))
+    # dorsal features
+    for dname in g["dorsal"]:
+        k = sg.get(dname, 1.0)
+        if dname == "hump":
+            i = int(0.42 * n)
+            pen.ell(tops[i][0], tops[i][1] + 10, L * 0.15 * k, Hh * 0.32 * k, col)
+        elif dname in ("fin_big", "fin_small"):
+            i = int(0.5 * n)
+            hh = Hh * (0.95 if dname == "fin_big" else 0.45) * k
+            pen.poly([(tops[i - 2][0], tops[i - 2][1] + 6), (tops[i + 1][0] - 4, tops[i + 1][1] + 6), (tops[i - 1][0] - hh * 0.25, tops[i - 1][1] - hh)], dark(col, 0.78))
+        elif dname in ("osteoderm", "ridge"):
+            for i in range(2, n - 1, 1 if dname == "osteoderm" else 2):
+                h_ = (14 if dname == "osteoderm" else 10) * k
+                pen.poly([(tops[i][0] - 7, tops[i][1] + 2), (tops[i][0] + 7, tops[i][1] + 2), (tops[i][0], tops[i][1] - h_)], dark(col, 0.7) if dname == "osteoderm" else lt, rim=dname == "osteoderm")
+        elif dname == "quills":
+            r_ = random.Random(seed)
+            for i in range(1, n):
+                for _ in range(2):
+                    a = -1.2 + r_.random() * 1.6
+                    ln_ = 40 + r_.random() * 30
+                    x, y = tops[i][0] + 3, tops[i][1] + 10
+                    pen.line([(x, y), (x - math.cos(a) * ln_ * 0.9 + 14, y - math.sin(-a) * ln_ * 0.0 - ln_ * 0.8)], 4, belly)
+    # shell on a body that is not already a dome
+    if g["shell"] and prof not in ("dome", "flatdome"):
+        sc2 = mix(col, acc, 0.35)
+        sc2 = mix(sc2, (40, 36, 28), 0.3)
+        pts = []
+        for i in range(2, n - 1):
+            pts.append((tops[i][0], tops[i][1] - Hh * 0.28 * math.sin(math.pi * i / n) ** 0.7))
+        base = [tops[i] for i in range(n - 2, 1, -1)]
+        pen.poly(pts + base, sc2)
+        if g["shell"] == "banded":
+            for i in range(3, n - 2, 2):
+                pen.line([(pts[i - 2][0], pts[i - 2][1]), (tops[i][0], tops[i][1] + Hh * 0.18)], 4, dark(sc2, 0.6))
+        else:
+            for i in range(3, n - 3, 3):
+                x, y = pts[i - 2]
+                pen.poly([(x - 14, y + 12), (x, y + 2), (x + 14, y + 12), (x + 10, y + 26), (x - 10, y + 26)], dark(sc2, 0.75), rim=False)
+        if g["shell"] == "carapace":
+            for i in range(2, n - 2, 2):
+                pen.poly([(tops[i][0] - 5, tops[i][1] + 3), (tops[i][0] + 5, tops[i][1] + 3), (tops[i][0], tops[i][1] - 12)], dark(sc2, 0.7), rim=False)
+    elif prof in ("dome", "flatdome") and g["shell"]:
+        sc2 = dark(mix(col, acc, 0.25), 0.8)
+        for i in range(3, n - 2, 3):
+            x, y = tops[i][0], tops[i][1] + Hh * 0.2
+            pen.poly([(x - 18, y), (x, y - 14), (x + 18, y), (x + 14, y + 22), (x - 14, y + 22)], sc2, rim=False)
+    for leg in near:
+        draw_leg(*leg)
+    draw_arm(False)
+    # ---- neck and head
+    hd = g["head"]
+    rx, ry = hd["skull"]
+    has_head = rx > 0
+    nk_len, nk_up = g["neck"]
+    head_pos = F
+    if has_head:
+        ang = _clip(nk_up + max(pitch, 0) * 0.6, -0.3, 1.45) - 0.35 * crouch + headup * 0.35 + (-0.18 * lunge if g["neck"][0] > 100 else 0)
+        L_n = nk_len * (1 + 0.35 * lunge) * (1.0 if not lunge else 1.0) + (60 * lunge if strike in ("snap", "pounce", "tongue", "claw", "dive") else 0)
+        bx_, by_ = F[0] - fwd[0] * rx * 0.2, F[1] - fwd[1] * rx * 0.2
+        hxp = bx_ + math.cos(ang) * (L_n + rx * 0.55)
+        hyp = by_ - math.sin(ang) * (L_n + rx * 0.55) + (6 * math.sin(phs * 2) if moving and gait in ("strut", "waddle") else 0)
+        if nk_len > 4:
+            bow = g.get("neck_bow", 0.12)
+            pts = []
+            for j in range(9):
+                u = j / 8
+                x = bx_ + (hxp - bx_) * u - bow * nk_len * math.sin(math.pi * u) * 0.9
+                y = by_ + (hyp - by_) * u - bow * nk_len * math.sin(math.pi * u) * 0.35
+                pts.append((x, y))
+            wN = max(ry * 1.0, Hh * 0.38) if nk_len < 100 else max(ry * 0.8, 34)
+            _tube(pen, pts, wN * (1.2 if nk_len < 100 else 1.5), wN * 0.8, col)
+            if "mane" in hd["extras"]:
+                for j in range(1, 8):
+                    pen.ell(pts[j][0] - 12, pts[j][1] + 6, 30, 26, mix(mix(acc, (60, 30, 12), 0.35), col, 0.1 * (j % 3)), rim=False)
+        else:
+            pen.ell(F[0] - 6, F[1] + 4, ry * 0.9, ry * 0.9, col, rim=False)
+        rot = -0.25 * roar + hd["snout"][4] * 0.5 + (0.12 if nk_len > 150 else 0.0) - 0.3 * headup * 0 + (0.18 if lunge else 0)
+        if pitch > 0.6:
+            rot += 0.1
+        rot -= 0.5 * max(0.0, pitch - 0.3) * 0.3
+        head_pos = _head(pen, hxp, hyp, rot, g, roar, t, st)
+        sp["_head"] = (hxp, hyp)
+    else:
+        # the face sits on the body itself (octopus, crab, ray, anglerfish, jellyfish)
+        i = int(0.8 * n)
+        hxp, hyp = tops[i][0], tops[i][1] + Hh * 0.28
+        fake = _deep(g)
+        fake["head"] = _deep(hd)
+        fake["head"]["skull"] = (Hh * 0.28 if g["head"]["eyes"] != "none" else 1.0, Hh * 0.26)
+        if hd["extras"] and "bigmouth" in hd["extras"]:
+            kx = hd
+            o = roar * 0.6 + 0.12
+            x0 = hxp
+            pen.poly([(x0 - 30, hyp + 10), (x0 + 70, hyp + 20), (x0 + 130, hyp + 20 + 40 * o), (x0 + 50, hyp + 70 + 50 * o)], (110, 16, 26), rim=False)
+            for j in range(9):
+                xx = x0 + j * 15
+                pen.poly([(xx, hyp + 14), (xx + 7, hyp + 14), (xx + 3, hyp + 14 + 34)], (244, 240, 226), rim=False)
+                pen.poly([(xx, hyp + 60 + 40 * o), (xx + 7, hyp + 60 + 40 * o), (xx + 3, hyp + 60 + 40 * o - 30)], (244, 240, 226), rim=False)
+        if g["head"]["eyes"] != "none":
+            fake["head"]["snout"] = ("none", 0, 0, 0, 0)
+            fake["head"]["ears"] = ("none", 0)
+            fake["head"]["teeth"] = "none"
+            fake["head"]["extras"] = [e for e in hd["extras"] if e in ("lure",)]
+            fake["pat"] = "plain"
+            _eye_body(pen, g, hxp, hyp - Hh * 0.18, t)
+        sp["_head"] = (hxp + 30, hyp)
+    # tongue strike
+    if strike == "tongue" and lunge > 0.05 and has_head:
+        hx0, hy0 = sp["_head"]
+        tl_ = 330 * lunge
+        pen.line([(hx0 + rx * 0.9, hy0 + ry * 0.3), (hx0 + rx * 0.9 + tl_, hy0 + ry * 0.2 + 10 * math.sin(t * 20))], 12, (214, 82, 104))
+        pen.dot(hx0 + rx * 0.9 + tl_, hy0 + ry * 0.2, 14, (230, 100, 124))
+    # near wing last, so it covers the shoulder
+    if wk and wk[0] not in ("disc",):
+        _wing(pen, wk[0], wsz, wroot[0], wroot[1], wing_flap, col, acc, dk, far=False, pat=g["pat"], t=t, fast=fast)
+    # the strike with a flyer: the wings throw wide
+    sp["_boxtop"] = min(p[1] for p in tops) - (wsz * 0.9 if wk and g["wingfly"] else 0)
+
+
+def _eye_body(pen, g, x, y, t):
+    hd = g["head"]
+    ec = tuple(hd["eyecol"])
+    kind = hd["eyes"]
+    if kind == "slitbulge":
+        pen.ell(x + 8, y, 30, 30, mix(g["pal"][0], g["pal"][2], 0.25))
+        pen.ell(x + 8, y, 20, 20, ec, rim=False)
+        pen.ell(x + 8, y, 18, 5, (8, 6, 6), rim=False)
+        pen.ell(x + 16, y - 6, 4, 4, (255, 255, 255), rim=False)
+    elif kind == "stalk":
+        for off in (0, 30):
+            pen.line([(x + off, y + 10), (x + off, y - 40)], 9, dark(g["pal"][0], 0.7))
+            pen.ell(x + off, y - 46, 12, 12, (14, 10, 12))
+            pen.ell(x + off + 3, y - 49, 3, 3, (255, 255, 255), rim=False)
+    elif kind == "toplook":
+        pen.ell(x + 20, y - 12, 9, 7, (14, 10, 12))
+    elif kind == "round":
+        pen.ell(x + 20, y, 14, 14, (244, 240, 230))
+        pen.ell(x + 24, y, 9, 9, ec, rim=False)
+        pen.ell(x + 26, y, 4, 4, (10, 8, 8), rim=False)
+    elif kind == "compound":
+        pen.ell(x + 10, y, 20, 24, mix(ec, (10, 40, 50), 0.35))
+    if "lure" in hd["extras"]:
+        k = g["sigscale"].get("lure", 1.0)
+        pts = [(x - 20, y - 70), (x + 50, y - 140 * k), (x + 120 + 8 * math.sin(t * 2), y - 120 * k)]
+        pen.line(pts, 4, dark(g["pal"][0], 0.5))
+        gl = 0.7 + 0.3 * math.sin(t * 5)
+        for r_, a_ in ((28, 50), (17, 110), (9, 255)):
+            x0_, x1_ = sorted((pen.X(pts[-1][0] - r_), pen.X(pts[-1][0] + r_)))
+            pen.d.ellipse((x0_, pen.Y(pts[-1][1] - r_), x1_, pen.Y(pts[-1][1] + r_)), fill=(120, 255, 220, int(a_ * gl)))
+
+
+KINDS["chimera"] = draw_chimera
+KIND_SCALE["chimera"] = 1.0
+PRINT_OF["chimera"] = "claw"
+
+
+# ---------------------------------------------------------------- glue: designs become creatures the scenes can draw
+def _measure(g):
+    sp = {"name": g.get("name", "x"), "kind": "chimera", "g": g, "color": g["pal"][0], "traits": set(), "scale": 1.0,
+          "hybrid": False}
+    W_, H_ = 2600, 2200
+    im = Image.new("RGBA", (W_, H_), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im, "RGBA")
+    ox, oy = 1300, 1900
+    pen = Pen(d, ox, oy, 1.0, 1, rimfn)
+    draw_chimera(pen, sp, 0.7, {"t": 0.4, "moving": False, "noshadow": True})
+    bb = im.getchannel("A").point(lambda v: 255 if v > 40 else 0).getbbox() or (ox - 200, oy - 300, ox + 200, oy)
+    hx, hy = sp.get("_head", (150, -250))
+    return {"bbox": (bb[0] - ox, bb[1] - oy, bb[2] - ox, bb[3] - oy), "head": (hx, hy)}
+
+
+def chimera_spec(g):
+    """A design (a dict) -> the creature record the scene code draws."""
+    g = _finish(_tuplify(g))
+    m = _measure(g)
+    x0, y0, x1, y1 = m["bbox"]
+    w, h = max(x1 - x0, 1), max(-y0, 1)
+    tw = 560 if g["hybrid"] else 470
+    k = _clip(min(tw / w, 720 / h), 0.5, 1.5)
+    ec = tuple(g["head"]["eyecol"]) if g["glow"] or g["hybrid"] else (255, 190, 40)
+    if g["glow"]:
+        ec = tuple(g["head"]["eyecol"])
+    return {"name": g.get("name", "x"), "kind": "chimera", "g": g, "color": tuple(g["pal"][0]), "traits": set(),
+            "scale": k, "hybrid": bool(g["hybrid"]), "aura": bool(g["glow"]), "eye": ec, "head0": m["head"],
+            "bbox": m["bbox"]}
+
+
+def pure_spec(name):
+    """The real animal (a parent), drawn by the same engine so the viewer can recognise what it was made from."""
+    if name not in SPECIES:
+        return animal_spec(name)
+    return chimera_spec(pure_design(name))
+
+
+def hybrid_spec_from(g):
+    return chimera_spec(g)
+
+
+def designs_to_json(g):
+    return json.loads(json.dumps(g, default=list))
