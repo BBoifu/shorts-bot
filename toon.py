@@ -1172,6 +1172,10 @@ def draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=None, fo
             img_draw.ellipse((cx - 380 * s * k, gy - 640 * s * k, cx + 380 * s * k, gy + 40 * s * k), fill=(170, 10, 14, a))
     ox, oy = _REC_OFF
     _BOXES.append((cx + ox - 330 * s, gy + oy - 1050 * s, cx + ox + 330 * s, gy + oy + 40 * s))
+    if sp["kind"] == "chimera" and st.get("moving", True) and not st.get("rawphase"):
+        r = chim_rate(sp, st.get("ground"))   # step rate follows the ground speed: planted feet do not slide
+        if r:
+            phase = phase / (STEP * 0.5) * r
     pen = Pen(img_draw, cx, gy, s, facing, rimfn)
     if st.get("noshadow") or sp["kind"] == "chimera":
         pass
@@ -1557,7 +1561,11 @@ class World:
 
 
 # ---------------------------------------------------------------- video writer
-def write_video(out, dur, painter, world, cwd=None, cam_dir=1):
+def CINEMA_ON():
+    return globals().get("CINEMA", {}).get("on", False)
+
+
+def write_video(out, dur, painter, world, cwd=None, cam_dir=1, cam_fn=None):
     """painter(draw, t, u, cam) draws the actors. Frames are piped straight into ffmpeg."""
     n = max(int(dur * FPS), 2)
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{OW}x{OH}",
@@ -1571,13 +1579,15 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1):
             t = i / FPS
             EMERGE["t"] = t
             u = i / max(n - 1, 1)
-            cam = t * 260 * cam_dir
+            cam = cam_fn(t) if cam_fn else t * 260 * cam_dir   # cam_fn: the ground can slow down and stop
             im = world.frame(cam, t)
             d = ImageDraw.Draw(im, "RGBA")
             _BOXES.clear()
             ov = painter(im, d, t, u, cam)
             if ov is not None:
                 im = ov
+            if CINEMA_ON() and not getattr(world, "no_cinema", False):
+                im = world.cinema_front(im, cam, t)
             box = None
             if _BOXES:
                 box = [min(b[0] for b in _BOXES), min(b[1] for b in _BOXES), max(b[2] for b in _BOXES), max(b[3] for b in _BOXES)]
@@ -1629,10 +1639,13 @@ def walk_scene(out, dur, world, sp, facing=1, zoom=(1.0, 1.0), hybrid_roar_end=F
         roar = 0.0
         if hybrid_roar_end and u > 0.72:
             roar = min(1.0, (u - 0.72) / 0.1) * (1 if u < 0.95 else (1 - (u - 0.95) / 0.05))
-        sh = (6 * math.sin(t * 70)) if roar > 0.1 else 0
+        sh = (3 * math.sin(t * 70)) if roar > 0.1 else 0
         draw_creature(d, sp, (400 if facing == 1 else 680) + sh, GROUND + 20, t * STEP * 0.5,
                       facing, z, {"t": t, "roar": roar, "moving": True})
-    write_video(out, dur, paint, world, cwd, cam_dir=facing)
+    cf = None
+    if sp["kind"] == "chimera":
+        cf = (lambda t, g0=chim_ground(sp): t * g0 * facing)
+    write_video(out, dur, paint, world, cwd, cam_dir=facing, cam_fn=cf)
 
 
 def face_scene(out, dur, world, sp, cwd=None):
@@ -6154,6 +6167,10 @@ def draw_chimera(pen, sp, ph, st):
     t = st.get("t", ph / 6.0)
     moving = st.get("moving", True)
     crouch, roar, headup, lunge = st.get("crouch", 0.0), st.get("roar", 0.0), st.get("headup", 0.0), st.get("lunge", 0.0)
+    # full-body actions (0..1): dip = reach down to the ground (feeding), swallow = a swallow travelling down the neck,
+    # look = head turning to a sound, land = body compressing after a leap, settle = weight easing back to rest
+    dip, swallow, look, land = st.get("dip", 0.0), st.get("swallow", 0.0), st.get("look", 0.0), st.get("land", 0.0)
+    anti = st.get("anticipate", 0.0)
     col, acc, belly = [tuple(c) for c in g["pal"]]
     dk, lt = dark(col, 0.66), light(col, 0.2)
     gait = g["gait"]
@@ -6180,7 +6197,8 @@ def draw_chimera(pen, sp, ph, st):
         tilt = GA["tilt"] * math.sin(phs)
     else:
         bob = math.sin(t * 1.6) * (3 if not flying_pose else 9)
-    pitch = pitch0 + tilt + 0.05 * roar - 0.12 * lunge
+    # nose-down as the front of the body reaches for the ground; a small rock back first (anticipation)
+    pitch = pitch0 + tilt + 0.05 * roar - 0.12 * lunge - 0.28 * dip + 0.05 * anti
     n = int(_clip(L / 18, 14, 34))
 
     def spine_at(cy):
@@ -6229,7 +6247,10 @@ def draw_chimera(pen, sp, ph, st):
         dy = -(ll * 0.55 + Hh * 0.3)
     else:
         dy = -Hh * 0.5 * 0.92
-    dy += bob + crouch * (stand * 0.32 + 12) - 6 * lunge
+    short_neck = 1.0 if g["neck"][0] < 110 else 0.0
+    # weight: legs flex and the whole body sinks when it reaches down or lands (a short neck has to sink further)
+    dy += bob + crouch * (stand * 0.32 + 12) - 6 * lunge + dip * stand * (0.16 + 0.30 * short_neck) \
+        + land * (stand * 0.22 + 10) - anti * 5
     sh = lambda p: (p[0], p[1] + dy)
     spine, tops, bots = [sh(p) for p in spine], [sh(p) for p in tops], [sh(p) for p in bots]
     hips = [sh(h) for h in hip0]
@@ -6408,7 +6429,7 @@ def draw_chimera(pen, sp, ph, st):
         _wing(pen, wk[0], wsz * 0.92, wroot[0] - 14, wroot[1] + 4, wing_flap * 0.85 - 0.1, col, acc, dk, far=True, pat=g["pat"], t=t, fast=fast)
     # tail
     stab = strike in ("stab",)
-    _tail(pen, g, R, back, Hh, phs, t, col, acc, dk, lt, lunge=lunge, strike=stab)
+    _tail(pen, g, R, back, Hh, phs - 0.9 - 1.2 * land, t, col, acc, dk, lt, lunge=lunge, strike=stab)   # follows with a delay
     # neck behind the torso for long necks would look odd: neck is drawn after the body
     # the torso
     torso_poly = tops + bots[::-1]
@@ -6481,13 +6502,22 @@ def draw_chimera(pen, sp, ph, st):
     nk_len, nk_up = g["neck"]
     head_pos = F
     if has_head:
-        ang = _clip(nk_up + max(pitch, 0) * 0.6, -0.3, 1.45) - 0.35 * crouch + headup * 0.35 + (-0.18 * lunge if g["neck"][0] > 100 else 0)
+        ang = _clip(nk_up + max(pitch, 0) * 0.6, -0.3, 1.45) - 0.35 * crouch + headup * 0.35 + (-0.18 * lunge if g["neck"][0] > 100 else 0) \
+            + 0.3 * look - 0.1 * land
         L_n = nk_len * (1 + 0.35 * lunge) * (1.0 if not lunge else 1.0) + (60 * lunge if strike in ("snap", "pounce", "tongue", "claw", "dive") else 0)
         bx_, by_ = F[0] - fwd[0] * rx * 0.2, F[1] - fwd[1] * rx * 0.2
-        hxp = bx_ + math.cos(ang) * (L_n + rx * 0.55)
-        hyp = by_ - math.sin(ang) * (L_n + rx * 0.55) + (6 * math.sin(phs * 2) if moving and gait in ("strut", "waddle") else 0)
+        Lh_ = L_n + rx * 0.55
+        if dip > 0.001:
+            # reach: the neck swings down until the mouth is at the ground (as far as its length allows)
+            want = _clip((by_ + ry * 0.55) / max(Lh_, 1.0), -1.0, 1.0)
+            e_ = dip * dip * (3 - 2 * dip)
+            ang = ang * (1 - e_) + math.asin(want) * e_
+        hxp = bx_ + math.cos(ang) * Lh_
+        hyp = by_ - math.sin(ang) * Lh_ + (6 * math.sin(phs * 2) if moving and gait in ("strut", "waddle") else 0)
+        if moving and not flying_pose:
+            hyp -= bob * 0.55   # the head rides steadier than the torso: it counter-balances each step
         if nk_len > 4:
-            bow = g.get("neck_bow", 0.12)
+            bow = g.get("neck_bow", 0.12) * (1 + 1.6 * dip)
             pts = []
             for j in range(9):
                 u = j / 8
@@ -6496,12 +6526,16 @@ def draw_chimera(pen, sp, ph, st):
                 pts.append((x, y))
             wN = max(ry * 1.0, Hh * 0.38) if nk_len < 100 else max(ry * 0.8, 34)
             _tube(pen, pts, wN * (1.2 if nk_len < 100 else 1.5), wN * 0.8, col)
+            if swallow > 0.001:   # a lump travels from the mouth down the throat
+                j_ = min(7, int(swallow * 8))
+                pen.ell(pts[j_][0], pts[j_][1], wN * 0.95, wN * 0.8, light(col, 0.18), rim=False)
             if "mane" in hd["extras"]:
                 for j in range(1, 8):
                     pen.ell(pts[j][0] - 12, pts[j][1] + 6, 30, 26, mix(mix(acc, (60, 30, 12), 0.35), col, 0.1 * (j % 3)), rim=False)
         else:
             pen.ell(F[0] - 6, F[1] + 4, ry * 0.9, ry * 0.9, col, rim=False)
-        rot = -0.25 * roar + hd["snout"][4] * 0.5 + (0.12 if nk_len > 150 else 0.0) - 0.3 * headup * 0 + (0.18 if lunge else 0)
+        rot = -0.25 * roar + hd["snout"][4] * 0.5 + (0.12 if nk_len > 150 else 0.0) - 0.3 * headup * 0 + (0.18 if lunge else 0) \
+            + 0.85 * dip - 0.2 * look
         if pitch > 0.6:
             rot += 0.1
         rot -= 0.5 * max(0.0, pitch - 0.3) * 0.3
@@ -6608,7 +6642,7 @@ def chimera_spec(g):
     if g["glow"]:
         ec = tuple(g["head"]["eyecol"])
     return {"name": g.get("name", "x"), "kind": "chimera", "g": g, "color": tuple(g["pal"][0]), "traits": set(),
-            "scale": k, "hybrid": bool(g["hybrid"]), "aura": bool(g["glow"]), "eye": ec, "head0": m["head"],
+            "scale": k, "hybrid": bool(g["hybrid"]), "aura": False, "eye": ec, "head0": m["head"],
             "bbox": m["bbox"]}
 
 
@@ -6625,3 +6659,501 @@ def hybrid_spec_from(g):
 
 def designs_to_json(g):
     return json.loads(json.dumps(g, default=list))
+
+
+# ================================================================ full-body actions for the hybrids
+def chim_ground(sp):
+    """The creature's natural walking speed across the ground (px/s): heavy, long-legged animals are slow and sweeping,
+    small light ones quick and busy. The scenery scrolls at exactly this speed."""
+    g = sp["g"]
+    GA = GAITS.get(g["gait"], GAITS["trot"])
+    lstyle, nleg, ll, lw = g["legs"]
+    if g["hover"] > 40 or GA["stride"] <= 0 or not nleg or GA["pat"] == "hop":
+        return 260.0
+    s = 1.4 * sp.get("scale", 1.0) * KIND_SCALE.get("chimera", 1.0)
+    stride_px = max(ll * GA["stride"] * s, 20.0)
+    heavy = _clip((g["torso"][1] * g["torso"][2]) / 40000.0, 0.4, 2.0)      # a rough mass
+    f = _clip(2.2 - 0.9 * heavy - ll / 400.0, 0.7, 2.2) * (0.6 + 0.6 * GA["speed"])   # strides per second
+    return _clip(4.0 * stride_px * f, 140.0, 400.0)
+
+
+def chim_rate(sp, ground=None):
+    """Step rate (engine phase units) at which the planted foot travels exactly as fast as the ground moves."""
+    g = sp["g"]
+    GA = GAITS.get(g["gait"], GAITS["trot"])
+    lstyle, nleg, ll, lw = g["legs"]
+    if g["hover"] > 40 or GA["stride"] <= 0 or not nleg or GA["pat"] == "hop":
+        return None
+    ground = ground or chim_ground(sp)
+    s = 1.4 * sp.get("scale", 1.0) * KIND_SCALE.get("chimera", 1.0)
+    stride_px = max(ll * GA["stride"] * s, 20.0)
+    dpdt = ground * math.pi / (2.0 * stride_px)      # the planted foot's average speed = (2/pi) * stride * dp/dt
+    return _clip(dpdt / GA["speed"], 2.0, 15.0)
+
+
+def _ease(x):
+    x = min(max(x, 0.0), 1.0)
+    return x * x * (3 - 2 * x)
+
+
+def _speed_profile(segments, fps=None):
+    """segments: [(t_end, speed_multiplier), ...] -> (P(t), m(t)): distance travelled and current speed, smoothly blended."""
+    fps = fps or FPS
+    ts, ms = [0.0], [segments[0][1]]
+    def m_at(t):
+        prev_t, prev_m = 0.0, segments[0][1]
+        for te, mv in segments:
+            if t <= te:
+                k = _ease((t - (te - 0.45)) / 0.45) if te - prev_t > 0.45 and False else 0.0
+                break
+            prev_t, prev_m = te, mv
+        # blend toward the next segment's speed over 0.45 s around each boundary
+        out = segments[-1][1]
+        for i, (te, mv) in enumerate(segments):
+            if t <= te:
+                out = mv
+                if i + 1 < len(segments):
+                    k = _ease((t - (te - 0.4)) / 0.4)
+                    out = mv + (segments[i + 1][1] - mv) * k
+                break
+        return out
+    n = int(segments[-1][0] * fps) + 3
+    P, acc = [0.0], 0.0
+    for i in range(1, n):
+        acc += m_at(i / fps) / fps
+        P.append(acc)
+    def Pf(t):
+        i = min(int(t * fps), n - 1)
+        return P[i]
+    return Pf, m_at
+
+
+def _food(d, x, gy, size, col, facing=1):
+    """Something lying on the ground to be eaten: a plain, un-gory shape that shrinks as it is eaten."""
+    if size <= 0.02:
+        return
+    w, h = 120 * size, 34 * size
+    body = tuple(int(c * 0.8) for c in col)
+    d.ellipse((x - w, gy - h * 1.8, x + w, gy + 4), fill=body, outline=light(body, 0.3), width=3)
+    d.polygon([(x - facing * w * 0.9, gy - h * 0.9), (x - facing * w * 1.5, gy - h * 1.6), (x - facing * w * 1.4, gy - h * 0.2)], fill=body)
+    d.ellipse((x + facing * w * 0.55, gy - h * 1.35, x + facing * w * 0.8, gy - h * 1.0), fill=light(body, 0.35))
+
+
+def _dust(d, x, y, k, seed=1, size=1.0, up=1.0):
+    """Dust thrown up where something heavy lands or a mouth hits the ground; it rises, spreads and fades."""
+    if k <= 0 or k >= 1:
+        return
+    rnd = random.Random(seed)
+    for i in range(9):
+        a = rnd.uniform(-0.9, 0.9)
+        dx = (rnd.uniform(-1, 1) * 60 + a * 90 * k) * size
+        dy = -(18 + 70 * k * up * rnd.uniform(0.5, 1.1)) * size
+        r = (10 + 28 * k) * size * rnd.uniform(0.7, 1.2)
+        al = int(120 * (1 - k) ** 1.4)
+        d.ellipse((x + dx - r, y + dy - r * 0.8, x + dx + r, y + dy + r * 0.8), fill=(150, 132, 108, al))
+
+
+def _head_reach(sp):
+    """How far in front of its feet the mouth lands when the creature reaches down (measured, not guessed)."""
+    if "_reach" in sp:
+        return sp["_reach"]
+    W_, H_ = 2600, 2200
+    im = Image.new("RGBA", (W_, H_), (0, 0, 0, 0))
+    dd = ImageDraw.Draw(im, "RGBA")
+    pen = Pen(dd, 1300, 1900, 1.0, 1, rimfn)
+    draw_chimera(pen, sp, 0.7, {"t": 0.4, "moving": False, "noshadow": True, "dip": 1.0})
+    hx, hy = sp.get("_head", (200, -40))
+    sp["_reach"] = (hx + sp["g"]["head"]["snout"][1] * 0.8, hy)
+    return sp["_reach"]
+
+
+def _feed_timeline(u, shot0=0.0):
+    """u in [0,1] -> the state of a feeding sequence (reach, bites, swallow, rise)."""
+    st = dict(dip=0.0, swallow=0.0, look=0.0, anticipate=0.0, roar=0.0, bites=0, headup=0.0)
+    if u < 0.14:                                   # notice: head comes up and turns
+        k = _ease(u / 0.14)
+        st["look"], st["headup"] = k, 0.5 * k
+    elif u < 0.24:                                 # anticipation: weight rocks back
+        st["look"], st["headup"] = 1.0 - _ease((u - 0.14) / 0.1) * 0.6, 0.3
+        st["anticipate"] = _ease((u - 0.14) / 0.1)
+    elif u < 0.42:                                 # reach: neck, shoulders and body all go down together
+        st["dip"] = _ease((u - 0.24) / 0.18)
+        st["anticipate"] = 1.0 - _ease((u - 0.24) / 0.06)
+    elif u < 0.78:                                 # three bites: jaw works, head lifts a little between them
+        k = (u - 0.42) / 0.36
+        c = math.sin(k * 3 * math.pi)
+        st["dip"] = 0.88 + 0.12 * abs(c) ** 0.5 * (1 if c > 0 else 0.6)
+        st["dip"] = 0.82 + 0.18 * (0.5 + 0.5 * math.cos(k * 3 * 2 * math.pi))
+        st["roar"] = 0.1 + 0.3 * (0.5 + 0.5 * math.sin(k * 3 * 2 * math.pi + 1.0)) ** 2
+        st["bites"] = min(3, int(k * 3) + 1)
+    elif u < 0.9:                                  # lift and swallow
+        k = _ease((u - 0.78) / 0.12)
+        st["dip"] = 0.9 - 0.7 * k
+        st["swallow"] = (u - 0.78) / 0.12
+        st["bites"] = 3
+    else:                                          # settle back to rest
+        k = _ease((u - 0.9) / 0.1)
+        st["dip"] = 0.2 * (1 - k)
+        st["bites"] = 3
+    return st
+
+
+def feed_scene(out, dur, world, sp, facing=1, zoom=(0.95, 1.0), cwd=None, food_col=(120, 100, 90)):
+    """Walk in, stop, notice, reach down with the whole body, take three bites, swallow, straighten up."""
+    G = chim_ground(sp)
+    t_stop = dur * 0.30
+    Pf, m_at = _speed_profile([(t_stop, 1.0), (dur + 1.0, 0.0)])
+    cx = 380 if facing == 1 else 700
+    rx, ry = _head_reach(sp)
+    s0 = 1.4 * sp.get("scale", 1.0) * KIND_SCALE.get("chimera", 1.0)
+
+    def paint(im, d, t, u, cam):
+        z = zoom[0] + (zoom[1] - zoom[0]) * u
+        m = m_at(t)
+        s_ = s0 * z
+        mouth_x = cx + facing * rx * s_
+        food_x = mouth_x + facing * 30 * s_
+        # the food is part of the ground: it arrives with the scenery and the creature stops right at it
+        wx = food_x + facing * G * (Pf(dur + 0.9) - Pf(t)) * 1.0
+        ft = _feed_timeline(max(0.0, (t - t_stop - 0.35) / max(dur - t_stop - 0.45, 0.5)))
+        size = 1.0 - 0.28 * ft["bites"] if ft["bites"] else 1.0
+        if ft["bites"] == 3 and ft["swallow"] > 0:
+            size = 0.04
+        _food(d, wx, GROUND + 18, size, food_col, facing)
+        st = {"t": t, "moving": m > 0.12, "ground": G, "headup": ft["headup"], "roar": ft["roar"], "dip": ft["dip"],
+              "swallow": ft["swallow"], "look": ft["look"], "anticipate": ft["anticipate"]}
+        draw_creature(d, sp, cx, GROUND + 20, Pf(t) * STEP * 0.5, facing, z, st)
+        if ft["dip"] > 0.85 and ft["roar"] > 0.3:       # the mouth meets the ground: a little dust
+            _dust(d, mouth_x, GROUND + 14, (t * 5) % 1.0, seed=int(t * 5), size=0.5 * z)
+
+    steps = _contacts(sp, Pf, dur, lambda t: m_at(t) > 0.18)
+    write_video(out, dur, paint, world, cwd, cam_dir=facing, cam_fn=lambda t: facing * G * Pf(t))
+    return {"stop_at": t_stop, "bite_at": t_stop + 0.35 + (dur - t_stop - 0.45) * 0.42, "steps": steps}
+
+
+def turn_scene(out, dur, world, sp, cwd=None, zoom=(0.95, 1.0)):
+    """Walks right, hears something, the head swings round first, then shoulders and hips, and it walks back the other way.
+    The tail follows a beat late and the body settles with weight when the turn is done."""
+    G = chim_ground(sp)
+    t_stop, t_turn, t_done = dur * 0.30, dur * 0.50, dur * 0.66
+    Pf, m_at = _speed_profile([(t_stop, 1.0), (t_done, 0.0), (dur + 1.0, 1.0)])
+    cx = 540
+    s0 = 1.4 * sp.get("scale", 1.0) * KIND_SCALE.get("chimera", 1.0)
+
+    def paint(im, d, t, u, cam):
+        z = zoom[0] + (zoom[1] - zoom[0]) * u
+        m = m_at(t)
+        facing = 1 if t < (t_turn + t_done) / 2 else -1
+        if t < t_stop:
+            look = 0.0
+        elif t < t_turn:
+            look = _ease((t - t_stop) / (t_turn - t_stop))        # head goes first
+        else:
+            look = 1.0 - _ease((t - t_done) / 0.5) if t > t_done else 1.0
+        k = _ease((t - t_turn) / (t_done - t_turn))                 # the body rotates through the middle
+        land = 0.0
+        if t > t_done:
+            land = max(0.0, 1.0 - (t - t_done) / 0.45) * 0.8       # weight comes down after the turn
+        st = {"t": t, "moving": m > 0.12, "ground": G, "look": look, "headup": 0.25 * look, "land": land}
+        ph = Pf(t) * STEP * 0.5
+        if 0.02 < k < 0.98:
+            # yaw the whole body: head side crosses the middle first, tail side lags, so the turn reads as a twist
+            L_ = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+            dd = ImageDraw.Draw(L_, "RGBA")
+            draw_creature(dd, sp, cx, GROUND + 20, ph, 1, z, st)
+            box = (int(cx - 520), int(GROUND - 1000), int(cx + 520), int(GROUND + 120))
+            crop = L_.crop(box)
+            w0, h0 = crop.size
+            ang = k * math.pi
+            out_ = Image.new("RGBA", crop.size, (0, 0, 0, 0))
+            cols = max(40, w0 // 12)
+            def fmap(x):                       # where the picture column x lands: head end turns first, tail end lags
+                rel = x / w0
+                a_ = _clip(ang * (0.65 + 0.7 * rel), 0.0, math.pi)
+                return w0 / 2 + (x - w0 / 2) * max(math.cos(a_), -1.0) if abs(math.cos(a_)) > 0.12 else \
+                    w0 / 2 + (x - w0 / 2) * (0.12 if math.cos(a_) >= 0 else -0.12)
+            for c in range(cols):
+                x0, x1 = int(c * w0 / cols), int((c + 1) * w0 / cols)
+                if x1 <= x0:
+                    continue
+                f0, f1 = fmap(x0), fmap(x1)
+                flip = f1 < f0
+                lo, hi = (f1, f0) if flip else (f0, f1)
+                ww = max(1, int(round(hi - lo)) + 1)
+                strip = crop.crop((x0, 0, x1, h0)).resize((ww, h0), Image.BILINEAR)
+                if flip:
+                    strip = strip.transpose(Image.FLIP_LEFT_RIGHT)
+                out_.alpha_composite(strip, (int(max(0, min(w0 - ww, round(lo)))), 0))
+            im.paste(out_, (box[0], box[1]), out_)
+        else:
+            draw_creature(d, sp, cx, GROUND + 20, ph, facing, z, st)
+
+    steps = _contacts(sp, Pf, dur, lambda t: m_at(t) > 0.18)
+    write_video(out, dur, paint, world, cwd, cam_dir=1,
+                cam_fn=lambda t: G * Pf(t) * (1 if t < (t_turn + t_done) / 2 else -1) + (0 if t < (t_turn + t_done) / 2 else 2 * G * Pf((t_turn + t_done) / 2)))
+    return {"turn_at": t_turn, "steps": steps}
+
+
+def pounce_scene(out, dur, world, sp, prey_text="", cwd=None):
+    """A real hunt, done with bodies: stalk, the prey notices and bolts, the hybrid sprints, crouches, leaps, lands on it
+    (dust, body compressing), then feeds. No flashes, no slash marks, no bursts."""
+    G = chim_ground(sp)
+    prey, pscale = prey_spec(prey_text)
+    pcol = tuple(prey["color"])[:3]
+    t1, t2, t3, t4 = dur * 0.22, dur * 0.36, dur * 0.60, dur * 0.70   # stalk end, notice end, leap start, landing
+    Pf, m_at = _speed_profile([(t1, 0.55), (t2, 0.2), (t3, 2.1), (t4, 0.0), (dur + 1.0, 0.0)])
+    s0 = 1.4 * sp.get("scale", 1.0) * KIND_SCALE.get("chimera", 1.0)
+    reach_x, _ = _head_reach(sp)
+    front = max(sp["bbox"][2], 100.0)                       # how far ahead of its middle the creature reaches
+    back_ = max(-sp["bbox"][0], 100.0)
+    # shrink the creature until the chase fits: tail end on screen, prey well ahead of the nose, room to run
+    zc = _clip((1080 - 150 - 330) / ((front + back_) * s0 + 1.0), 0.5, 1.0)
+    cx = int(90 + back_ * s0 * zc)
+
+    def paint(im, d, t, u, cam):
+        m = m_at(t)
+        z = zc
+        s_ = s0 * z
+        # prey: grazing, startles (freezes, head up), then bolts away to the right until it is caught
+        px0 = cx + front * s_ + 300
+        flee = min(190, 1010 - px0)
+        if t < t2:
+            px = px0
+        elif t < t3:
+            px = px0 + flee * _ease((t - t2) / (t3 - t2)) ** 1.4
+        else:
+            px = px0 + flee
+        land_x = px0 + flee - reach_x * s_ + 30
+        # the hybrid closes the distance with its own speed: x grows with the sprint, then the leap covers the rest
+        hx = cx
+        if t >= t2:
+            hx = cx + (land_x - cx) * 0.55 * _ease((t - t2) / (t3 - t2))
+        crouch = anti = lunge = land = 0.0
+        gy_off = 0.0
+        if t2 <= t < t3:
+            near = _ease((t - (t3 - 0.45)) / 0.45)
+            crouch, anti = 0.6 * near, near
+        if t3 <= t < t4:
+            k = (t - t3) / (t4 - t3)
+            hx = cx + (land_x - cx) * (0.55 + 0.45 * k)
+            lunge = math.sin(math.pi * min(k * 1.15, 1.0))
+            gy_off = -170 * math.sin(math.pi * k)
+            crouch = 0.5 * (1 - k)
+        if t >= t4:
+            hx = land_x
+            land = max(0.0, 1.0 - (t - t4) / 0.55)
+            gy_off = 0.0
+        ground = G
+        if t < t4:
+            moving_prey = t >= t2 and t < t3
+            if t < t3:
+                draw_prey(d, px, GROUND + 14, t * STEP * (0.5 if t < t2 else 1.6), 1, (prey, pscale))
+        else:
+            fk = _feed_timeline(max(0.0, (t - t4 - 0.25) / max(dur - t4 - 0.35, 0.4)))
+            sz = 1.0 - 0.27 * fk["bites"] if fk["bites"] else 1.0
+            if fk["bites"] == 3 and fk["swallow"] > 0:
+                sz = 0.04
+            _food(d, hx + reach_x * s_ + 20, GROUND + 18, sz, pcol, 1)
+        st = {"t": t, "moving": t < t4 and t3 > t, "ground": ground, "crouch": crouch, "anticipate": anti,
+              "lunge": lunge, "land": land, "headup": 0.3 if (t2 > t > t1) else 0.0}
+        if t >= t4:
+            fk = _feed_timeline(max(0.0, (t - t4 - 0.25) / max(dur - t4 - 0.35, 0.4)))
+            st.update({"dip": fk["dip"], "swallow": fk["swallow"], "roar": fk["roar"], "look": fk["look"] * 0.5,
+                       "anticipate": 0.0})
+            if t < t4 + 0.6:
+                st["dip"] = max(st["dip"], 0.0)
+        draw_creature(d, sp, hx, GROUND + 20 + gy_off, Pf(t) * STEP * 0.5, 1, z, st)
+        if t4 <= t < t4 + 0.7:
+            _dust(d, hx + 60, GROUND + 14, (t - t4) / 0.7, seed=4, size=1.2)
+            _dust(d, hx - 100, GROUND + 14, (t - t4) / 0.7, seed=9, size=0.9)
+
+    steps = _contacts(sp, Pf, dur, lambda t: m_at(t) > 0.18 and not (t3 <= t < t4) and t < t4)
+    write_video(out, dur, paint, world, cwd, cam_dir=1, cam_fn=lambda t: G * Pf(t))
+    return {"zoom_at": t1, "lunge_at": t4 - 0.25, "land_at": t4, "steps": steps}
+
+
+def chim_mass(sp):
+    g = sp["g"]
+    return _clip((g["torso"][1] * g["torso"][2]) / 40000.0, 0.4, 2.0)
+
+
+def _contacts(sp, Pf, dur, active):
+    """Times (seconds into the scene) at which a foot lands, read from the same phase the legs are drawn with."""
+    r = chim_rate(sp, None)
+    if not r:
+        return []
+    GA = GAITS.get(sp["g"]["gait"], GAITS["trot"])
+    k_ = r * GA["speed"]
+    out, last = [], None
+    for i in range(int(dur * FPS)):
+        t = i / FPS
+        n = math.floor((Pf(t) * k_ - math.pi / 2) / math.pi)
+        if last is not None and n > last and active(t):
+            out.append(round(t, 3))
+        last = n
+    return out
+
+
+def walk_steps(sp, dur):
+    return _contacts(sp, lambda t: t, dur, lambda t: True)
+
+
+# ================================================================ cinematic depth (the "Thendan" presentation)
+# Distant layers fade into haze, mist drifts at two depths, the moon/sun glows, dark foreground silhouettes pass in
+# front of the action, and a vignette closes the frame. Everything is drawn by the engine; no stock footage.
+from PIL import ImageFilter
+CINEMA = {"on": True, "fg": False}      # "fg": dark foreground plants/rocks (used for the hybrid series)
+
+
+def _cin_assets(self):
+    if getattr(self, "_cin", None) is not None:
+        return self._cin
+    st = self.st
+    rnd = random.Random(11 + len(str(st.get("ground"))))
+    PW = self.PW
+    sky_lo = rgb(st["sky"][1])
+    A = {}
+    # atmospheric perspective: far hills sit in the haze, near hills a little less
+    def hazed(layer, k, blur):
+        r, g, b, a = layer.split()
+        rgb_ = Image.merge("RGB", (r, g, b))
+        rgb_ = Image.blend(rgb_, Image.new("RGB", rgb_.size, sky_lo), k)
+        if blur:
+            rgb_ = rgb_.filter(ImageFilter.GaussianBlur(blur))
+            a = a.filter(ImageFilter.GaussianBlur(blur))
+        out = Image.merge("RGBA", (*rgb_.split(), a))
+        out.top = layer.top
+        return out
+    A["far"], A["near"] = hazed(self.far, 0.38, 1.6), hazed(self.near, 0.16, 0.0)
+    self.far, self.near = A["far"], A["near"]
+    # two mist strips, soft and wide
+    def mist(h, n, alpha, col):
+        im = Image.new("RGBA", (PW, h), (0, 0, 0, 0))
+        d = ImageDraw.Draw(im)
+        for _ in range(n):
+            x, y = rnd.uniform(0, PW), rnd.uniform(h * 0.25, h * 0.75)
+            rx, ry = rnd.uniform(220, 460), rnd.uniform(24, 60)
+            d.ellipse((x - rx, y - ry, x + rx, y + ry), fill=col + (alpha,))
+            d.ellipse((x - rx + PW, y - ry, x + rx + PW, y + ry), fill=col + (alpha,))
+        im = im.filter(ImageFilter.GaussianBlur(34))
+        return im
+    mc = mix(sky_lo, (230, 235, 245), 0.45)
+    A["mist_hi"], A["mist_lo"] = mist(260, 9, 70, tuple(int(c) for c in mc)), mist(200, 7, 44, tuple(int(c) for c in mc))
+    # glow around the moon / sun
+    sx, sy, sr = getattr(self, "sun_xy", (700, 520, 85))
+    glow = Image.new("RGBA", (W, 1100), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    sc = rgb(st["sun"]) if isinstance(st.get("sun"), str) and st["sun"] not in ("eclipse", "two", "planet", "hole") else (255, 235, 200)
+    for k in range(18, 0, -1):
+        r = sr * (1 + k * 0.38)
+        gd.ellipse((sx - r, sy - r, sx + r, sy + r), fill=tuple(int(c) for c in sc) + (int(3 + 1.2 * (19 - k)),))
+    A["glow"] = glow.filter(ImageFilter.GaussianBlur(26))
+    # vignette
+    import numpy as np
+    yy, xx = np.mgrid[0:H, 0:W].astype("float32")
+    r = np.sqrt(((xx - W / 2) / (W * 0.62)) ** 2 + ((yy - H * 0.55) / (H * 0.6)) ** 2)
+    a = (np.clip((r - 0.62) / 0.55, 0, 1) ** 1.7 * 175).astype("uint8")
+    v = np.zeros((H, W, 4), dtype="uint8")
+    v[..., 3] = a
+    A["vig"] = Image.fromarray(v, "RGBA")
+    # foreground silhouettes: grass blades along the bottom, fronds hanging in from the top corners, boulders
+    A["fg"] = None
+    if CINEMA.get("fg"):
+        dark_ = tuple(int(c * 0.10) for c in mix(rgb(st["ground"]), rgb(st["far"]), 0.4)) + (255,)
+        fh = 560
+        im = Image.new("RGBA", (PW, fh), (0, 0, 0, 0))
+        d = ImageDraw.Draw(im)
+        base = fh - 20
+        for i in range(int(PW / 14)):                         # blades
+            x = i * 14 + rnd.uniform(-6, 6)
+            h = rnd.uniform(40, 150) * (1.5 if rnd.random() < 0.08 else 1.0)
+            lean = rnd.uniform(-28, 28)
+            for off in (0, PW):
+                d.polygon([(x - 6 + off, base + 60), (x + lean + off, base - h), (x + 7 + off, base + 60)], fill=dark_)
+        for _ in range(5):                                    # a few big out-of-focus plants / rocks between the viewer and the creature
+            x = rnd.uniform(0, PW)
+            if st["sil"] in ("rocks", "peaks", "spikes", "cones", "graves", "clouds"):
+                w, h = rnd.uniform(90, 200), rnd.uniform(60, 130)
+                for off in (0, PW):
+                    d.ellipse((x - w + off, base - h, x + w + off, base + 90), fill=dark_)
+            else:
+                for off in (0, PW):
+                    for k in range(7):
+                        a_ = -0.2 + k * 0.28
+                        d.line((x + off, base + 30, x + off + math.sin(a_) * 170, base - math.cos(a_) * 230), fill=dark_, width=10)
+        A["fg"] = im.filter(ImageFilter.GaussianBlur(1.4))
+        # fronds hanging from the top-left / top-right corners
+        top = Image.new("RGBA", (W, 640), (0, 0, 0, 0))
+        td = ImageDraw.Draw(top)
+        for side in (0, 1):
+            ox = 0 if side == 0 else W
+            sg = 1 if side == 0 else -1
+            for k in range(9):
+                a_ = 0.25 + k * 0.16
+                L_ = rnd.uniform(260, 470)
+                ex, ey = ox + sg * math.cos(a_) * L_ * 0.75, math.sin(a_) * L_
+                td.line((ox, -10, ex, ey), fill=dark_, width=9)
+                for j in range(1, 8):
+                    px, py = ox + (ex - ox) * j / 8, -10 + (ey + 10) * j / 8
+                    td.line((px, py, px + sg * 34, py + 40), fill=dark_, width=4)
+                    td.line((px, py, px - sg * 6, py + 44), fill=dark_, width=4)
+        A["top"] = top.filter(ImageFilter.GaussianBlur(2.2))
+    self._cin = A
+    return A
+
+
+def _cin_back(self, im, cam, t):
+    """Called on the finished background (before any creature is drawn): swap in hazed layers, glow, mid mist."""
+    A = _cin_assets(self)
+    base = self.sky.copy() if False else None
+    if A.get("glow") is not None and self.st.get("sun") not in (None,):
+        im.paste(A["glow"], (0, 0), A["glow"])
+    return im
+
+
+def _cin_front(self, im, cam, t):
+    """Called after the creature is drawn: low mist in front of its feet, foreground silhouettes, vignette."""
+    A = _cin_assets(self)
+    im = im.convert("RGBA")
+    for strip, k, y, sp in ((A["mist_hi"], 0.35, GROUND - 330, 14), (A["mist_lo"], 0.95, GROUND - 40, 26)):
+        off = int(cam * k + t * sp) % self.PW
+        for ox in (-off, -off + self.PW):
+            if ox < W and ox + self.PW > 0:
+                im.alpha_composite(strip, (ox, y)) if ox >= 0 else im.alpha_composite(strip.crop((-ox, 0, min(self.PW, -ox + W), strip.size[1])), (0, y))
+    if A.get("fg") is not None:
+        off = int(cam * 1.5 + math.sin(t * 0.9) * 5) % self.PW
+        for ox in (-off, -off + self.PW):
+            if ox < W and ox + self.PW > 0:
+                piece = A["fg"]
+                if ox >= 0:
+                    im.alpha_composite(piece.crop((0, 0, min(self.PW, W - ox), piece.size[1])), (ox, H - piece.size[1] + 30))
+                else:
+                    im.alpha_composite(piece.crop((-ox, 0, min(self.PW, -ox + W), piece.size[1])), (0, H - piece.size[1] + 30))
+        sway = int(6 * math.sin(t * 0.8))
+        im.alpha_composite(A["top"], (sway, 0))
+    im = im.convert("RGB")
+    # one colour world: pull everything a little toward the scene's own haze colour so the creature sits IN the scene
+    tint = Image.new("RGB", im.size, rgb(self.st["sky"][1]))
+    im = Image.blend(im, tint, 0.11)
+    im = im.convert("RGBA")
+    im.alpha_composite(A["vig"])
+    return im.convert("RGB")
+
+
+_world_frame0 = World.frame
+
+
+def _world_frame_cinema(self, cam, t):
+    if CINEMA["on"] and not getattr(self, "no_cinema", False):
+        A = _cin_assets(self)      # (also swaps in the hazed hills before the first frame is drawn)
+    im = _world_frame0(self, cam, t)
+    if CINEMA["on"] and not getattr(self, "no_cinema", False):
+        if A.get("glow") is not None and self.st.get("sun") not in (None, "eclipse", "two", "planet", "hole"):
+            im = im.convert("RGBA")
+            im.alpha_composite(A["glow"])
+            im = im.convert("RGB")
+    return im
+
+
+World.frame = _world_frame_cinema
+World.cinema_front = _cin_front
