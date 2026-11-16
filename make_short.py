@@ -30,6 +30,7 @@ import requests
 
 ROOT = pathlib.Path(__file__).parent
 HISTORY_FILE = ROOT / "history.json"
+DESIGNS_FILE = ROOT / "hybrids.json"  # every hybrid ever designed, so a new one is never a copy of an old one
 WORK = ROOT / "work"
 OUT = ROOT / "output"
 
@@ -169,6 +170,15 @@ def load_history():
     return []
 
 
+def load_designs():
+    if DESIGNS_FILE.exists():
+        try:
+            return json.loads(DESIGNS_FILE.read_text())
+        except Exception:
+            return []
+    return []
+
+
 def pick_idea(history):
     for _ in range(500):
         a, b = sorted(random.sample(ANIMALS, 2))
@@ -226,10 +236,11 @@ def longest_b64(obj):
 
 
 # ---------------------------------------------------------------- writing
-def ask_gemini(a, b, place_name):
+def ask_gemini(a, b, place_name, design_text=""):
     prompt = f"""You write narration for 40-second YouTube Shorts about IMAGINARY animal hybrids.
 
 Idea: a hybrid of a {a} and a {b}, living in {place_name}.
+{("The creature has been designed. Describe EXACTLY this anatomy and movement, do not invent spikes, armour or other features it does not have: " + design_text) if design_text else ""}
 
 Return ONLY valid JSON, no markdown, in exactly this shape:
 {{
@@ -237,7 +248,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
   "creature_name": "a fun invented name for the hybrid",
   "prey": "a specific animal that lives in {place_name} and that the hybrid hunts",
   "signature_move": "one sentence: the hybrid's signature move on that prey, using abilities taken from the {a} and the {b} (an action, not gore)",
-  "hybrid_look": "one detailed sentence describing how the creature LOOKS: a fierce, scary, dominant apex predator (menacing face, glowing eyes, scars, fangs or claws or spikes, huge muscular body), clearly showing specific features taken from the {a} and from the {b}",
+  "hybrid_look": "one detailed sentence describing how the creature LOOKS, clearly showing specific features taken from the {a} and from the {b}, matching the design given above if there is one (its body shape, face, limbs, wings or shell, colours and how it moves)",
   "sentences": [
     {{"text": "one spoken sentence", "image": "the SETTING shown while this sentence is spoken"}}
   ]
@@ -3203,9 +3214,18 @@ def plan_main():
         key, a, b, place = pick_idea(history)
         place_name, place_desc = place[0], place[1]
         log(f"Hybrid #{episode}: {a} + {b} in {place_name}")
-        story = ask_gemini(a, b, place_name)
+        import toon
+        designs = load_designs()
+        avoid = [d["fingerprint"] for d in designs if "fingerprint" in d]
+        gd = toon.design_hybrid(a, b, avoid=avoid, seed=len(designs))
+        prof = toon.design_profile(gd, f"{a}-{b}")
+        log(f"Design: {prof['silhouette']} | {prof['locomotion']} | difference from earlier hybrids: {gd['fp_distance']}")
+        design_text = "; ".join(toon.describe(gd)) + ". It moves: " + toon.describe_move(gd) + "."
+        story = ask_gemini(a, b, place_name, design_text)
+        designs.append(toon.designs_to_json(gd))
+        DESIGNS_FILE.write_text(json.dumps(designs, indent=1))
         plan = {"series": "hybrid", "key": key, "a": a, "b": b, "place": list(place), "story": story,
-                "episode": episode,
+                "episode": episode, "design": toon.designs_to_json(gd), "profile": prof,
                 "clips": [{"title": t, "prompt": p} for t, p in
                           clip_prompts(story["hybrid_look"], place_name, place_desc,
                                        story.get("prey", "a small animal"), story.get("signature_move", "it pounces"))]}
@@ -3295,13 +3315,16 @@ def build_main():
 
     # --- the animation: every creature is drawn and animated by the bot (flat, stylized look)
     import toon
-    sa, sb = toon.animal_spec(a), toon.animal_spec(b)
-    sh = toon.hybrid_spec(a, b)
+    sa, sb = toon.pure_spec(a), toon.pure_spec(b)
+    if plan.get("design"):
+        sh = toon.hybrid_spec_from(plan["design"])  # the saved identity profile: same body in every scene
+    else:
+        sh = toon.hybrid_spec_from(toon.design_hybrid(a, b))
     scenes = plan_scenes(sentences, total)
     first = scenes[0]
     t = open_times(first["hook"], first["morph"])
     world = toon.World(place_name, 1)
-    log(f"Animating: {a} ({sa['kind']}), {b} ({sb['kind']}), hybrid ({sh['kind']}, traits: {', '.join(sorted(sh['traits']))})")
+    log(f"Animating: {a} ({sa['kind']}), {b} ({sb['kind']}), hybrid ({sh['kind']}: {'; '.join(toon.describe(sh['g']))})")
     toon.walk_scene(str(WORK / "toon_a.mp4"), t["la"], world, sa, 1, (1.0, 1.1), cwd=WORK, intro=(sh, 1.3))
     toon.walk_scene(str(WORK / "toon_b.mp4"), t["lb"], world, sb, -1, (1.0, 1.1), cwd=WORK)
     toon.meet_scene(str(WORK / "toon_m.mp4"), t["lm"], world, sa, sb, cwd=WORK)
