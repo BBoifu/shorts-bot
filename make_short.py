@@ -1041,9 +1041,33 @@ def score_plan(story, beats, durs, impacts):
     return {"mood": mood, "scenes": scenes, "reveals": kept}
 
 
+_STAT_CACHE = {}
+
+
+def sound_stats(path):
+    """(mean dB, peak dB) of a sound file, measured once. Used to set every effect to a fixed distance below the voice."""
+    key = str(path)
+    if key not in _STAT_CACHE:
+        out = run_capture(["ffmpeg", "-hide_banner", "-nostats", "-i", key, "-af", "volumedetect", "-f", "null", "-"], cwd=WORK)
+        mean = re.search(r"mean_volume:\s*(-?[\d.]+) dB", out)
+        peak = re.search(r"max_volume:\s*(-?[\d.]+) dB", out)
+        _STAT_CACHE[key] = (float(mean.group(1)) if mean else -30.0, float(peak.group(1)) if peak else -6.0)
+    return _STAT_CACHE[key]
+
+
+# Where everything sits, measured against the narrator (about -16 LUFS, speech peaks near -3 dBFS):
+#   ordinary effects peak near -20 dBFS (12-18 dB under the voice), big impacts near -13 dBFS (8-12 dB under),
+#   ambience about -38 dB RMS, music about -28 dB RMS (and ducked a further ~8 dB whenever the narrator speaks).
+SFX_PEAK_DB, SFX_MEAN_DB = -24.0, -31.0          # ordinary effects: about 12-18 dB under the voice
+MAJOR_PEAK_DB, MAJOR_MEAN_DB = -13.0, -28.0      # big impacts and screams: about 8-12 dB under, and only briefly
+MAJOR_SOUNDS = ("boom", "scream", "victim", "crash", "roar")
+AMBIENT_MEAN_DB = -38.0
+MUSIC_MEAN_DB = -31.0
+
+
 def build_audio(voice_name, total, events, ambient, out_wav, quiet=None, score=None):
-    """Mix narration, timed effects, ambience, and background music. Music is the user's own track if one is supplied,
-    otherwise the original score generated for this story (when a score plan is given)."""
+    """Narration-first mix. The voice is levelled, then effects, ambience and music are each set to a measured distance
+    below it and ducked while it speaks. Music is the user's own track if supplied, otherwise the generated score."""
     music = find_music_track()
     generated = False
     if not music and score:
@@ -1055,47 +1079,60 @@ def build_audio(voice_name, total, events, ambient, out_wav, quiet=None, score=N
             music = None
     cmd = ["ffmpeg", "-y", "-i", voice_name, "-stream_loop", "-1", "-i", ambient]
     fmt = "aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo"
-    split = "asplit=2[v][voicekey]" if music else "anull[v]"  # the voice is only split when there is music to duck
-    parts = [f"[0:a]aresample=44100,{fmt},{split}",
-             f"[1:a]aresample=44100,{fmt},atrim=0:{total + 1:.2f},volume=0.14"
-             + "".join(f",volume='if(between(t,{a:.2f},{b:.2f}),0,1)':eval=frame" for a, b in (quiet or [])) + "[amb]"]
+    gate = "".join(f",volume='if(between(t,{a:.2f},{b:.2f}),0,1)':eval=frame" for a, b in (quiet or []))
+    nkeys = 2 + (1 if music else 0)
+    keys = "".join(f"[vk{k}]" for k in range(nkeys))
+    # the voice: gentle compression so every word is clear, levelled to a steady -16 LUFS, no clipping
+    parts = [f"[0:a]aresample=44100,{fmt},highpass=f=70,"
+             "acompressor=threshold=0.125:ratio=2.2:attack=10:release=160:makeup=1.5,"
+             f"loudnorm=I=-16:TP=-2.5:LRA=7,aresample=44100,{fmt},asplit={1 + nkeys}[v]{keys}"]
+    a_mean, _ = sound_stats(ambient)
+    amb_db = AMBIENT_MEAN_DB - a_mean
+    parts.append(f"[1:a]aresample=44100,{fmt},atrim=0:{total + 1:.2f},volume={amb_db:.1f}dB{gate}[ambraw]")
+    parts.append("[ambraw][vk0]sidechaincompress=threshold=0.02:ratio=2.5:attack=30:release=500[amb]")
     labels = ["[v]", "[amb]"]
+    ev_labels = []
     for i, ev in enumerate(events):
         cmd += ["-i", ev["file"]]
         ms = max(int(ev["at"] * 1000), 0)
         cut = f",atrim=0:{ev['max']}" if ev.get("max") else ""
+        mean, peak = sound_stats(ev["file"])
+        major = pathlib.Path(str(ev["file"])).stem.split("_")[0] in MAJOR_SOUNDS
+        rel = 20 * math.log10(max(min(ev["vol"], 1.0), 0.05))
+        # dense sounds (screams, growls) are far louder than their peaks suggest, so use the quieter of two rules
+        gain = min((MAJOR_PEAK_DB if major else SFX_PEAK_DB) + rel - peak,
+                   (MAJOR_MEAN_DB if major else SFX_MEAN_DB) + rel - mean)
+        gain = max(min(gain, 24.0), -45.0)
         parts.append(f"[{i + 2}:a]aresample=44100,{fmt}{cut},asetpts=PTS-STARTPTS,"
-                     f"volume={ev['vol']},adelay={ms}|{ms}[e{i}]")
-        labels.append(f"[e{i}]")
+                     f"volume={gain:.1f}dB,adelay={ms}|{ms}[e{i}]")
+        ev_labels.append(f"[e{i}]")
+    if ev_labels:
+        parts.append("".join(ev_labels) + f"amix=inputs={len(ev_labels)}:duration=longest:normalize=0,"
+                     "alimiter=limit=0.35:level=0[sfxraw]")
+        parts.append("[sfxraw][vk1]sidechaincompress=threshold=0.02:ratio=3:attack=15:release=350[sfx]")
+        labels.append("[sfx]")
     if music:
-        # Music rises as the story develops, peaks through the reveal/action section,
-        # then settles. Sidechain compression automatically lowers it under speech.
         music_idx = len(events) + 2
         cmd += ["-stream_loop", "-1", "-i", music]
+        m_mean, _ = sound_stats(music)
+        base_db = MUSIC_MEAN_DB - m_mean
         intro_end = max(total * 0.20, 0.5)
         build_end = max(total * 0.65, intro_end + 0.5)
         peak_end = max(total * 0.85, build_end + 0.25)
-        fade_start = max(total - 2.0, 0.0)
         if generated:  # the score already follows the story; it only needs a level, a dip at the silent moments and fades
-            music_filter = (f"aresample=44100,{fmt},atrim=0:{total + 0.25:.2f},volume=0.62"
-                            + "".join(f",volume='if(between(t,{a:.2f},{b:.2f}),0.3,1)':eval=frame" for a, b in (quiet or []))
+            music_filter = (f"aresample=44100,{fmt},atrim=0:{total + 0.25:.2f},volume={base_db:.1f}dB"
+                            + "".join(f",volume='if(between(t,{a:.2f},{b:.2f}),0.4,1)':eval=frame" for a, b in (quiet or []))
                             + f",afade=t=in:st=0:d=1.5,afade=t=out:st={max(total - 2.2, 0):.2f}:d=2.2[musicraw]")
         else:
-          music_filter = (
-            f"aresample=44100,{fmt},atrim=0:{total + 0.25:.2f},"
-            f"volume='if(lt(t,{intro_end:.2f}),0.055,if(lt(t,{build_end:.2f}),"
-            f"0.095,if(lt(t,{peak_end:.2f}),0.14,0.07)))':eval=frame,"
-            "afade=t=in:st=0:d=1,"
-            f"afade=t=out:st={fade_start:.2f}:d=2[musicraw]"
-        )
+            music_filter = (f"aresample=44100,{fmt},atrim=0:{total + 0.25:.2f},volume={base_db:.1f}dB,"
+                            f"volume='if(lt(t,{intro_end:.2f}),0.6,if(lt(t,{build_end:.2f}),0.85,if(lt(t,{peak_end:.2f}),1.15,0.7)))':eval=frame,"
+                            f"afade=t=in:st=0:d=1,afade=t=out:st={max(total - 2.0, 0):.2f}:d=2[musicraw]")
         parts.append(f"[{music_idx}:a]{music_filter}")
-        parts.append(
-            "[musicraw][voicekey]sidechaincompress=threshold=0.02:ratio=5:"
-            "attack=40:release=700:makeup=1[duckedmusic]"
-        )
+        # ducking: down about 8 dB under speech, back up smoothly in the pauses
+        parts.append("[musicraw][vk2]sidechaincompress=threshold=0.015:ratio=4:attack=60:release=900:makeup=1[duckedmusic]")
         labels.append("[duckedmusic]")
     parts.append("".join(labels) + f"amix=inputs={len(labels)}:duration=first:normalize=0:"
-                 "dropout_transition=0,alimiter=limit=0.95:level=0[mix]")
+                 "dropout_transition=0,alimiter=limit=0.89:level=0[mix]")
     cmd += ["-filter_complex", ";".join(parts), "-map", "[mix]", out_wav]
     if music:
         log("Background score: original score generated for this story" if generated else f"Background score: adaptive mix enabled ({pathlib.Path(music).name})")
@@ -1462,7 +1499,33 @@ def build_video(scenes, assets, audio_name, captions_name, out_path):
          "-c:a", "aac", "-b:a", "192k", "-shortest", "-t", "59", str(out_path)], cwd=WORK)
 
 
-def sound_events(scenes, sounds, hunt=None):
+def make_steps(times, mass, out_name, total):
+    """One quiet footfall track: a soft low thud at every moment a foot lands (heavier bodies: deeper, longer)."""
+    import numpy as np
+    sr = 44100
+    buf = np.zeros(int((total + 1.0) * sr), dtype=np.float32)
+    rnd = random.Random(7)
+    f0 = 150.0 / (0.7 + mass)
+    n = int(sr * (0.07 + 0.07 * mass))
+    tt = np.arange(n) / sr
+    for t in times:
+        i = int(t * sr)
+        if i + n >= len(buf):
+            continue
+        f = f0 * rnd.uniform(0.92, 1.08)
+        thud = np.sin(2 * math.pi * f * tt * (1.0 - 0.35 * tt / tt[-1])) * np.exp(-tt * (38 / (0.7 + mass)))
+        tick = np.random.default_rng(int(t * 1000)).standard_normal(n) * np.exp(-tt * 260) * 0.25
+        buf[i:i + n] += ((thud + tick) * rnd.uniform(0.8, 1.0)).astype(np.float32)
+    buf = np.clip(buf, -1, 1)
+    with wave.open(str(WORK / out_name), "wb") as w_:
+        w_.setnchannels(1)
+        w_.setsampwidth(2)
+        w_.setframerate(sr)
+        w_.writeframes((buf * 32000).astype(np.int16).tobytes())
+    return out_name
+
+
+def sound_events(scenes, sounds, hunt=None, steps_file=None):
     """When each sound effect plays, in seconds from the start of the video."""
     first = scenes[0]
     t = open_times(first["hook"], first["morph"])
@@ -1485,6 +1548,8 @@ def sound_events(scenes, sounds, hunt=None):
             ev.append({"file": sounds["growl"], "at": at + hunt["lunge_at"] - 0.1, "vol": 0.8})
             ev.append({"file": sounds["boom"], "at": at + hunt["lunge_at"] + 0.25, "vol": 0.7})
         at += sc["dur"]
+    if steps_file:
+        ev.append({"file": steps_file, "at": 0.0, "vol": 0.9})
     # closing close-up of the face: a last growl and a quiet eerie tone, then the video loops
     ev.append({"file": sounds["growl"], "at": max(at - scenes[-1]["dur"] + 0.3, 0), "vol": 0.6})
     ev.append({"file": sounds["eerie"], "at": max(at - 1.4, 0), "vol": 0.5})
@@ -3315,6 +3380,7 @@ def build_main():
 
     # --- the animation: every creature is drawn and animated by the bot (flat, stylized look)
     import toon
+    toon.CINEMA["fg"] = True      # dark foreground plants pass in front of the action (hybrid series)
     sa, sb = toon.pure_spec(a), toon.pure_spec(b)
     if plan.get("design"):
         sh = toon.hybrid_spec_from(plan["design"])  # the saved identity profile: same body in every scene
@@ -3348,14 +3414,25 @@ def build_main():
         if sc["kind"] == "hold":
             toon.walk_scene(out, sc["dur"], w, sh, 1, (1.0, 1.15), cwd=WORK, outro=(sh, min(1.5, sc["dur"] * 0.6)))
         elif i == hunt_at:
-            hunt_info = toon.hunt_scene(out, sc["dur"], w, sh, story.get("prey", ""), cwd=WORK)
+            hunt_info = toon.pounce_scene(out, sc["dur"], w, sh, story.get("prey", ""), cwd=WORK)
             sc["hunt"] = True
+            sc["steps"] = hunt_info.get("steps", [])
         else:
-            shot_type = k % 3
-            if shot_type == 0:
-                toon.walk_scene(out, sc["dur"], w, sh, 1, (1.0, 1.2), cwd=WORK)
-            elif shot_type == 1:
-                toon.walk_scene(out, sc["dur"], w, sh, -1, (0.62, 0.7), hybrid_roar_end=True, cwd=WORK)
+            # a different physical action in each shot: walk, feed, turn, walk the other way, a close-up reaction
+            kinds = ["walk", "feed", "turn", "walkback", "face"]
+            shot_type = kinds[k % len(kinds)]
+            if sc["dur"] < 3.6 and shot_type in ("feed", "turn"):
+                shot_type = "walk"
+            if shot_type == "walk":
+                toon.walk_scene(out, sc["dur"], w, sh, 1, (0.95, 1.1), cwd=WORK)
+                sc["steps"] = toon.walk_steps(sh, sc["dur"])
+            elif shot_type == "feed":
+                sc["steps"] = toon.feed_scene(out, sc["dur"], w, sh, cwd=WORK, food_col=tuple(toon.pure_spec(b)["color"])[:3])["steps"]
+            elif shot_type == "turn":
+                sc["steps"] = toon.turn_scene(out, sc["dur"], w, sh, cwd=WORK)["steps"]
+            elif shot_type == "walkback":
+                toon.walk_scene(out, sc["dur"], w, sh, -1, (0.9, 1.0), cwd=WORK)
+                sc["steps"] = toon.walk_steps(sh, sc["dur"])
             else:
                 toon.face_scene(out, sc["dur"], w, sh, cwd=WORK)
             k += 1
@@ -3368,7 +3445,12 @@ def build_main():
 
     # --- sound
     sounds = prepare_sounds(a, b, ambient_query)
-    events = sound_events(scenes, sounds, hunt_info)
+    step_abs, at_ = [], scenes[0]["dur"]
+    for sc in scenes[1:]:
+        step_abs += [at_ + x for x in sc.get("steps", [])]
+        at_ += sc["dur"]
+    steps_file = make_steps(step_abs, toon.chim_mass(sh), "steps.wav", total) if step_abs else None
+    events = sound_events(scenes, sounds, hunt_info, steps_file)
     build_audio(audio_name, total, events, sounds["ambient"], "mix.wav", score=ramp_score(total))
 
     out_path = OUT / "short.mp4"
