@@ -25,11 +25,14 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       - name: Save the plan and story history
+        continue-on-error: true   # saving is a bonus: if it fails, the video must still be built and uploaded
         run: |
           git config user.name "shorts-bot"
           git config user.email "shorts-bot@users.noreply.github.com"
-          git add plan history.json hybrids.json
-          git diff --cached --quiet || (git commit -m "New plan" && git push)
+          for f in plan history.json hybrids.json; do [ -e "$f" ] && git add "$f"; done
+          git diff --cached --quiet || git commit -m "New plan"
+          git pull --rebase || true
+          git push || echo "Could not save the plan this time; continuing with the build."
       - name: Build the Short
         run: python make_short.py build
         env:
