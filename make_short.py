@@ -1079,9 +1079,13 @@ def build_audio(voice_name, total, events, ambient, out_wav, quiet=None, score=N
             music = None
     cmd = ["ffmpeg", "-y", "-i", voice_name, "-stream_loop", "-1", "-i", ambient]
     fmt = "aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo"
-    gate = "".join(f",volume='if(between(t,{a:.2f},{b:.2f}),0,1)':eval=frame" for a, b in (quiet or []))
-    nkeys = 2 + (1 if music else 0)
-    keys = "".join(f"[vk{k}]" for k in range(nkeys))
+    def gate_expr(depth):   # smooth: fades down over 0.25 s into each held silence and snaps back as the reveal lands
+        return "".join(f",volume='1-{depth}*clip(min((t-{a:.2f})/0.25,({b:.2f}-t)/0.06),0,1)':eval=frame" for a, b in (quiet or []))
+    gate = gate_expr(1.0)
+    # one copy of the voice for each thing that must duck under it (ambience always; effects and music only if present)
+    key_names = ["vk0"] + (["vk1"] if events else []) + (["vk2"] if music else [])
+    nkeys = len(key_names)
+    keys = "".join(f"[{k}]" for k in key_names)
     # the voice: gentle compression so every word is clear, levelled to a steady -16 LUFS, no clipping
     parts = [f"[0:a]aresample=44100,{fmt},highpass=f=70,"
              "acompressor=threshold=0.125:ratio=2.2:attack=10:release=160:makeup=1.5,"
@@ -1121,7 +1125,7 @@ def build_audio(voice_name, total, events, ambient, out_wav, quiet=None, score=N
         peak_end = max(total * 0.85, build_end + 0.25)
         if generated:  # the score already follows the story; it only needs a level, a dip at the silent moments and fades
             music_filter = (f"aresample=44100,{fmt},atrim=0:{total + 0.25:.2f},volume={base_db:.1f}dB"
-                            + "".join(f",volume='if(between(t,{a:.2f},{b:.2f}),0.4,1)':eval=frame" for a, b in (quiet or []))
+                            + gate_expr(0.88)
                             + f",afade=t=in:st=0:d=1.5,afade=t=out:st={max(total - 2.2, 0):.2f}:d=2.2[musicraw]")
         else:
             music_filter = (f"aresample=44100,{fmt},atrim=0:{total + 0.25:.2f},volume={base_db:.1f}dB,"
@@ -1184,7 +1188,7 @@ def _cap_overlap(track, t0, t1, bottom):
     return worst
 
 
-def write_captions(words, total, path, card=None, track=None):
+def write_captions(words, total, path, card=None, track=None, card_big=None):
     if not words:
         return False
     header = (
@@ -1196,7 +1200,11 @@ def write_captions(words, total, path, card=None, track=None):
         "Style: Default,Liberation Sans Narrow,112,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,"
         "1,0,0,0,100,100,1,0,1,8,3,2,60,60,520,1\n"
         "Style: Card,Liberation Sans Narrow,62,&H00D9D9D9,&H000000FF,&H00000000,&H00000000,"
-        "1,0,0,0,100,100,10,0,1,3,0,8,60,60,330,1\n\n"
+        "1,0,0,0,100,100,10,0,1,3,0,8,60,60,330,1\n"
+        "Style: Card2,Liberation Sans Narrow,52,&H00C8C8C8,&H000000FF,&H00000000,&H00000000,"
+        "1,0,0,0,100,100,9,0,1,3,0,8,60,60,545,1\n"
+        "Style: Title,Liberation Serif,124,&H0050B9E8,&H000000FF,&H00071018,&H96000000,"
+        "1,0,0,0,100,100,2,0,1,5,4,8,60,60,395,1\n\n"
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
     lines = []
@@ -1223,9 +1231,20 @@ def write_captions(words, total, path, card=None, track=None):
         else:
             tag = f"{{\\an2\\pos(540,{y})}}"
         prev_y, prev_end = y, end
-        lines.append(f"Dialogue: 0,{ass_time(start)},{ass_time(end)},Default,,0,0,0,,{tag}{text}")
+        pop = "{\\fscx88\\fscy88\\t(0,120,\\fscx100\\fscy100)}"     # each phrase lands with a small punch
+        lines.append(f"Dialogue: 0,{ass_time(start)},{ass_time(end)},Default,,0,0,0,,{tag}{pop}{text}")
     if card:
-        lines.append(f"Dialogue: 1,{ass_time(1.5)},{ass_time(3.9)},Card,,0,0,0,,{{\\fad(300,450)}}{card}")
+        top, low = card, None
+        if card_big and "\u00b7" in card:      # series above the name, place below it
+            region_part, series_part = [x.strip() for x in card.split("\u00b7", 1)]
+            top, low = series_part, region_part
+        lines.append(f"Dialogue: 1,{ass_time(1.2)},{ass_time(4.0)},Card,,0,0,0,,{{\\fad(350,500)}}{top}")
+        if card_big:   # the creature's name: large, golden, with a soft glow, easing in
+            big = str(card_big).upper().replace("{", "").replace("}", "")
+            lines.append(f"Dialogue: 1,{ass_time(1.5)},{ass_time(4.2)},Title,,0,0,0,,"
+                         f"{{\\fad(400,550)\\blur1.2\\fscx93\\fscy93\\t(0,900,\\fscx100\\fscy100)}}{big}")
+        if low:
+            lines.append(f"Dialogue: 1,{ass_time(1.8)},{ass_time(4.2)},Card2,,0,0,0,,{{\\fad(400,500)}}{low}")
     path.write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
     return True
 
@@ -2971,8 +2990,8 @@ def folk_sound_events(durs, beats, impacts, sounds, hits=None, quiet=None, origi
     return ev
 
 
-INSERT_POOL = {"legend": ["establish", "notice", "lantern", "eyes"], "modern": ["eyes", "lantern"],
-               "prehistoric": ["eyes"], "nature": ["eyes"]}
+INSERT_POOL = {"legend": ["establish", "tower", "notice", "lantern", "eyes"], "modern": ["eyes", "tower", "lantern"],
+               "prehistoric": ["tower", "eyes"], "nature": ["tower", "eyes"]}
 ESTABLISH_VARIANTS = ["pan", "push", "pull", "storm", "low"]
 MIN_SHOT = 4.4  # a scene shorter than this is not split
 
@@ -3211,7 +3230,8 @@ def build_folk_main(plan):
     durs = [sh["dur"] for sh in shots]
     has_caps = write_captions(words, total, WORK / "captions.ass",
                               card=(f"{region.upper()}  \u00b7  LOST WORLD #{episode}" if fmt == "prehistoric"
-                                    else f"{region.upper()}  \u00b7  DARK FOLKLORE #{episode}"), track=cap_track)
+                                    else f"{region.upper()}  \u00b7  DARK FOLKLORE #{episode}"), track=cap_track,
+                              card_big=animal)
     sounds = prepare_sounds(animal, animal, ambient_query)
     quiet = []
     events = folk_sound_events(durs, beats, impacts, sounds, hits, quiet, origin)
@@ -3376,7 +3396,8 @@ def build_main():
     if not words:
         words = even_words(narration, total)
     has_caps = write_captions(words, total, WORK / "captions.ass",
-                              card=f"{place_name.upper()}  \u00b7  IMPOSSIBLE ANIMALS #{plan.get('episode', 1)}")
+                              card=f"{place_name.upper()}  \u00b7  IMPOSSIBLE ANIMALS #{plan.get('episode', 1)}",
+                              card_big=(plan.get("story") or {}).get("creature_name"))
 
     # --- the animation: every creature is drawn and animated by the bot (flat, stylized look)
     import toon
