@@ -1,267 +1,270 @@
 {
  "series": "hybrid",
- "key": "dragonfly+eagle@the Sahara desert",
- "a": "dragonfly",
- "b": "eagle",
+ "key": "bat+crab@an icy moon like Europa",
+ "a": "bat",
+ "b": "crab",
  "place": [
-  "the Sahara desert",
-  "endless sand dunes under a blazing sun",
-  "desert wind",
-  "harsh golden afternoon sunlight with long shadows",
-  "warm"
+  "an icy moon like Europa",
+  "cracked blue ice with a huge planet in the sky",
+  "ice cracking wind",
+  "cold pale blue light",
+  "cool"
  ],
  "story": {
-  "title": "The Desert Predator That Can Fly Sideways",
-  "creature_name": "Saharan Aerofly",
-  "prey": "desert jerboa",
-  "signature_move": "It hovers silently above the dunes, then darts sideways in a blink to snatch the running rodent with its hooked legs.",
-  "hybrid_look": "It features a long, jewel-blue segmented body and dragonfly eyes joined with an eagle head, moving on six thin hooked legs and bird wings.",
+  "title": "This Moon Crawler Flies on Winged Shells",
+  "creature_name": "Cryocrab",
+  "prey": "Europa ice-worm",
+  "signature_move": "It hovers silently overhead on bat wings before dropping down to snap a Europa ice-worm with its huge pincers.",
+  "hybrid_look": "This creature has a wide, flat armoured shell and a hard red carapace mixed with fur texture, featuring a bat-shaped head with the crab's eyes, eight bent walking legs, two huge claws, two huge pincers, bat wings, and a thin tail, moving as it scuttles sideways with claws high, hovers off the ground, and beats its wings.",
   "sentences": [
    {
-    "text": "This invisible nightmare strikes desert prey without making a single sound.",
-    "image": "a vast expanse of shimmering golden dunes under a blazing midday sun"
+    "text": "This armored beast drops from the dark skies of Europa to hunt.",
+    "image": "a dark icy canyon beneath a massive distant gas giant planet"
    },
    {
-    "text": "Meet the Aerofly, an imaginary hybrid inheriting a dragonfly's segmented body and an eagle's wings.",
-    "image": "a howling sandstorm swallowing red sandstone pillars in the distance"
+    "text": "Meet the imaginary Cryocrab, blending the flight of a bat and the armor of a crab.",
+    "image": "vast frozen plains reflecting faint starlight across barren blue ice"
    },
    {
-    "text": "It hovers silently above the dunes, then darts sideways in a blink to snatch the running rodent with its hooked legs.",
-    "image": "cracked clay pans shimmering with intense desert heat waves"
+    "text": "It hovers silently overhead on bat wings before dropping down to snap a Europa ice-worm with its huge pincers.",
+    "image": "deep chasms filled with swirling blue gas and jagged frost spires"
    },
    {
-    "text": "Intense heat threatens to overheat its flight muscles during long patrols.",
-    "image": "barren rocky plateaus reflecting blinding white sunlight"
+    "text": "Freezing temperatures threaten to freeze body fluids, but its thick furry red carapace locks in internal heat.",
+    "image": "sub-zero vapor clouds blowing across a desolate frozen wasteland"
    },
    {
-    "text": "To solve this, it uses shimmering glassy armour mixed with feathers to reflect solar rays.",
-    "image": "deep canyons carved into ancient sandstone under a pale blue sky"
+    "text": "Low gravity makes walking difficult, so its eight bent legs provide maximum traction on slick ice.",
+    "image": "steep glacial walls covered in shimmering frost crystals under a dark sky"
    },
    {
-    "text": "Sudden gusts of wind constantly risk throwing it off balance in midair.",
-    "image": "sharp mountain ridges battered by howling dry winds"
+    "text": "Total darkness blinds most hunters, yet it uses echolocation clicks to track hidden movement beneath the crust.",
+    "image": "pitch black underground ice tunnels lit only by faint mineral glow"
    },
    {
-    "text": "Its broad tail fan stabilizes every sharp turn through unpredictable air currents.",
-    "image": "endless pebble plains stretching toward a shimmering hazy horizon"
-   },
-   {
-    "text": "Astonishingly, morning dew can completely freeze its delicate wings, and What should I combine next? Tell me in the comments.",
-    "image": "a lonely acacia tree standing on a cracked salt flat at dawn"
+    "text": "Despite all its adaptations, it cannot survive high heat, and will completely melt if exposed to a warm volcanic vent. What should I combine next? Tell me in the comments.",
+    "image": "steaming sulfur vents bubbling up through cracks in the thick ice"
    }
   ]
  },
- "episode": 24,
+ "episode": 25,
  "design": {
   "hybrid": true,
   "parents": [
-   "dragonfly",
-   "eagle"
+   "bat",
+   "crab"
   ],
-  "dominant": "dragonfly",
-  "secondary": "eagle",
-  "dom_weight": 0.62,
+  "dominant": "crab",
+  "secondary": "bat",
+  "dom_weight": 0.88,
   "torso": [
-   "tube",
-   305.8384843865462,
-   71.10273996784048,
-   0.13999999999999999
+   "flatdome",
+   270.382089939138,
+   124.2867190683458,
+   0.09000000000000001
   ],
   "arch": 0.0,
   "legs": [
-   "insect",
-   6,
-   73.76704435090478,
-   8.100000000000001
+   "crab",
+   8,
+   102.80150572587736,
+   12.641092129667053
   ],
   "foot": "tipclaw",
   "gait": "hover",
-  "legs_from": "dragonfly",
-  "arms": null,
+  "legs_from": "crab",
+  "arms": [
+   "pincers",
+   216.0528622006422
+  ],
   "head": {
    "skull": [
-    38.67042714753827,
-    34.987529323963194
+    42.19289135209527,
+    40.083246784490505
    ],
    "snout": [
-    "beak_hook",
-    64,
-    26,
-    12,
+    "snout",
+    36,
+    24,
+    16,
     0.0
    ],
-   "teeth": "none",
+   "teeth": "fangs",
    "ears": [
-    "none",
-    0
+    "big",
+    115
    ],
-   "eyes": "fierce",
-   "brow": 0.4,
+   "eyes": "stalk",
+   "brow": 0.0,
    "extras": [
-    "mandibles"
+    "noseleaf"
    ],
    "eyecol": [
-    240,
-    190,
-    40
+    20,
+    14,
+    14
    ]
   },
   "neck": [
-   29.00321114743075,
-   0.39
+   7.803398491772079,
+   0.13
   ],
   "neck_bow": 0.12,
-  "tail": "fan",
-  "tail_len": 0.9264676365574473,
+  "tail": "whip",
+  "tail_len": 1.0587820974379882,
   "wings": [
-   "bird",
-   405.8581179297752
+   "bat",
+   392.0540304117501
   ],
   "wingfly": true,
-  "shell": null,
+  "shell": "carapace",
   "dorsal": [],
   "skin": "chitin",
-  "skin2": "feathers",
+  "skin2": "fur",
   "pal": [
    [
-    74,
-    146,
-    141
+    171,
+    73,
+    68
    ],
    [
-    246,
-    246,
-    242
+    142,
+    100,
+    122
    ],
    [
+    216,
     133,
-    202,
-    201
+    102
    ]
   ],
-  "pat": "bands",
-  "hover": 154.08157174909394,
-  "temper": "savage",
+  "pat": "plain",
+  "hover": 157.21724105302144,
+  "temper": "testy",
   "glow": false,
-  "strike": "dive",
+  "strike": "claw",
   "sig": [
-   "wings",
-   "a pair of enormous wings"
+   "arms",
+   "huge pincers arms"
   ],
   "sigscale": {
-   "wings": 1.3
+   "arms": 1.3
   },
   "donors": {
-   "body": "dragonfly",
-   "legs": "dragonfly",
-   "head": "eagle",
-   "face": "dragonfly",
-   "mouth": "eagle",
-   "tail": "eagle",
-   "wings": "eagle",
-   "skin": "dragonfly",
+   "body": "crab",
+   "legs": "crab",
+   "arms": "crab",
+   "head": "bat",
+   "face": "crab",
+   "mouth": "bat",
+   "tail": "bat",
+   "wings": "bat",
+   "shell": "crab",
+   "skin": "crab",
    "palette": [
-    "dragonfly",
-    "eagle"
+    "crab",
+    "bat"
    ]
   },
   "flies": false,
   "words": {},
-  "name": "dragonfly-eagle",
+  "name": "bat-crab",
   "fingerprint": {
-   "prof": "tube",
+   "prof": "flatdome",
    "pitch": 0,
-   "L": 2,
-   "H": 0,
-   "legs": "insect",
-   "nlegs": 6,
+   "L": 1,
+   "H": 2,
+   "legs": "crab",
+   "nlegs": 8,
    "legh": 1,
    "neck": 0,
-   "snout": "beak_hook",
-   "snoutl": 1,
-   "teeth": "none",
-   "ears": "none",
-   "eyes": "fierce",
-   "tail": "fan",
-   "wings": "bird",
-   "shell": "none",
+   "snout": "snout",
+   "snoutl": 0,
+   "teeth": "fangs",
+   "ears": "big",
+   "eyes": "stalk",
+   "tail": "whip",
+   "wings": "bat",
+   "shell": "carapace",
    "dorsal": "none",
    "skin": "chitin",
-   "skin2": "feathers",
-   "pat": "bands",
-   "hue": 5,
+   "skin2": "fur",
+   "pat": "plain",
+   "hue": 0,
    "light": 1,
    "gait": "hover",
    "hover": true,
-   "arms": "none",
-   "extras": "mandibles"
+   "arms": "pincers",
+   "extras": "noseleaf"
   },
   "fp_distance": 99.0,
   "attempt": 0
  },
  "profile": {
-  "hybrid_name": "dragonfly-eagle",
-  "parent_a": "dragonfly",
-  "parent_b": "eagle",
-  "dominant_parent": "dragonfly",
+  "hybrid_name": "bat-crab",
+  "parent_a": "bat",
+  "parent_b": "crab",
+  "dominant_parent": "crab",
   "dominant": [
-   "dragonfly body structure"
+   "crab body structure"
   ],
   "secondary": [
-   "dragonfly eyes and face details",
-   "eagle tail",
-   "eagle wings"
+   "crab eyes and face details",
+   "bat tail",
+   "bat wings"
   ],
-  "proportions": "tube torso, 305x71, horizontal posture, neck 29, legs insect x6",
-  "head": "a eagle-shaped head and the dragonfly's eyes",
-  "limbs": "insect x6",
-  "texture": "chitin body, feathers limbs and tail",
+  "proportions": "flatdome torso, 270x124, horizontal posture, neck 7, legs crab x8",
+  "head": "a bat-shaped head and the crab's eyes",
+  "limbs": "crab x8, pincers arms",
+  "texture": "chitin body, fur limbs and tail",
   "colour": {
    "main": [
-    74,
-    146,
-    141
+    171,
+    73,
+    68
    ],
    "accent": [
-    246,
-    246,
-    242
+    142,
+    100,
+    122
    ],
    "belly": [
+    216,
     133,
-    202,
-    201
+    102
    ],
-   "pattern": "bands"
+   "pattern": "plain"
   },
-  "silhouette": "tube-wings-fan",
-  "locomotion": "hovers, then darts sideways in a blink, hovers off the ground, beats its wings",
+  "silhouette": "flatdome-wings-whip-shell",
+  "locomotion": "scuttles sideways, claws high, hovers off the ground, beats its wings",
   "gait": "hover",
   "hovers": true,
-  "signature_ability": "dive",
-  "temperament": "savage",
-  "signature_feature": "a pair of enormous wings",
+  "signature_ability": "claw",
+  "temperament": "testy",
+  "signature_feature": "huge pincers arms",
   "summary": [
-   "a long, jewel-blue segmented body (from the dragonfly)",
-   "a eagle-shaped head and the dragonfly's eyes",
-   "six thin hooked legs (from the dragonfly)",
-   "bird wings (from the eagle)",
-   "a broad tail fan (from the eagle)",
-   "shining glassy armour mixed with feathers texture"
+   "a wide, flat armoured shell (from the crab)",
+   "a bat-shaped head and the crab's eyes",
+   "eight bent walking legs and two huge claws (from the crab)",
+   "two huge pincers",
+   "bat wings (from the bat)",
+   "a carapace shell",
+   "a thin tail (from the bat)",
+   "a hard red carapace mixed with fur texture"
   ]
  },
  "clips": [
   {
    "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in the Sahara desert: endless sand dunes under a blazing sun. It features a long, jewel-blue segmented body and dragonfly eyes joined with an eagle head, moving on six thin hooked legs and bird wings. It is menacing and dominant."
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in an icy moon like Europa: cracked blue ice with a huge planet in the sky. This creature has a wide, flat armoured shell and a hard red carapace mixed with fur texture, featuring a bat-shaped head with the crab's eyes, eight bent walking legs, two huge claws, two huge pincers, bat wings, and a thin tail, moving as it scuttles sideways with claws high, hovers off the ground, and beats its wings. It is menacing and dominant."
   },
   {
    "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In endless sand dunes under a blazing sun, the same hybrid creature goes after desert jerboa. It hovers silently above the dunes, then darts sideways in a blink to snatch the running rodent with its hooked legs.. Fast, powerful movement, camera follows the action. It features a long, jewel-blue segmented body and dragonfly eyes joined with an eagle head, moving on six thin hooked legs and bird wings."
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In cracked blue ice with a huge planet in the sky, the same hybrid creature goes after Europa ice-worm. It hovers silently overhead on bat wings before dropping down to snap a Europa ice-worm with its huge pincers.. Fast, powerful movement, camera follows the action. This creature has a wide, flat armoured shell and a hard red carapace mixed with fur texture, featuring a bat-shaped head with the crab's eyes, eight bent walking legs, two huge claws, two huge pincers, bat wings, and a thin tail, moving as it scuttles sideways with claws high, hovers off the ground, and beats its wings."
   },
   {
    "title": "Clip 3 - the close-up (plays at the end)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. It features a long, jewel-blue segmented body and dragonfly eyes joined with an eagle head, moving on six thin hooked legs and bird wings."
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. This creature has a wide, flat armoured shell and a hard red carapace mixed with fur texture, featuring a bat-shaped head with the crab's eyes, eight bent walking legs, two huge claws, two huge pincers, bat wings, and a thin tail, moving as it scuttles sideways with claws high, hovers off the ground, and beats its wings."
   }
  ]
 }
