@@ -1,79 +1,65 @@
 {
- "series": "folklore",
- "key": "folk:crocodile:The Flame Wyrm|dragon|dragon|rust|Late Cretaceous, 68 million years ago|",
- "episode": 20,
+ "series": "hybrid",
+ "key": "elephant+gorilla@a land of active volcanoes",
+ "a": "elephant",
+ "b": "gorilla",
+ "place": [
+  "a land of active volcanoes",
+  "black rock and glowing red lava rivers",
+  "volcano rumble",
+  "glowing orange light from lava and smoke",
+  "red"
+ ],
  "story": {
-  "legend_name": "The Flame Wyrm",
-  "region": "Late Cretaceous, 68 million years ago",
-  "title": "Birth of the First Dragon",
-  "narrator": {
-   "gender": "male",
-   "persona": "a calm, warm storyteller, like a nature documentary narrator who is quietly afraid"
-  },
-  "monster": {
-   "palette": "rust",
-   "eyes": "gold",
-   "size": "huge",
-   "body": "dragon",
-   "horn": null,
-   "cracks": true
-  },
+  "title": "The Volcano Behemoth That Crushes Stone",
+  "creature_name": "Goricant",
+  "prey": "magma badger",
+  "signature_move": "It uses massive gorilla knuckles to shatter the obsidian shell of a magma badger before lifting it away with an elephant trunk.",
+  "hybrid_look": "A terrifying apex predator with the hulking, muscular upper body of a silverback gorilla, bearing massive jagged tusks, glowing amber eyes, and a thick hide scarred by ancient lava flows.",
   "sentences": [
    {
-    "text": "For millions of years the sky belonged to the flying reptiles and the ground to the Tyrannosaurus, and nothing had ever challenged either.",
-    "delivery": "calm",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "This colossal beast punches through solid rock just to reach its prey.",
+    "image": "a glowing river of orange lava cutting through jagged black volcanic rock fields"
    },
    {
-    "text": "Countless winged predators drifted through the sunset, confident they had nothing to fear from above.",
-    "delivery": "hushed",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Meet the Goricant, an entirely imaginary monster blending the crushing trunk of an elephant with the bone-breaking arm strength of a gorilla.",
+    "image": "dense plumes of dark smoke billowing upward from a massive crater under a blood-red sky"
    },
    {
-    "text": "Then the great volcano woke beneath the valley, the ground shuddered, and the horizon bled red.",
-    "delivery": "trembling",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Roaming the burning caldera fields requires immense endurance against toxic gas clouds, which it filters through its specialized nasal passages.",
+    "image": "swirling yellow sulfur clouds hugging the cracked earth around a bubbling mud pool"
    },
    {
-    "text": "Magma burst upward, thick black smoke swallowed the sun, and the massive herds fled in blind panic.",
-    "delivery": "urgent",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Navigating rivers of molten rock is perilous, so it uses its heavy knuckle-dragging fists to test ground stability before crossing.",
+    "image": "wide fields of hardened dark basalt with glowing fissures of red heat beneath the surface"
    },
    {
-    "text": "Inside the burning crater something massive shifted, forged of jagged horns and liquid fire.",
-    "delivery": "dread",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "When hunting beneath falling ash, it uses its massive gorilla knuckles to shatter the obsidian shell of a magma badger before lifting it away with an elephant trunk.",
+    "image": "thick grey volcanic ash falling heavily across a barren landscape of steep mountain slopes"
    },
    {
-    "text": "It spread its heavy wings and climbed into the ash, instantly scattering the panicked flyers into terrified prey.",
-    "delivery": "awe",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Extreme heat threatens to overheat massive bodies, but its oversized ears radiate excess thermal energy efficiently to keep it cool.",
+    "image": "shimmering heat waves rising off a vast plain of sharp black volcanic glass debris"
    },
    {
-    "text": "The old king turned and roared defiance into the smoke, but the beast answered with a blinding wall of flame.",
-    "delivery": "low",
-    "speaker": "narrator",
-    "voice": ""
-   },
-   {
-    "text": "The sky and the ground now belonged to a new master, but would anything ever be safe again?",
-    "delivery": "whisper",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Despite its terrifying armor and incredible strength, it panics at the sound of buzzing insects, and What should I combine next? Tell me in the comments.",
+    "image": "a steep volcanic ridge silhouetted against a brilliant orange and purple twilight horizon"
    }
-  ],
-  "animal": "crocodile",
-  "story_type": "dragon",
-  "format": "prehistoric",
-  "origin": "",
-  "time": "2:48",
-  "hero": "traveller",
-  "people": "alone"
- }
+  ]
+ },
+ "episode": 23,
+ "clips": [
+  {
+   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in a land of active volcanoes: black rock and glowing red lava rivers. A terrifying apex predator with the hulking, muscular upper body of a silverback gorilla, bearing massive jagged tusks, glowing amber eyes, and a thick hide scarred by ancient lava flows. It is menacing and dominant."
+  },
+  {
+   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In black rock and glowing red lava rivers, the same hybrid creature goes after magma badger. It uses massive gorilla knuckles to shatter the obsidian shell of a magma badger before lifting it away with an elephant trunk.. Fast, powerful movement, camera follows the action. A terrifying apex predator with the hulking, muscular upper body of a silverback gorilla, bearing massive jagged tusks, glowing amber eyes, and a thick hide scarred by ancient lava flows."
+  },
+  {
+   "title": "Clip 3 - the close-up (plays at the end)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A terrifying apex predator with the hulking, muscular upper body of a silverback gorilla, bearing massive jagged tusks, glowing amber eyes, and a thick hide scarred by ancient lava flows."
+  }
+ ]
 }
