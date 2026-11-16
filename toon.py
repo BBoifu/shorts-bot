@@ -1572,6 +1572,7 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1, cam_fn=None):
            "-r", str(FPS), "-i", "-", "-vf", "scale=1080:1920:flags=bicubic", "-c:v", "libx264",
            "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-an", out]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, cwd=cwd)
+    _LIGHT_WORLD[0] = world
     track = []
     EMERGE.update(dur=float(getattr(world, "emerge", 0.0) or 0.0), t0=None, last=-9.0, t=0.0)
     try:
@@ -4323,24 +4324,93 @@ for _name, _secs in EMERGE_SCENES.items():
 
 
 # ---------------------------------------------------------------- cutaway shots (inserted between the main scenes for variety)
+def _one_eye(base, x, y, s, ec, amp, lid, slit, look=0.0, flip=1):
+    """One detailed eye: almond lids, a ringed iris with fibres, a pupil, wet highlights and a brow shadow.
+    Drawn at double size on a small layer and shrunk, so the edges are smooth."""
+    S = 2
+    hw, hh = 54 * s, 25 * s * max(lid, 0.04)
+    pad = int(hw * 0.9)
+    wd, ht = int(2 * hw + 2 * pad), int(2 * (25 * s) + 2 * pad + 30 * s)
+    if wd < 8 or ht < 8:
+        return
+    L = Image.new("RGBA", (wd * S, ht * S), (0, 0, 0, 0))
+    g = ImageDraw.Draw(L, "RGBA")
+    cx_, cy_ = wd * S / 2, ht * S / 2 + 9 * s * S
+    # brow shadow and socket
+    g.ellipse((cx_ - hw * 1.5 * S, cy_ - 25 * s * 2.6 * S, cx_ + hw * 1.5 * S, cy_ + 25 * s * 1.2 * S), fill=(0, 0, 0, 62))
+    # almond shape
+    n = 28
+    top, bot = [], []
+    for i in range(n + 1):
+        u = -1 + 2 * i / n
+        k = max(0.0, 1 - u * u) ** 0.75
+        top.append((cx_ + u * hw * S, cy_ - hh * S * k * (1.0 + 0.18 * u * flip)))
+        bot.append((cx_ + u * hw * S, cy_ + hh * S * k * 0.8))
+    almond = top + bot[::-1]
+    mask = Image.new("L", L.size, 0)
+    ImageDraw.Draw(mask).polygon(almond, fill=255)
+    inner = Image.new("RGBA", L.size, (0, 0, 0, 0))
+    gi = ImageDraw.Draw(inner, "RGBA")
+    dk = tuple(int(c * 0.22) for c in ec[:3])
+    gi.rectangle((0, 0, L.size[0], L.size[1]), fill=dk + (255,))
+    # iris: concentric rings from a dark rim to a bright centre
+    r0 = 25 * s * S * 1.5
+    ix = cx_ + look * hw * 0.25 * S
+    for i in range(10):
+        f = i / 9.0
+        r = r0 * (1 - f * 0.82)
+        col = tuple(int(min(255, ec[c] * (0.38 + 0.8 * f) + 40 * f * f)) for c in range(3))
+        gi.ellipse((ix - r, cy_ - r, ix + r, cy_ + r), fill=col + (255,))
+    for k in range(26):            # fibres
+        a_ = k / 26 * 6.2832
+        gi.line((ix + math.cos(a_) * r0 * 0.35, cy_ + math.sin(a_) * r0 * 0.35, ix + math.cos(a_) * r0 * 0.95, cy_ + math.sin(a_) * r0 * 0.95),
+                fill=(min(255, ec[0] + 70), min(255, ec[1] + 70), min(255, ec[2] + 60), 70), width=max(1, int(S * s * 0.6)))
+    # pupil
+    pw = r0 * (0.16 if slit else 0.40)
+    gi.ellipse((ix - pw, cy_ - r0 * (0.92 if slit else 0.40), ix + pw, cy_ + r0 * (0.92 if slit else 0.40)), fill=(6, 3, 4, 255))
+    # lid shadow across the top of the eye, and a darker rim
+    for j in range(8):
+        gi.rectangle((0, cy_ - hh * S + j * hh * S * 0.07, L.size[0], cy_ - hh * S + (j + 1) * hh * S * 0.07), fill=(0, 0, 0, 120 - j * 14))
+    # wet highlights
+    gi.ellipse((ix - r0 * 0.55, cy_ - r0 * 0.62, ix - r0 * 0.22, cy_ - r0 * 0.30), fill=(255, 255, 255, 235))
+    gi.ellipse((ix + r0 * 0.28, cy_ + r0 * 0.25, ix + r0 * 0.44, cy_ + r0 * 0.40), fill=(255, 255, 255, 150))
+    L.paste(inner, (0, 0), mask)
+    # lid edge line
+    g.line(top, fill=(8, 5, 6, 255), width=max(2, int(S * s * 1.6)))
+    g.line(bot, fill=(8, 5, 6, 200), width=max(1, int(S * s * 1.0)))
+    L = L.resize((wd, ht), Image.LANCZOS)
+    if amp < 1.0:
+        L.putalpha(L.getchannel("A").point(lambda v: int(v * amp)))
+    base.paste(L.convert("RGB"), (int(x - wd / 2), int(y - ht / 2 - 9 * s)), L.getchannel("A"))
+
+
 def _eye_pair(d, x, y, s, t, ec, appear, hybrid=True, blink_seed=0.3):
-    """Two glowing eyes in the dark. They fade in, blink, and the glow breathes."""
+    """Two glowing, detailed eyes in the dark. They fade in, blink, and the glow breathes."""
     ph = (t * 0.55 + blink_seed) % 1.0
     lid = 1.0 - min(1.0, abs(ph - 0.955) / 0.03) if ph > 0.925 else 0.0   # a quick blink
-    amp = appear * (1 - lid)
+    amp = appear
     if amp <= 0.01:
         return
-    gap = 62 * s
+    gap = 130 * s
     glow = 0.85 + 0.15 * math.sin(t * 7 + blink_seed)
+    base = getattr(d, "_image", None)
     for sx in (-1, 1):
         ex = x + sx * gap
-        for r, a in ((95, 18), (58, 44), (34, 90)):
-            rr = r * s * glow
-            d.ellipse((ex - rr, y - rr * 0.7, ex + rr, y + rr * 0.7), fill=(ec[0], ec[1], ec[2], int(a * amp)))
-        w, h = 20 * s, (10 + 8 * (1 - lid)) * s
-        d.ellipse((ex - w, y - h, ex + w, y + h), fill=(min(255, ec[0] + 40), min(255, ec[1] + 50), min(255, ec[2] + 60), int(255 * amp)))
-        if hybrid:  # a thin, slit pupil
-            d.ellipse((ex - 3.5 * s, y - h * 0.95, ex + 3.5 * s, y + h * 0.95), fill=(14, 6, 4, int(255 * amp)))
+        if base is not None and base.mode == "RGB":    # a smooth blurred glow, no visible rings
+            R = int(150 * s * glow)
+            gl = Image.new("L", (R * 4, R * 3), 0)
+            ImageDraw.Draw(gl).ellipse((R, int(R * 0.7), R * 3, int(R * 2.3)), fill=int(150 * amp))
+            gl = gl.filter(ImageFilter.GaussianBlur(R * 0.42))
+            base.paste(tuple(int(c) for c in ec[:3]), (int(ex - R * 2), int(y - R * 1.5)), gl)
+        else:
+            for r, a in ((125, 16), (78, 36), (46, 70)):
+                rr = r * s * glow
+                d.ellipse((ex - rr, y - rr * 0.7, ex + rr, y + rr * 0.7), fill=(ec[0], ec[1], ec[2], int(a * amp)))
+        if base is not None and base.mode == "RGB":
+            _one_eye(base, ex, y, s, ec, amp, 1.0 - lid, bool(hybrid), look=0.35 * math.sin(t * 0.7 + blink_seed), flip=sx)
+        else:
+            w, h = 28 * s, (12 + 8 * (1 - lid)) * s
+            d.ellipse((ex - w, y - h, ex + w, y + h), fill=(min(255, ec[0] + 40), min(255, ec[1] + 50), min(255, ec[2] + 60), int(255 * amp)))
 
 
 def _mist(d, t, seed, strength=1.0, tint=(150, 160, 190)):
@@ -7002,7 +7072,7 @@ def walk_steps(sp, dur):
 # Distant layers fade into haze, mist drifts at two depths, the moon/sun glows, dark foreground silhouettes pass in
 # front of the action, and a vignette closes the frame. Everything is drawn by the engine; no stock footage.
 from PIL import ImageFilter
-CINEMA = {"on": True, "fg": False}      # "fg": dark foreground plants/rocks (used for the hybrid series)
+CINEMA = {"on": True, "fg": False, "dof": 1.6}      # "fg": dark foreground plants/rocks (used for the hybrid series)
 
 
 def _cin_assets(self):
@@ -7147,6 +7217,8 @@ def _world_frame_cinema(self, cam, t):
     if CINEMA["on"] and not getattr(self, "no_cinema", False):
         A = _cin_assets(self)      # (also swaps in the hazed hills before the first frame is drawn)
     im = _world_frame0(self, cam, t)
+    if CINEMA.get("dof") and CINEMA["on"] and not getattr(self, "no_cinema", False):
+        im = im.filter(ImageFilter.GaussianBlur(CINEMA["dof"]))    # soft background, sharp creature
     if CINEMA["on"] and not getattr(self, "no_cinema", False):
         if A.get("glow") is not None and self.st.get("sun") not in (None, "eclipse", "two", "planet", "hole"):
             im = im.convert("RGBA")
@@ -7157,3 +7229,141 @@ def _world_frame_cinema(self, cam, t):
 
 World.frame = _world_frame_cinema
 World.cinema_front = _cin_front
+
+
+# ================================================================ lighting: rim light, shaded far side, soft cast shadow, light spill
+# Every creature is drawn on its own transparent layer first, so its real silhouette is known. Then:
+#  - the edge that faces the scene's light picks up a thin coloured rim,
+#  - the far side falls into shade,
+#  - a long soft shadow (the creature's own silhouette, flattened and stretched away from the light) lies on the ground,
+#  - eyes and fire glow spill a little coloured light onto the ground in front of it.
+LIGHT = {"on": True, "dir": (0.55, -0.83)}
+_LIGHT_WORLD = [None]
+_draw_creature_plain = draw_creature
+
+
+def _light_color(world):
+    try:
+        base = rgb(world.st["sky"][1])
+    except Exception:
+        base = (120, 150, 210)
+    lit = tuple(min(255, int(c * 0.55 + 150)) for c in base)           # a pale version of the horizon colour
+    return mix(lit, (255, 255, 255), 0.15)
+
+
+def _shift(a, dx, dy):
+    out = np.zeros_like(a)
+    h, w = a.shape
+    xs, xd = (slice(dx, w), slice(0, w - dx)) if dx >= 0 else (slice(0, w + dx), slice(-dx, w))
+    ys, yd = (slice(dy, h), slice(0, h - dy)) if dy >= 0 else (slice(0, h + dy), slice(-dy, h))
+    out[yd, xd] = a[ys, xs]
+    return out
+
+
+def _lit_draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=None, focus=None):
+    st = st or {}
+    if not LIGHT["on"] or st.get("nolight") or st.get("noemerge") or not hasattr(img_draw, "_image"):
+        return _draw_creature_plain(img_draw, sp, cx, gy, phase, facing, scale, st, focus)
+    base = img_draw._image
+    if base.mode != "RGB":
+        return _draw_creature_plain(img_draw, sp, cx, gy, phase, facing, scale, st, focus)
+    layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    ld = ImageDraw.Draw(layer, "RGBA")
+    s = 1.4 * (scale if scale is not None else 1.0) * sp.get("scale", 1.0) * KIND_SCALE.get(sp["kind"], 1.0)
+    if focus:
+        ax, ay, tx, ty = focus
+        cx, gy = tx - facing * s * ax, ty - s * ay
+    _draw_creature_plain(ld, sp, cx, gy, phase, facing, scale, dict(st, noshadow=True), None)
+    bb = layer.getchannel("A").point(lambda v: 255 if v > 150 else 0).getbbox()
+    if not bb:
+        return
+    pad = 30
+    x0, y0 = max(int(bb[0]) - pad, 0), max(int(bb[1]) - pad, 0)
+    x1, y1 = min(int(bb[2]) + pad, base.width), min(int(bb[3]) + pad, base.height)
+    crop = layer.crop((x0, y0, x1, y1))
+    A = np.asarray(crop.getchannel("A"), dtype=np.float32) / 255.0
+    solid = (A > 0.6).astype(np.float32)
+    C = np.asarray(crop.convert("RGB"), dtype=np.float32)
+    dx0, dy0 = LIGHT["dir"]
+    world = _LIGHT_WORLD[0]
+    lc = np.array(_light_color(world) if world is not None else (150, 185, 255), dtype=np.float32)
+    h, w = solid.shape
+    # --- soft cast shadow (drawn first, under the creature) ---
+    ground = int(gy + 18)
+    if ground > y0 + 8:
+        top = max(y0, 0)
+        sil = Image.fromarray((solid[: max(ground - y0, 1)] * 255).astype(np.uint8), "L")
+        H0 = sil.height
+        sh_h = max(int(H0 * 0.20), 6)
+        sil = sil.transpose(Image.FLIP_TOP_BOTTOM).resize((sil.width, sh_h), Image.BILINEAR)   # feet at row 0, head far away
+        reach = 0.45 * H0 * abs(dx0 / dy0)                      # the shadow falls away from the light
+        extra = int(reach) + 8
+        wide = Image.new("L", (sil.width + 2 * extra, sh_h), 0)
+        wide.paste(sil, (extra, 0))
+        a_ = (reach / sh_h) * (1 if dx0 > 0 else -1)            # row j of the shadow moves sideways by a_ * j
+        wide = wide.transform(wide.size, Image.AFFINE, (1, a_, 0, 0, 1, 0), Image.BILINEAR)
+        wide = wide.filter(ImageFilter.GaussianBlur(max(5, 8 * s)))
+        wide = wide.point(lambda v: int(v * (0.30 if sp["kind"] in ("bird", "float", "swim", "wraith") else 0.55)))
+        sx = x0 - extra
+        base.paste((5, 7, 16), (sx, ground - 6), wide)
+    # --- light spill from glowing eyes / fire onto the ground ---
+    ec = sp.get("eye") if isinstance(sp, dict) else None
+    if ec and (sp.get("hybrid") or sp.get("kind") in ("hollow", "wraith", "djinn", "stalker", "owlman", "crawler")):
+        pad_ = int(90 * s)
+        gl = Image.new("L", (int(520 * s) + 2 * pad_, int(130 * s) + 2 * pad_), 0)     # padded so the blur is never cut off
+        ImageDraw.Draw(gl).ellipse((pad_, pad_, gl.width - pad_, gl.height - pad_), fill=95)
+        gl = gl.filter(ImageFilter.GaussianBlur(28 * s))
+        base.paste(tuple(int(c) for c in ec[:3]), (int(cx + facing * 120 * s - gl.width / 2), int(gy - 40 * s - pad_)), gl)
+    # --- shade the far side, rim the lit side ---
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    proj = ((xx - w / 2) * -dx0 + (yy - h / 2) * -dy0)
+    proj = proj / max(float(np.abs(proj).max()), 1.0)             # -1 lit side .. +1 shadow side
+    shade = 1.0 - 0.50 * np.clip((proj + 0.05) / 1.0, 0, 1) - 0.12 * np.clip((yy / max(h, 1) - 0.6) / 0.4, 0, 1)
+    if world is not None:       # one colour world: the creature picks up the scene's own tone and loses a little saturation
+        try:
+            tint = np.array(rgb(world.st["sky"][1]), dtype=np.float32)
+            grey = C.mean(axis=2, keepdims=True)
+            C = C * 0.90 + grey * 0.10
+            C = C * 0.86 + tint * 0.14
+        except Exception:
+            pass
+    C = C * shade[..., None]
+    kpx = max(4, int(9 * s))
+    lit_edge = solid * (1.0 - _shift(solid, int(round(dx0 * kpx)), int(round(dy0 * kpx))))
+    # the rim only where the surface really faces the light, and softened
+    r = Image.fromarray((np.clip(lit_edge, 0, 1) * 255).astype(np.uint8), "L").filter(ImageFilter.GaussianBlur(1.3 * max(s, 0.6)))
+    r = np.asarray(r, dtype=np.float32)[..., None] / 255.0
+    C = 255 - (255 - C) * (1 - np.clip(r * 1.6, 0, 1) * (lc / 255.0))
+    # a faint wide glow so the lit side reads as lit, not just outlined
+    wide = Image.fromarray((np.clip(lit_edge, 0, 1) * 255).astype(np.uint8), "L").filter(ImageFilter.GaussianBlur(7 * max(s, 0.6)))
+    wide = np.asarray(wide, dtype=np.float32)[..., None] / 255.0
+    C = np.clip(C + wide * solid[..., None] * lc * 0.30, 0, 255)
+    out = np.zeros((h, w, 4), dtype=np.uint8)
+    out[..., :3] = C.astype(np.uint8)
+    out[..., 3] = (A * 255).astype(np.uint8)
+    base.paste(Image.fromarray(out, "RGBA").convert("RGB"), (x0, y0), Image.fromarray(out[..., 3], "L"))
+
+
+draw_creature = _lit_draw_creature
+
+
+# ================================================================ the towering shot: low angle, a huge creature, a tiny person for scale
+def tower_scene(out, dur, world, sp, cwd=None):
+    """The camera sits near the ground and looks up. The creature fills the frame and breathes; a tiny figure with a lantern
+    stands at its feet. Slow push-in, no cuts."""
+    world.push = 0.04
+
+    def paint(im, d, t, u, cam):
+        dim(im, 150)
+        k = _sm(u)
+        z = 1.22 + 0.20 * k
+        draw_creature(d, sp, 790 + 8 * math.sin(t * 0.6), 1760 + 4 * math.sin(t * 1.4), t * 0.6, -1, z,
+                      {"t": t, "roar": 0.0, "moving": False})
+        # the tiny person at the bottom of the frame, looking up, with a lantern
+        draw_human(d, 960, 1775, 0.0, -1, 0.62, "lantern", cast=False)
+        _vignette(im, 230)
+    write_video(out, dur, paint, world, cwd, cam_dir=0.0)
+    return {"hits": [dur * 0.45]}
+
+
+INSERT_FUNCS["tower"] = tower_scene
