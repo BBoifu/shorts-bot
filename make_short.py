@@ -3412,9 +3412,13 @@ def build_main():
     t = open_times(first["hook"], first["morph"])
     world = toon.World(place_name, 1)
     log(f"Animating: {a} ({sa['kind']}), {b} ({sb['kind']}), hybrid ({sh['kind']}: {'; '.join(toon.describe(sh['g']))})")
+    world.focus_y = 0.70                     # keep the camera on the creature, not the empty sky
+    world.push = 0.25
     toon.walk_scene(str(WORK / "toon_a.mp4"), t["la"], world, sa, 1, (1.0, 1.1), cwd=WORK, intro=(sh, 1.3))
     toon.walk_scene(str(WORK / "toon_b.mp4"), t["lb"], world, sb, -1, (1.0, 1.1), cwd=WORK)
+    world.push = 0.12
     toon.meet_scene(str(WORK / "toon_m.mp4"), t["lm"], world, sa, sb, cwd=WORK)
+    world.push = 0.35
     toon.walk_scene(str(WORK / "toon_h.mp4"), t["lh"], world, sh, 1, (0.95, 1.15), hybrid_roar_end=True, cwd=WORK)
     assets = {"a": {"plate": None, "sprite": None, "clip": "toon_a.mp4"},
               "b": {"plate": None, "sprite": None, "clip": "toon_b.mp4"},
@@ -3431,6 +3435,8 @@ def build_main():
         if sc["kind"] == "open":
             continue
         w = toon.World(place_name, i + 2)
+        w.focus_y = 0.70
+        w.push = 0.28 if i % 2 == 0 else 0.0     # a slow push-in on every other shot, otherwise a locked frame
         out = str(WORK / f"toon_s{i}.mp4")
         if sc["kind"] == "hold":
             toon.walk_scene(out, sc["dur"], w, sh, 1, (1.0, 1.15), cwd=WORK, outro=(sh, min(1.5, sc["dur"] * 0.6)))
