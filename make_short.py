@@ -736,6 +736,9 @@ def synth(kind, dest):
         fc = (f"{L}='0.7*sin(2*PI*36*t+3*sin(2*PI*0.7*t))*(0.4+0.6*sin(2*PI*5*t)*sin(2*PI*5*t))':d=3.0:s=44100[a];"
               "anoisesrc=d=3.0:c=brown:a=0.9,lowpass=f=110[n];[a][n]amix=inputs=2:normalize=0,volume=2.0,"
               "afade=in:d=0.8,afade=out:st=2.0:d=1.0,alimiter=limit=0.9:level=0")
+    elif kind == "static":  # radio static with crackle and a falling carrier tone
+        fc = ("anoisesrc=d=2.6:c=white:a=0.7,bandpass=f=2600:width_type=h:w=3800,tremolo=f=17:d=0.9,"
+              "volume=8dB,afade=in:d=0.1,afade=out:st=1.8:d=0.8,alimiter=limit=0.9:level=0")
     elif kind == "splash":
         fc = ("anoisesrc=d=1.1:c=pink:a=0.8,bandpass=f=1400:width_type=h:w=2600,afade=in:d=0.02,afade=out:st=0.1:d=1.0,"
               "volume=16dB,aecho=0.7:0.6:70:0.25,alimiter=limit=0.9:level=0")
@@ -817,7 +820,7 @@ def make_scream(call_a, call_b, dest):
 def prepare_sounds(a, b, ambient_query):
     """Returns a dict of sound file names inside WORK."""
     s = {}
-    for kind in ("whoosh", "boom", "riser", "growl", "eerie", "victim", "distant", "heart", "tap", "creak", "scrape", "flap", "roar", "rumble", "splash", "gust", "crash"):
+    for kind in ("whoosh", "boom", "riser", "growl", "eerie", "victim", "distant", "heart", "tap", "creak", "scrape", "flap", "roar", "rumble", "splash", "gust", "crash", "static"):
         synth(kind, f"{kind}.wav")
         s[kind] = f"{kind}.wav"
     queries = lambda x: [f"{x} sound", f"{x} call", f"{x} roar"]
@@ -2180,7 +2183,13 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
   rising out of the molten rock), "tornado" (a black funnel over farmland with lightning and something looking out of it),
   "tsunami" (the sea draws back, a huge wall of water climbs the horizon with the creature's face rising behind it),
   "giant" (a creature five hundred feet tall, its face emerging from the clouds above mountains: the finale for nature
-  stories), "dig" (the creature digs in the earth, dirt flying, only if the story really has digging), "fly" (the creature unfolds
+  stories), "retreat" (night coast: the tide drains away, bare mud, gasping fish; nature stories), "tidelog" (inside a control
+  tower or lighthouse: a person checks logbooks while the sea outside draws back), "radio" (a person on a cliff road speaks into a
+  radio, the signal bars fall and the static takes over), "harbor" (a harbour with lit houses and boats; the water swallows it,
+  nature stories), "rise" (a black mountain of water rises out of a trench, weed and bone on its crest, eyes opening; nature
+  stories), "glass" (eyes glowing behind rain-streaked reinforced glass that begins to crack), "ridge" (the giant creature
+  crests a ridge and blots out the stars; nature stories). IMPORTANT: choose the beat that shows what THIS sentence says, and use
+  a different beat for every sentence whenever you can, "dig" (the creature digs in the earth, dirt flying, only if the story really has digging), "fly" (the creature unfolds
   wings and takes off, only if the story really has flying), "jump" (a dark room, two eyes open, then the face is
   suddenly in the lens, indoor stories only). Whenever the narration describes the creature doing something that can be drawn (digging,
   flying, climbing), pick the beat that shows it. Use at least 4 different scene
@@ -2340,8 +2349,19 @@ SCENE_FUNCS = ("dig", "fly", "bedroom", "stairs", "basement", "hallway", "cctv",
 CAMERA_SCENES = ("pov", "mpov", "curtain", "shoulder", "loom")
 MODERN_SCENES = ("bedroom", "stairs", "basement", "hallway", "cctv", "door", "window", "curtain", "jump",
                  "woods", "neighbour", "lamp", "road", "mirror", "dig", "fly",
-                 "ocean", "lake", "lava", "tornado", "tsunami", "giant")
-MODERN_WORDS = (("tsunami", ("tsunami", "wall of water", "great wave")), ("tornado", ("tornado", "twister", "funnel")),
+                 "ocean", "lake", "lava", "tornado", "tsunami", "giant",
+                 "retreat", "tidelog", "radio", "harbor", "rise", "glass", "ridge")
+SECOND_BEAT = {}   # sentence index -> a second story scene for the same sentence
+STORY_SCENES = ("retreat", "tidelog", "radio", "harbor", "rise", "glass", "ridge")   # scenes for one specific narrated event
+STORY_NATURE = ("retreat", "harbor", "rise", "ridge")                                  # only for stories set in nature
+MODERN_WORDS = (("radio", ("radio", "signal", "static", "transmission", "dispatch", "walkie")),
+                ("tidelog", ("diesel", "logbook", "the logs", "my logs", "log book", "records", "gauge", "instrument panel", "control room", "checking the")),
+                ("retreat", ("tide", "retreat", "receded", "drained", "bare mud", "seabed", "gasping fish", "water drew back", "water vanished")),
+                ("harbor", ("harbor", "harbour", "the port", "quay", "wharf", "the pier")),
+                ("glass", ("reinforced glass", "through the glass", "blinked open", "stared through", "staring right through", "pane")),
+                ("ridge", ("ridge", "crested", "blotting", "blotted", "skyline", "over the hill", "over the crest")),
+                ("rise", ("trench", "rose out", "rose from", "rose from the", "emerged from", "surfaced", "from the deep", "rising from", "mountain of")),
+                ("tsunami", ("tsunami", "wall of water", "great wave")), ("tornado", ("tornado", "twister", "funnel")),
                 ("lava", ("lava", "volcano", "magma", "erupt")), ("giant", ("giant", "titan", "towering", "colossal", "feet tall")),
                 ("ocean", ("ship", "boat", "ocean", "the sea", "trawler")), ("lake", ("lake", "dock", "pond")),
 ("stairs", ("stairs", "steps down", "went down", "creak")), ("basement", ("basement", "cellar", "flashlight")),
@@ -2357,8 +2377,37 @@ MODERN_FILL = ("bedroom", "hallway", "cctv", "door", "stairs", "basement", "wind
 MODERN_PLACE_SCENES = {"woods": ("woods", "road", "dig", "fly"), "nextdoor": ("neighbour", "bedroom", "window", "door", "dig"),
                        "lamp": ("lamp", "bedroom", "mirror", "hallway"), "road": ("road", "woods", "mirror"),
                        "mirror": ("mirror", "bedroom", "hallway", "door"),
-                       "sea": ("ocean", "tsunami", "giant"), "lake": ("lake", "woods", "giant"), "lava": ("lava", "fly", "giant"),
-                       "storm": ("tornado", "road", "giant"), "tsunami": ("tsunami", "ocean", "giant"), "titan": ("giant", "woods", "road")}
+                       "sea": ("ocean", "tsunami", "giant", "retreat", "harbor", "rise", "ridge"), "lake": ("lake", "woods", "giant", "rise", "ridge"),
+                       "lava": ("lava", "fly", "giant", "ridge", "harbor"),
+                       "storm": ("tornado", "road", "giant", "ridge", "harbor"), "tsunami": ("tsunami", "ocean", "giant", "retreat", "harbor", "rise", "ridge"),
+                       "titan": ("giant", "woods", "road", "ridge", "harbor")}
+SCENE_INFO = {
+    "retreat": ("The night coast: the tide drains away, leaving bare mud and gasping fish", "wide, slow push-in", "surf falling away, a low rumble"),
+    "tidelog": ("Inside the control tower: a person checks the logbook while the sea outside draws back", "medium, lamp-lit", "pen scratch, a quiet hum"),
+    "radio": ("A person on the cliff road speaks into a radio; the signal bars fall and the static takes over", "low, wind", "radio static, a dying signal"),
+    "harbor": ("The harbour: lit houses and moored boats, then the water arrives and the lights go out", "wide, shaking", "surge, wood and glass breaking"),
+    "rise": ("A black mountain of water rises out of the trench, weed and bone on its crest, eyes opening", "wide tilt up", "deep rumble, rushing water"),
+    "glass": ("Eyes glowing behind rain-streaked reinforced glass that begins to crack", "locked, close", "glass creak, rain, a low heartbeat"),
+    "ridge": ("The giant creature crests the ridge and blots out the stars", "low angle, slow", "ground tremor, heavy breath"),
+    "tsunami": ("The sea draws back, then a wall of water with the creature rising behind it", "wide", "rush, rumble"),
+    "giant": ("The titan's face comes out of the clouds above the mountains", "low angle", "wind, a roar"),
+}
+
+
+def write_storyboard(sentences, beats, durs, settings, path):
+    """The storyboard of the video: for each narration sentence, the picture that is made for it."""
+    rows = []
+    for k, sn in enumerate(sentences[:len(beats)]):
+        info = SCENE_INFO.get(beats[k], ("the scene named '%s'" % beats[k], "", ""))
+        rows.append({"narration": sn["text"], "speaker": sn.get("speaker", "narrator"), "scene": beats[k], "what_you_see": info[0],
+                     "camera": info[1], "sound": info[2], "setting": settings[k] if k < len(settings) else "",
+                     "seconds": round(durs[k], 2) if k < len(durs) else None})
+    try:
+        Path(path).write_text(json.dumps(rows, indent=2))
+    except Exception as e:
+        log(f"Storyboard not saved ({e})")
+
+
 SCENES = ("walk", "dig", "fly", "footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
           "stalk", "attack", "aftermath", "omen", "pov", "mpov", "curtain", "shoulder", "loom")
 SCENE_WORDS = (("dig", ("dig ", "digging", "dug ", "unearth", "shovel", "burying", "buried it", "claw at the earth", "clawing at the ground")),
@@ -2428,8 +2477,16 @@ def assign_modern_beats(sentences, stype=None):
     beats = []
     for i, s in enumerate(sentences):
         b = s.get("beat")
+        low = s["text"].lower()
+        hits_ = sorted((min(low.find(w) for w in words if w in low), name) for name, words in MODERN_WORDS[:7] if any(w in low for w in words))
+        hits_ = [(pos, nm) for pos, nm in hits_ if nm not in STORY_NATURE or stype in NATURE_TYPES]
+        said = hits_[0][1] if hits_ else None
+        SECOND_BEAT.pop(i, None)
+        if len(hits_) >= 2 and hits_[1][1] != said and s.get("speaker", "narrator") == "narrator":
+            SECOND_BEAT[i] = hits_[1][1]                # a sentence that says two things gets two shots, in the order it says them
+        if said and (said not in STORY_NATURE or stype in NATURE_TYPES) and s.get("speaker", "narrator") == "narrator":
+            b = said                                    # what the sentence SAYS decides the picture, not a guess
         if b not in MODERN_SCENES:
-            low = s["text"].lower()
             b = next((name for name, words in MODERN_WORDS if any(w in low for w in words)), MODERN_FILL[i % len(MODERN_FILL)])
         beats.append(b)
     place = MODERN_PLACE_SCENES.get(stype or "")
@@ -2438,7 +2495,9 @@ def assign_modern_beats(sentences, stype=None):
     special = ("woods", "neighbour", "lamp", "road", "mirror", "dig", "fly", "ocean", "lake", "lava", "tornado", "tsunami", "giant")
     final = "giant" if stype in NATURE_TYPES else "jump"
     for i, b in enumerate(beats):  # the special places only appear in stories built around them
-        if b in special and (not place or b not in place):
+        if b in STORY_SCENES and b not in STORY_NATURE:
+            continue                                   # radio / tower log / eyes through glass fit any story that says so
+        if b in special and (not place or b not in place) or (b in STORY_NATURE and (not place or b not in place)):
             beats[i] = fill[i % len(fill)]
     if place and place[0] not in beats:
         beats[0] = place[0]
@@ -2448,6 +2507,8 @@ def assign_modern_beats(sentences, stype=None):
     beats[-1] = final
     for _ in range(3):  # neighbours with the same scene are merged into one longer scene later, but never 3 in a row
         for i in range(2, n - 1):
+            if beats[i] in STORY_SCENES:
+                continue
             if (beats[i] == beats[i - 1] == beats[i - 2]) or beats.count(beats[i]) > 4:
                 opts = [c for c in fill if c not in (beats[i - 1], beats[i + 1], final)] or [c for c in fill if c != final]
                 if opts:
@@ -2917,6 +2978,39 @@ def folk_sound_events(durs, beats, impacts, sounds, hits=None, quiet=None, origi
             quiet.append((at + h[2] - 0.9, at + h[2] - 0.05))
             ev.append({"file": sounds["crash"], "at": at + h[2], "vol": 1.0})
             ev.append({"file": sounds["boom"], "at": at + h[2], "vol": 0.8})
+        elif beats[i] == "retreat":
+            ev.append({"file": sounds["rumble"], "at": at + 0.1, "vol": 0.5})
+            ev.append({"file": sounds["gust"], "at": at + d * 0.3, "vol": 0.4})
+            ev.append({"file": sounds["distant"], "at": at + d * 0.6, "vol": 0.35})
+        elif beats[i] == "tidelog":
+            ev.append({"file": sounds["scrape"], "at": at + 0.3, "vol": 0.3})
+            ev.append({"file": sounds["creak"], "at": at + d * 0.45, "vol": 0.4})
+            ev.append({"file": sounds["rumble"], "at": at + d * 0.6, "vol": 0.4})
+        elif beats[i] == "radio":
+            ev.append({"file": sounds["static"], "at": at + 0.2, "vol": 0.55})
+            ev.append({"file": sounds["static"], "at": at + d * 0.5, "vol": 0.8})
+            quiet.append((at + d - 0.8, at + d - 0.05))        # the signal dies: a held silence
+        elif beats[i] == "harbor":
+            ev.append({"file": sounds["rumble"], "at": at + 0.05, "vol": 0.8})
+            ev.append({"file": sounds["crash"], "at": at + d * 0.55, "vol": 0.95})
+            ev.append({"file": sounds["boom"], "at": at + d * 0.62, "vol": 0.7})
+            ev.append({"file": sounds["splash"], "at": at + d * 0.72, "vol": 0.6})
+        elif beats[i] == "rise":
+            ev.append({"file": sounds["rumble"], "at": at + 0.05, "vol": 0.9})
+            ev.append({"file": sounds["splash"], "at": at + d * 0.35, "vol": 0.75})
+            ev.append({"file": sounds["growl"], "at": at + d * 0.75, "vol": 0.55})
+        elif beats[i] == "glass":
+            tt = at + 0.2
+            while tt < at + d * 0.7:
+                ev.append({"file": sounds["heart"], "at": tt, "vol": 0.7})
+                tt += 0.8
+            ev.append({"file": sounds["creak"], "at": at + d * 0.62, "vol": 0.8})
+            ev.append({"file": sounds["growl"], "at": at + d * 0.85, "vol": 0.5})
+        elif beats[i] == "ridge":
+            h = hits.get(i, [d * 0.3, d * 0.65])
+            ev.append({"file": sounds["rumble"], "at": at + 0.05, "vol": 0.9})
+            ev.append({"file": sounds["boom"], "at": at + h[0], "vol": 0.6})
+            ev.append({"file": sounds["roar"], "at": at + h[1], "vol": 0.9})
         elif beats[i] == "giant":
             h = hits.get(i, [d * 0.25, d * 0.6])
             ev.append({"file": sounds["rumble"], "at": at + max(0, h[0] - 0.3), "vol": 0.9})
@@ -3045,6 +3139,16 @@ def plan_shots(beats, durs, fmt, stype, rnd=None):
     for i, (b, d) in enumerate(zip(beats, durs)):
         ins = None
         gap_ok = not (len(pool) < 2 and prev_ins)  # a one-type pool needs a plain scene between cutaways
+        if b in STORY_SCENES:                           # the shot that shows this very sentence: no random cutaway in front of it
+            sec = SECOND_BEAT.get(i)
+            if sec and d >= 3.4:
+                d1 = d * 0.45
+                shots.append({"i": i, "beat": b, "dur": d1, "insert": False, "variant": None})
+                shots.append({"i": i, "beat": sec, "dur": d - d1, "insert": False, "variant": None})
+            else:
+                shots.append({"i": i, "beat": b, "dur": d, "insert": False, "variant": None})
+            prev_ins = False
+            continue
         if 0 < i < n - 1 and d >= MIN_SHOT and b not in ("attack", "aftermath") and gap_ok:
             opts = [p for p in pool if p != last_ins] or pool
             if i + 1 < n and beats[i + 1] == "attack":
@@ -3202,6 +3306,7 @@ def build_folk_main(plan):
         beats, durs, settings, n = mb, md, ms, len(mb)
         log("Scenes: " + ", ".join(beats))
     log("Settings: " + ", ".join(settings))
+    write_storyboard(sentences, beats, durs, settings, OUT / "storyboard.json")
     people = story.get("people", "alone")
     toon.CAST["kind"] = people if people in ("child", "elder", "pair", "dog") else None
     toon.CAST["role"] = story.get("hero") if story.get("hero") in toon.ROLES else None
