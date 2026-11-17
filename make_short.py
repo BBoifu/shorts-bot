@@ -236,10 +236,33 @@ def longest_b64(obj):
 
 
 # ---------------------------------------------------------------- writing
-def ask_gemini(a, b, place_name, design_text=""):
+HYB_ACTIONS_WILD = ("walk", "walkback", "feed", "turn", "face", "hunt", "footprints")
+HYB_ACTIONS_ENC = ("footprints", "pov", "loom", "shoulder", "chase", "face", "walk", "hunt")
+HYB_FORMATS = (
+    ("Survival documentary", "wild", "A nature-documentary look at the creature surviving in {place}.",
+     "each one a specific danger of {place} and the clever trait that solves it."),
+    ("Rival showdown", "wild", "A famous predator of {place} decides this is its territory, and the hybrid will not leave.",
+     "build the stand-off: the rival's size and reputation, the first challenge, then the moment ONE trait from the {a} beats the rival and ONE from the {b} finishes it."),
+    ("The great escape", "wild", "The hybrid is hunted by something far bigger. It must escape.",
+     "the pursuer closes in, the hybrid tries a trick from the {a}, it fails, then a trick from the {b} saves it; keep the tension rising."),
+    ("A day in its life", "wild", "Follow the creature from dawn to night in {place}.",
+     "dawn, the heat or cold of midday, the hunt at dusk, and the night when it has to defend its territory, each tied to a trait from the {a} or the {b}."),
+    ("Cryptid encounter", "enc", "A ranger in {place} finds strange tracks, hears something at night, and finally sees it.",
+     "tracks that match no known animal, a sound in the dark, the creature glimpsed at the edge of the light, the ranger's escape; the creature is never cruel, only huge and impossible."),
+    ("When the habitat changes", "wild", "A drought, flood, wildfire or freeze hits {place}, and the hybrid has to adapt.",
+     "what disaster arrives, how the {a} half of the creature copes, how the {b} half copes, and why the hybrid survives better than either parent would."),
+    ("Guardian of the nest", "wild", "The hybrid guards its young in {place}, and a threat comes close.",
+     "the nest, the threat creeping closer, how parenting habits from the {a} and the {b} combine into a defence, and how the threat backs off."),
+    ("Which parent wins?", "wild", "Inside the hybrid, the {a} and the {b} abilities compete: speed against strength, senses against armour.",
+     "each sentence shows one contest between a {a} ability and a {b} ability in {place}, escalating, with a surprising winner at the end."),
+)
+
+
+def ask_gemini(a, b, place_name, design_text="", fmt=None):
     prompt = f"""You write narration for 40-second YouTube Shorts about IMAGINARY animal hybrids.
 
 Idea: a hybrid of a {a} and a {b}, living in {place_name}.
+STORY FORMAT: "{fname}". {brief} Tell THIS story, with a beginning, a rising problem and an ending, instead of just listing facts.
 {("The creature has been designed. Describe EXACTLY this anatomy and movement, do not invent spikes, armour or other features it does not have: " + design_text) if design_text else ""}
 
 Return ONLY valid JSON, no markdown, in exactly this shape:
@@ -250,7 +273,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
   "signature_move": "one sentence: the hybrid's signature move on that prey, using abilities taken from the {a} and the {b} (an action, not gore)",
   "hybrid_look": "one detailed sentence describing how the creature LOOKS, clearly showing specific features taken from the {a} and from the {b}, matching the design given above if there is one (its body shape, face, limbs, wings or shell, colours and how it moves)",
   "sentences": [
-    {{"text": "one spoken sentence", "image": "the SETTING shown while this sentence is spoken"}}
+    {{"text": "one spoken sentence", "image": "the SETTING shown while this sentence is spoken", "action": "what the creature is physically doing while this sentence is spoken: one of {', '.join(acts)}"}}
   ]
 }}
 
@@ -258,7 +281,8 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
 - Sentence 1: a short, shocking hook (under 14 words) about the most terrifying thing this creature does.
 - Sentence 2: names the creature, says it is imaginary, and says what it inherits from the {a} and from the {b}.
 - One middle sentence describes the signature move on its prey.
-- Middle sentences: each one a specific danger of {place_name} and the clever trait that solves it.
+- Middle sentences: {middle}
+- Give each middle sentence a DIFFERENT "action", and make it the action the sentence really describes (hunt = it pounces on prey, feed = it eats, walk = it travels, turn = it reacts to a sound, face = a close-up of its face, footprints = its tracks are found). Use "hunt" at most once.
 - Last sentence: a surprising weakness as a twist, then end with exactly these words: What should I combine next? Tell me in the comments.
 - Use real science about the parent animals where possible. Do not present false facts as real.
 - "image" is a vivid 10 to 20 word description of the BACKGROUND ONLY for that sentence: the place
@@ -284,7 +308,9 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
             for s in sents:
                 s["text"] = s["text"].strip()
                 s["image"] = str(s.get("image") or f"a dramatic view of {place_name}").strip()
+                s["action"] = str(s.get("action") or "").strip().lower() if str(s.get("action") or "").strip().lower() in acts else ""
             data["sentences"] = sents[:9]
+            data["format"] = fname
             data["prey"] = str(data.get("prey") or "a small desert animal").strip()
             data["signature_move"] = str(data.get("signature_move") or "it pounces with lightning speed").strip()
             return data
@@ -1479,7 +1505,7 @@ def plan_scenes(sentences, total):
         i += 1
     scenes = [{"kind": "open", "dur": dh + d, "hook": dh, "morph": d}]
     while i < n - 1:
-        scenes.append({"kind": "scene", "dur": ds[i], "image": sentences[i]["image"]})
+        scenes.append({"kind": "scene", "dur": ds[i], "image": sentences[i]["image"], "si": i})
         i += 1
     scenes.append({"kind": "hold", "dur": ds[n - 1] + 0.3})
     return scenes
@@ -3598,8 +3624,14 @@ def build_main():
 
     middle = [i for i, sc in enumerate(scenes) if sc["kind"] == "scene"]
     hunt_at = middle[len(middle) // 2] if middle else None
+    named = [i for i in middle if sentences[scenes[i]["si"]].get("action") == "hunt"]
+    if named:
+        hunt_at = named[0]                      # the pounce is shown where the story says it pounces
+    elif any(sentences[scenes[i]["si"]].get("action") for i in middle):
+        hunt_at = None if story.get("format") == "Cryptid encounter" else hunt_at
     hunt_info = None
     k = 0
+    prev_shot = None
     scene_tracks = {}
     for i, sc in enumerate(scenes):
         if sc["kind"] == "open":
@@ -3618,9 +3650,20 @@ def build_main():
             # a different physical action in each shot: walk, feed, turn, walk the other way, a close-up reaction
             kinds = ["walk", "feed", "turn", "walkback", "face"]
             shot_type = kinds[k % len(kinds)]
+            act = sentences[sc["si"]].get("action") if "si" in sc else ""
+            if act and act != "hunt":
+                shot_type = act                  # the picture is what the sentence says the creature is doing
+                if shot_type == prev_shot:
+                    shot_type = {"walk": "walkback", "walkback": "walk"}.get(shot_type, shot_type)
             if sc["dur"] < 3.6 and shot_type in ("feed", "turn"):
                 shot_type = "walk"
-            if shot_type == "walk":
+            if sc["dur"] < 2.4 and shot_type in ("pov", "loom", "shoulder", "chase", "footprints"):
+                shot_type = "walk"
+            prev_shot = shot_type
+            if shot_type in ("footprints", "pov", "loom", "shoulder", "chase"):
+                getattr(toon, shot_type + "_scene")(out, sc["dur"], w, sh, cwd=WORK)
+                sc["steps"] = []
+            elif shot_type == "walk":
                 toon.walk_scene(out, sc["dur"], w, sh, 1, (0.95, 1.1), cwd=WORK)
                 sc["steps"] = toon.walk_steps(sh, sc["dur"])
             elif shot_type == "feed":
@@ -3643,7 +3686,7 @@ def build_main():
     has_caps = write_captions(words, total, WORK / "captions.ass",
                               card=f"{place_name.upper()}  \u00b7  IMPOSSIBLE ANIMALS #{plan.get('episode', 1)}",
                               card_big=(plan.get("story") or {}).get("creature_name"), track=ct)
-    if len(clips) >= 2 and middle:
+    if len(clips) >= 2 and middle and hunt_at is not None:
         scenes[hunt_at]["clip"] = clips[1]
     if len(clips) >= 3:
         scenes[-1]["clip"] = clips[2]
@@ -3674,8 +3717,8 @@ def build_main():
     )
     tags = ["shorts", "animals", "what if", "hybrid animals", "speculative biology", a, b]
     (OUT / "meta.json").write_text(json.dumps(
-        {"title": title, "description": description, "narration": narration,
-         "video_clips_used": len(clips), "real_animal_calls": sounds["real_calls"]}, indent=2))
+        {"title": title, "description": description, "narration": narration, "format": story.get("format"),
+         "actions": [x.get("action", "") for x in sentences], "video_clips_used": len(clips), "real_animal_calls": sounds["real_calls"]}, indent=2))
 
     if DRY_RUN or not os.environ.get("YT_REFRESH_TOKEN"):
         log("Not uploading (dry run, or YouTube is not set up yet). Download the video from the run's Artifacts.")
