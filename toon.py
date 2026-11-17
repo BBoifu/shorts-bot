@@ -1408,13 +1408,19 @@ class World:
             d.ellipse((sx - sr, 520 - sr, sx + sr, 520 + sr), fill=(4, 3, 8))
         elif sun:
             c = sun
-            for k, a in ((3.0, 0.08), (2.2, 0.14), (1.5, 0.25)):
-                r = sr * 0.94 * k
-                d.ellipse((sx - r, 520 - r, sx + r, 520 + r), fill=mix(st["sky"][0], c, a))
-            d.ellipse((sx - sr, 520 - sr, sx + sr, 520 + sr), fill=rgb(c))
-            if fx in ("fullmoon", "bluemoon"):  # craters
+            sky_a = np.asarray(sky, dtype=np.float32)
+            yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+            dist = np.sqrt((xx - sx) ** 2 + (yy - 520) ** 2)
+            glow = np.clip(1.0 - dist / (sr * 4.2), 0, 1) ** 2.4 * 0.55   # soft halo, no hard rings
+            core = np.clip((sr * 1.0 - dist) / 3.0, 0, 1)                    # anti-aliased disc edge
+            cc = np.array(rgb(c), dtype=np.float32)
+            sky_a = sky_a * (1 - glow[..., None]) + cc * glow[..., None]
+            sky_a = sky_a * (1 - core[..., None]) + cc * 0.96 * core[..., None]
+            sky = Image.fromarray(sky_a.clip(0, 255).astype(np.uint8))
+            d = ImageDraw.Draw(sky)
+            if fx in ("fullmoon", "bluemoon") or sun in ("#f6f1d6", "#e8e8d0", "#dfe2cf", "#ff4a3a"):  # craters
                 for ox, oy, rr in ((-40, -30, 22), (30, 20, 30), (-10, 55, 16), (45, -45, 14)):
-                    d.ellipse((sx + ox - rr, 520 + oy - rr, sx + ox + rr, 520 + oy + rr), fill=mix(c, st["sky"][0], 0.12))
+                    d.ellipse((sx + ox - rr, 520 + oy - rr, sx + ox + rr, 520 + oy + rr), fill=mix(c, st["sky"][0], 0.10))
         self.sun_xy = (sx, 520, sr)
         if st.get("stars") or st["sky"][0] in ("#05060f", "#000000", "#2f3e25", "#3a0d0d", "#0a1030"):
             for _ in range(160):
@@ -1423,6 +1429,13 @@ class World:
                 if rnd.random() < 0.1:
                     d.ellipse((x - 2, y - 2, x + 2, y + 2), fill=(255, 255, 255))
         self.sky = sky
+        self.clouds = None
+        try:
+            dark = sum(rgb(st["sky"][0])) < 260
+            if dark and isinstance(sun, str) and sun not in ("two", "planet", "hole", "eclipse") and fx not in ("redsky", "virus", "thunder"):
+                self.clouds = self._cloud_strip(sx)
+        except Exception:
+            self.clouds = None
         # layers
         self.far = self._layer(st["far"], GROUND - 520, 520, 0.0, far=True)
         self.near = self._layer(st["near"], GROUND - 260, 330, 1.0, far=False)
@@ -1431,6 +1444,30 @@ class World:
         for y in range(H - GROUND):
             gd.line((0, y, W, y), fill=mix(st["ground"], (0, 0, 0), min(0.6, y / 900)))
         self.parts = [[rnd.uniform(0, W), rnd.uniform(0, H), rnd.uniform(0.5, 1.5), rnd.uniform(0, 6.28)] for _ in range(70)]
+
+    def _cloud_strip(self, sx):
+        """Thin, soft, wide clouds (tileable) that drift slowly across the night sky and catch the moonlight."""
+        PW, rnd = self.PW, random.Random(self.rnd.random())
+        hh = 560
+        g = np.zeros((hh, PW), dtype=np.float32)
+        for _ in range(11):
+            cx, cy = rnd.uniform(0, PW), rnd.uniform(90, 470)
+            wd, ht = rnd.uniform(260, 620), rnd.uniform(14, 34)
+            for _k in range(3):
+                ox = rnd.uniform(-wd * 0.35, wd * 0.35)
+                yy, xx = np.ogrid[0:hh, 0:PW]
+                dx = np.minimum(np.abs(xx - (cx + ox)), PW - np.abs(xx - (cx + ox)))
+                g += np.exp(-((dx / (wd * 0.5)) ** 2 + ((yy - cy - rnd.uniform(-8, 8)) / ht) ** 2)).astype(np.float32) * rnd.uniform(0.25, 0.5)
+        g = np.clip(g, 0, 1)
+        sky_col = np.array(rgb(self.st["sky"][1]), dtype=np.float32)
+        moon = np.array(rgb(self.st["sun"]), dtype=np.float32)
+        col = np.clip(sky_col * 0.55 + moon * 0.25, 0, 255)
+        arr = np.zeros((hh, PW, 4), dtype=np.uint8)
+        arr[..., :3] = col.astype(np.uint8)
+        arr[..., 3] = (g * 105).astype(np.uint8)
+        img = Image.fromarray(arr, "RGBA")
+        img.top = 60
+        return img
 
     def _layer(self, color, top, height, density, far):
         PW, rnd, st = self.PW, self.rnd, self.st
@@ -1508,6 +1545,11 @@ class World:
         im = self.sky.copy()
         if self.skyfx:
             sky_effects(im, self.skyfx, t, getattr(self, "sun_xy", (700, 520, 85)))
+        if getattr(self, "clouds", None) is not None:
+            off = int(t * 9 + cam * 0.03) % self.PW   # slow drift
+            for ox in (-off, -off + self.PW):
+                if ox < W and ox + self.PW > 0:
+                    im.paste(self.clouds, (ox, self.clouds.top), self.clouds)
         for layer, k in ((self.far, 0.18), (self.near, 0.6)):
             off = int(cam * k) % self.PW
             for ox in (-off, -off + self.PW):
@@ -1738,6 +1780,13 @@ def folk_creature(name, design=None):
     design = design or {}
     sp = animal_spec(name)
     body = design.get("body") if design.get("body") in BODIES else "beast"
+    if body == "beast" and "SKELETAL_FOLK" in globals() and SKELETAL_FOLK:
+        try:
+            sk = skeletal_folk(name, design)
+            if sk:
+                return sk
+        except Exception as e:
+            print("skeletal_folk failed:", e)
     sp["kind"] = body
     sp["snout"] = SNOUTS.get(name, 0.9)
     sp["hybrid"] = True
@@ -7422,3 +7471,32 @@ def tower_scene(out, dur, world, sp, cwd=None):
 
 
 INSERT_FUNCS["tower"] = tower_scene
+
+
+# ================================================================ the skeleton look for every series
+SKELETAL_FOLK = True
+
+
+def skeletal_folk(name, design=None):
+    """A folklore 'beast' drawn by the full-body engine: real legs that plant on the ground, exposed ribs, glowing cracks.
+    The legend's own colours, eyes and size still apply, so every monster stays unique to its story."""
+    design = design or {}
+    if name not in SPECIES:
+        return None
+    g = pure_design(name)
+    g["hybrid"] = True
+    g["glow"] = True
+    g["ribs"] = g["torso"][1] > 120
+    g["cracks"] = bool(design.get("cracks")) or True
+    pal = PALETTES.get(design.get("palette"))
+    if pal:
+        main = mix(pal, (10, 8, 18), 0.35)
+        g["pal"] = (tuple(main), tuple(mix(pal, (255, 255, 255), 0.18)), tuple(mix(main, (0, 0, 0), 0.4)))
+    ec = EYES.get(design.get("eyes"), (255, 40, 30))
+    g["head"] = dict(g["head"]); g["head"]["eyecol"] = tuple(ec)
+    sp = chimera_spec(g)
+    sp["name"] = name
+    sp["horror"] = True
+    sp["eye"] = tuple(ec)
+    sp["scale"] *= {"small": 0.85, "huge": 1.2}.get(design.get("size"), 1.0)
+    return sp
