@@ -5205,6 +5205,10 @@ def _compose(a, b, rnd):
     # ---- character
     g["temper"] = D["temper"] if rnd.random() < 0.6 else O["temper"]
     g["glow"] = g["temper"] in ("savage", "eerie", "cold") and rnd.random() < 0.55
+    # horror anatomy (rare, only for menacing temperaments): a showing ribcage, and glowing cracks that follow the body
+    grim = g["temper"] in ("savage", "eerie", "cold")
+    g["ribs"] = bool(grim and g["skin"] in ("fur", "scales", "leathery", "hide") and rnd.random() < 0.30 and g["torso"][1] > 150)
+    g["cracks"] = bool(g["glow"] and rnd.random() < 0.65)
     pstrike = [S["strike"] for S in (D, O)]
     g["strike"] = rnd.choice(pstrike)
     if arms and arms[0] == "pincers":
@@ -5603,6 +5607,33 @@ def _fur_tufts(pen, top, bot, col, scale=1.0):
             ox, oy = ty * sgn, -tx * sgn          # points away from the body
             pen.poly([(x - tx * 9, y - ty * 9), (x + tx * 9, y + ty * 9),
                       (x - tx * 5 + ox * 15 * scale, y - ty * 5 + oy * 15 * scale)], lt, rim=False)
+
+
+def _horror_marks(pen, g, spine, top, bot, rseed):
+    """Exposed ribs and glowing cracks. Both are placed on the body's own rings (ring index, back-to-belly), so they move
+    with every bend of the spine."""
+    n = len(spine)
+    rnd = random.Random(rseed * 7 + 3)
+    def T(i, v):
+        i0 = int(i); i1 = min(i0 + 1, len(top) - 1); f = i - i0
+        tx = top[i0][0] * (1 - f) + top[i1][0] * f; ty = top[i0][1] * (1 - f) + top[i1][1] * f
+        bx = bot[i0][0] * (1 - f) + bot[i1][0] * f; by = bot[i0][1] * (1 - f) + bot[i1][1] * f
+        return (tx * (1 - v) + bx * v, ty * (1 - v) + by * v)
+    if g.get("ribs"):
+        lo, hi = int(n * 0.30), int(n * 0.72)
+        for i in range(lo, hi, 2):
+            arc = [T(i, 0.12), T(i + 0.5, 0.42), T(i + 0.2, 0.70), T(i - 0.3, 0.92)]
+            pen.line(arc, 7, (118, 108, 92))
+            pen.line(arc, 4, (206, 198, 176))
+    if g.get("cracks"):
+        ec = tuple(g["head"].get("eyecol", (255, 150, 50)))[:3]
+        for _ in range(7):
+            i = rnd.uniform(2, n - 4); v = rnd.uniform(0.1, 0.8); pts = [T(i, v)]
+            for k in range(5):
+                i += rnd.uniform(0.3, 0.9); v = min(0.95, max(0.05, v + rnd.uniform(-0.18, 0.18))); pts.append(T(i, v))
+            pen.line(pts, 9, (ec[0], ec[1], ec[2], 70))
+            pen.line(pts, 4, (min(255, ec[0] + 20), min(255, ec[1] + 60), min(255, ec[2] + 40), 190))
+            pen.line(pts, 1.6, (255, 232, 170))
 
 
 # ---------------------------------------------------------------- head: a face built from the parts both parents gave it
@@ -6203,6 +6234,25 @@ BEND = {"digi": (1, -1), "bigdigi": (1, -1), "pillar": (1, 1), "bird": (1, 1), "
         "insect": (-1, -1), "arach": (-1, -1), "crab": (-1, -1), "webbed": (1, 1)}   # (front legs, hind legs): 1 = knee points back
 
 
+DUTY = {"trot": 0.62, "pace": 0.66, "bound": 0.50, "tripod": 0.52}
+FOOT_LOG = []          # filled only by tests: (leg, side, foot_x, foot_y)
+
+
+def _duty(GA):
+    return DUTY.get(GA["pat"], 0.6)
+
+
+def _planted(p, stride, lift_h, duty):
+    """A real step cycle. Landing is at p = pi/2 (as before). While the foot supports the body it is PLANTED: it moves back
+    relative to the body at a constant speed (so it stays fixed on the ground); then it swings forward in an arc and lands."""
+    f = ((p - math.pi / 2) / (2 * math.pi)) % 1.0
+    if f < duty:
+        return stride * (1 - 2 * f / duty), -2.0
+    u = (f - duty) / (1 - duty)
+    e = u * u * (3 - 2 * u)
+    return -stride + 2 * stride * e, -2.0 - lift_h * math.sin(math.pi * u)
+
+
 def _leg_phase(pat, pair, npairs, side):
     if pat == "hop":
         return 0.0
@@ -6362,16 +6412,19 @@ def draw_chimera(pen, sp, ph, st):
                 spread = ((pi_ - (npairs - 1) / 2) * ll * 0.55 + (14 if side else -6))
                 foot = (hip[0] + spread, -4)
             elif moving and GA["stride"] > 0:
-                s_ = math.sin(p)
-                lift = max(0.0, math.cos(p))
-                foot = (hip[0] + stride * s_ + sx_off * 0.3, -liftH * lift * (1 if GA["pat"] != "hop" else 1.8) - 2)
                 if GA["pat"] == "hop":
+                    lift = max(0.0, math.cos(p))
                     foot = (hip[0] + stride * 0.3 + 10 * side, -liftH * lift * 1.2 - 2 - 0.0)
+                else:
+                    fx_, fy_ = _planted(p, stride, liftH, _duty(GA))
+                    foot = (hip[0] + fx_ + sx_off * 0.3, fy_)
             else:
                 foot = (hip[0] + (12 if side else -4) * (1 if pi_ else -1) * 0.5 + (stride * 0.25 if pi_ >= npairs / 2 else -stride * 0.25) * 0.4, -2)
             if lstyle in ("sprawl", "insect", "arach", "crab") and not flying_pose and lstyle != "tentacle":
                 reach = (pi_ - (npairs - 1) / 2) * ll * 0.5
                 foot = (foot[0] + reach * (0.8 if lstyle != "sprawl" else 0.4), foot[1])
+            if FOOT_LOG is not None and st.get("log_feet"):
+                FOOT_LOG.append((pi_, side, foot[0] - hip[0], foot[1]))
             leg_draws.append((side, pi_, hip, foot))
     far = [x for x in leg_draws if x[0] == 1]
     near = [x for x in leg_draws if x[0] == 0]
@@ -6514,6 +6567,8 @@ def draw_chimera(pen, sp, ph, st):
     if belly_pts:
         pen.poly(belly_pts + [bots[i] for i in range(n - 2, 1, -1)], mix(belly, col, 0.12), rim=False)
     _body_marks(pen, g, spine, tops, bots, col, dk, lt, seed, scale=max(0.7, Hh / 150))
+    if g.get("ribs") or g.get("cracks"):
+        _horror_marks(pen, g, spine, tops, bots, seed)
     if g["skin"] == "fur":
         _fur_tufts(pen, tops, bots, col, scale=max(0.7, Hh / 160))
     # dorsal features
@@ -6706,8 +6761,8 @@ def chimera_spec(g):
     m = _measure(g)
     x0, y0, x1, y1 = m["bbox"]
     w, h = max(x1 - x0, 1), max(-y0, 1)
-    tw = 560 if g["hybrid"] else 470
-    k = _clip(min(tw / w, 720 / h), 0.5, 1.5)
+    tw = 700 if g["hybrid"] else 470      # hybrids dominate the frame
+    k = _clip(min(tw / w, 860 / h), 0.5, 1.9)
     ec = tuple(g["head"]["eyecol"]) if g["glow"] or g["hybrid"] else (255, 190, 40)
     if g["glow"]:
         ec = tuple(g["head"]["eyecol"])
@@ -6757,7 +6812,7 @@ def chim_rate(sp, ground=None):
     ground = ground or chim_ground(sp)
     s = 1.4 * sp.get("scale", 1.0) * KIND_SCALE.get("chimera", 1.0)
     stride_px = max(ll * GA["stride"] * s, 20.0)
-    dpdt = ground * math.pi / (2.0 * stride_px)      # the planted foot's average speed = (2/pi) * stride * dp/dt
+    dpdt = ground * math.pi * _duty(GA) / stride_px      # the planted foot moves back at exactly the ground's speed: stride*2 over duty*cycle
     return _clip(dpdt / GA["speed"], 2.0, 15.0)
 
 
@@ -7311,7 +7366,7 @@ def _lit_draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=Non
     if ec and (sp.get("hybrid") or sp.get("kind") in ("hollow", "wraith", "djinn", "stalker", "owlman", "crawler")):
         pad_ = int(90 * s)
         gl = Image.new("L", (int(520 * s) + 2 * pad_, int(130 * s) + 2 * pad_), 0)     # padded so the blur is never cut off
-        ImageDraw.Draw(gl).ellipse((pad_, pad_, gl.width - pad_, gl.height - pad_), fill=95)
+        ImageDraw.Draw(gl).ellipse((pad_, pad_, gl.width - pad_, gl.height - pad_), fill=58)
         gl = gl.filter(ImageFilter.GaussianBlur(28 * s))
         base.paste(tuple(int(c) for c in ec[:3]), (int(cx + facing * 120 * s - gl.width / 2), int(gy - 40 * s - pad_)), gl)
     # --- shade the far side, rim the lit side ---
