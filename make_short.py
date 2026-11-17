@@ -2529,16 +2529,41 @@ def assign_pre_beats(n, stype):
     return beats
 
 
+LEGEND_SAID = (("dig", r"\b(dig|digging|dug|unearth\w*|shovel\w*)\b"),
+               ("fly", r"\b(flew|flying|soared|soaring|swooped|took off|takes off)\b"),
+               ("footprints", r"\b(footprints?|footsteps?|tracks)\b"),
+               ("window", r"\b(window|shutters?)\b"),
+               ("door", r"\b(door|knock\w*|latch)\b"),
+               ("transform", r"\b(transform\w*|turns? into|turned into|changes? into|changed into)\b"),
+               ("hide", r"\b(hid|hide|hiding|hidden)\b"),
+               ("chase", r"\b(ran|run|running|fled|flee|fleeing|chased|chasing)\b"),
+               ("village", r"\b(village|villagers|townsfolk)\b"))
+
+
+def legend_said(low):
+    """The scene a folklore sentence actually describes, if it names one of the drawable events (first one mentioned wins)."""
+    best = None
+    for name, rx in LEGEND_SAID:
+        m = re.search(rx, low)
+        if m and (best is None or m.start() < best[0]):
+            best = (m.start(), name)
+    return best[1] if best else None
+
+
 def assign_beats(sentences, modern=False, stype=None):
     if stype in PRE_TYPES:
         return assign_pre_beats(len(sentences), stype)
     if modern:
         return assign_modern_beats(sentences, stype)
     n = len(sentences)
-    beats = []
+    beats, said_idx = [], set()
     for i, s in enumerate(sentences):
         b = s.get("beat")
         low = s["text"].lower()
+        said = legend_said(low) if s.get("speaker", "narrator") == "narrator" and 0 < i < n - 1 else None
+        if said:
+            said_idx.add(i)
+            b = said                                    # what the sentence SAYS decides the picture
         if b not in SCENES:
             b = None
             if any(w in low for w in ATTACK_WORDS) and i >= 2:
@@ -2553,14 +2578,16 @@ def assign_beats(sentences, modern=False, stype=None):
         beats.append(b)
     beats[0] = "walk"
     if n >= 5 and "attack" not in beats[2:n - 1]:
-        beats[n - 3] = "attack"
+        free = [j for j in range(n - 3, 1, -1) if j not in said_idx]     # never over a sentence that names its own scene
+        if free:
+            beats[free[0]] = "attack"
     if beats[-1] in ("attack",) or beats[-1] not in ("stalk", "aftermath", "walk"):
         beats[-1] = "aftermath" if beats[-2] == "attack" else "stalk"
     for i in range(1, n):
         if beats[i] == "attack" and beats[i - 1] == "attack":
             beats[i] = "aftermath"  # one attack at a time
     for i in range(n - 1):
-        if beats[i] == "attack" and beats[i + 1] != "aftermath":
+        if beats[i] == "attack" and beats[i + 1] != "aftermath" and (i + 1) not in said_idx:
             beats[i + 1] = "aftermath"
     om = [j for j, b in enumerate(beats) if b == "omen"]
     for j in om[1:]:  # only one omen
@@ -2574,14 +2601,14 @@ def assign_beats(sentences, modern=False, stype=None):
                 break
     if n >= 6 and sum(b in CAMERA_SCENES for b in beats) < 2:  # make sure the camera angles get used
         pool = [c for c in CAMERA_SCENES if c not in beats] or list(CAMERA_SCENES)
-        cands = [j for j in range(3, n - 1) if beats[j] in ("walk", "stalk", "footprints", "hide", "home")]
+        cands = [j for j in range(3, n - 1) if beats[j] in ("walk", "stalk", "footprints", "hide", "home") and j not in said_idx]
         cands.sort(key=lambda j: (beats[j + 1] != "attack", -j))
         for j in cands:
             beats[j] = pool.pop(0) if pool else "pov"
             if sum(b in CAMERA_SCENES for b in beats) >= 2:
                 break
     for i in range(1, n - 1):  # never the same scene twice in a row
-        if beats[i] == beats[i - 1] and beats[i] not in ("attack",):
+        if beats[i] == beats[i - 1] and beats[i] not in ("attack",) and i not in said_idx:
             beats[i] = "stalk" if beats[i] != "stalk" else "walk"
     return beats
 
