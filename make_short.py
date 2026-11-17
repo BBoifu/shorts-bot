@@ -3172,9 +3172,9 @@ def build_folk_main(plan):
     log(f"Origin: {origin}. Hero: {toon.CAST['role']}, with: {toon.CAST['kind']}")
     WEATHER = {"stalk": dict(fog=0.55), "attack": dict(fog=0.6, redmoon=True), "aftermath": dict(fog=0.7, redmoon=True),
                "chase": dict(storm=True), "transform": dict(redmoon=True), "window": dict(storm=True)}
-    PUSH = {"walk": 0.10, "stalk": 0.16, "home": 0.10, "village": 0.08, "hide": 0.10, "footprints": 0.0,
-            "aftermath": 0.06, "mob": 0.08}
-    SHAKE = {"chase": 7.0}
+    PUSH = {"walk": 0.06, "stalk": 0.10, "home": 0.06, "village": 0.05, "hide": 0.06, "footprints": 0.0,
+            "aftermath": 0.04, "mob": 0.05}   # calmer: slow, gentle push-ins
+    SHAKE = {"chase": 3.5}
     FIRST_SIGN_AT = next((j for j, b in enumerate(beats) if b == "omen"), n)
     shots = plan_shots(beats, durs, fmt, story.get("story_type"))
     log(f"Shots ({len(shots)}): " + ", ".join(sh["beat"] + (f"[{sh['variant']}]" if sh["variant"] else "") for sh in shots))
@@ -3413,12 +3413,12 @@ def build_main():
     world = toon.World(place_name, 1)
     log(f"Animating: {a} ({sa['kind']}), {b} ({sb['kind']}), hybrid ({sh['kind']}: {'; '.join(toon.describe(sh['g']))})")
     world.focus_y = 0.70                     # keep the camera on the creature, not the empty sky
-    world.push = 0.25
+    world.push = 0.16
     toon.walk_scene(str(WORK / "toon_a.mp4"), t["la"], world, sa, 1, (1.0, 1.1), cwd=WORK, intro=(sh, 1.3))
     toon.walk_scene(str(WORK / "toon_b.mp4"), t["lb"], world, sb, -1, (1.0, 1.1), cwd=WORK)
-    world.push = 0.12
+    world.push = 0.08
     toon.meet_scene(str(WORK / "toon_m.mp4"), t["lm"], world, sa, sb, cwd=WORK)
-    world.push = 0.35
+    world.push = 0.22
     toon.walk_scene(str(WORK / "toon_h.mp4"), t["lh"], world, sh, 1, (0.95, 1.15), hybrid_roar_end=True, cwd=WORK)
     assets = {"a": {"plate": None, "sprite": None, "clip": "toon_a.mp4"},
               "b": {"plate": None, "sprite": None, "clip": "toon_b.mp4"},
@@ -3436,7 +3436,7 @@ def build_main():
             continue
         w = toon.World(place_name, i + 2)
         w.focus_y = 0.70
-        w.push = 0.28 if i % 2 == 0 else 0.0     # a slow push-in on every other shot, otherwise a locked frame
+        w.push = 0.18 if i % 2 == 0 else 0.0     # a slow push-in on every other shot, otherwise a locked frame
         out = str(WORK / f"toon_s{i}.mp4")
         if sc["kind"] == "hold":
             toon.walk_scene(out, sc["dur"], w, sh, 1, (1.0, 1.15), cwd=WORK, outro=(sh, min(1.5, sc["dur"] * 0.6)))
