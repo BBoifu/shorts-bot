@@ -7827,3 +7827,335 @@ def _install_skeletons():
 
 
 _install_skeletons()
+
+
+# ================================================================ story event scenes
+# One scene for each thing a disaster / folklore narration can actually SAY: the tide drains, somebody checks the logs
+# in a control tower, a radio call fails, the harbour is swallowed, something rises out of the trench, eyes stare
+# through the glass, a giant crests the ridge. The storyboard picks these by what the sentence says.
+def eye_total(sp, default=2):
+    for v in (sp.get("eyes"), (sp.get("g") or {}).get("head", {}).get("eye_count") if isinstance(sp.get("g"), dict) else None):
+        try:
+            if v:
+                return max(2, min(6, int(v)))
+        except Exception:
+            pass
+    return default
+
+
+def _stars_bg(d, rnd_seed, n=90, ymax=900, t=0.0, hide=None):
+    rnd = random.Random(rnd_seed)
+    for _ in range(n):
+        x, y, r = rnd.uniform(0, W), rnd.uniform(40, ymax), rnd.uniform(1.2, 3.0)
+        if hide and hide(x, y):
+            continue
+        a = int(140 + 90 * math.sin(t * 2 + x))
+        d.ellipse((x - r, y - r, x + r, y + r), fill=(235, 240, 255, max(60, min(255, a))))
+
+
+def _figure(d, x, y, s, col=(8, 8, 14), raised=0.0, lean=0.0, rim=(120, 150, 190)):
+    """A person seen from the side, feet at (x, y). `raised` lifts the near arm to the face (a radio, a phone)."""
+    hx = x + lean * 18 * s
+    for dx in (-1, 1):
+        d.line([(x + dx * 10 * s, y - 80 * s), (x + dx * 14 * s, y)], fill=col + (255,), width=int(16 * s))
+    d.polygon([(x - 26 * s, y - 85 * s), (x + 26 * s, y - 85 * s), (hx + 22 * s, y - 175 * s), (hx - 22 * s, y - 175 * s)], fill=col + (255,))
+    d.ellipse((hx - 19 * s, y - 218 * s, hx + 19 * s, y - 178 * s), fill=col + (255,))
+    hand = (hx + (20 + 12 * raised) * s, y - (110 + 70 * raised) * s)
+    d.line([(hx + 6 * s, y - 165 * s), (hx + 34 * s, y - 130 * s), hand], fill=col + (255,), width=int(12 * s))
+    d.line([(hx - 22 * s, y - 175 * s), (hx - 22 * s, y - 175 * s)], fill=rim + (255,), width=2)
+    d.line([(hx + 19 * s, y - 214 * s), (hx + 19 * s, y - 184 * s)], fill=rim + (170,), width=max(2, int(3 * s)))   # rim light on the face edge
+    return hand
+
+
+def _glow_eyes(d, cx, cy, n, spread, r, col, t, seed=0, appear=1.0):
+    """n glowing eyes in a row (or two rows), blinking one after another."""
+    if appear <= 0.01:
+        return
+    rows = 1 if n <= 3 else 2
+    per = [n] if rows == 1 else [n // 2 + n % 2, n // 2]
+    k = 0
+    for ri, cnt in enumerate(per):
+        for j in range(cnt):
+            x = cx + (j - (cnt - 1) / 2) * spread
+            y = cy + ri * spread * 0.55 - (spread * 0.2 if ri == 0 and rows == 2 else 0)
+            ph = (t * 0.6 + k * 0.17 + seed) % 1.0
+            lid = 1.0 - min(1.0, abs(ph - 0.93) / 0.03) if ph > 0.9 else 0.0
+            a = appear * (1 - lid)
+            for rr, al in ((r * 4.2, 22), (r * 2.6, 46), (r * 1.7, 90)):
+                d.ellipse((x - rr, y - rr, x + rr, y + rr), fill=col + (int(al * a),))
+            d.ellipse((x - r, y - r * (1 - 0.6 * lid), x + r, y + r * (1 - 0.6 * lid)), fill=tuple(min(255, c + 40) for c in col) + (int(255 * a),))
+            d.ellipse((x - r * 0.28, y - r * 0.8, x + r * 0.28, y + r * 0.8), fill=(10, 8, 12, int(255 * a)))
+            k += 1
+
+
+def _sea_strip(d, y0, y1, t, col=(10, 36, 66), foam=True):
+    xs = list(range(0, W + 20, 20))
+    pts = [(x, y0 + 8 * math.sin(x * 0.02 + t * 1.6) + 4 * math.sin(x * 0.07 + t * 3)) for x in xs]
+    d.polygon(pts + [(W, y1), (0, y1)], fill=col + (255,))
+    if foam:
+        d.line(pts, fill=(215, 230, 240, 200), width=6)
+    return pts
+
+
+# ---------------------------------------------------------------- the tide drains and leaves fish on the mud
+def retreat_scene(out, dur, world, sp, cwd=None):
+    sky = _gradient((6, 10, 28), (38, 58, 96), 900)
+    rnd = random.Random(5)
+    fish = [(rnd.uniform(60, W - 60), rnd.uniform(1280, 1800), rnd.uniform(0.7, 1.3), rnd.uniform(0, 6)) for _ in range(16)]
+    hits = [dur * 0.4, dur * 0.7]
+    world.push, world.shake = 0.1, 2.0
+
+    def paint(im, d, t, u, cam):
+        im.paste(sky, (0, 0))
+        d = ImageDraw.Draw(im, "RGBA")
+        _stars_bg(d, 3, 80, 700, t)
+        _moon(d, 780, 330, 58)
+        draw = _smooth(u / 0.8)
+        shore = 920 + 520 * draw                                   # where the water edge has drawn back to
+        d.rectangle((0, 900, W, H), fill=(46, 40, 36, 255))          # bare mud
+        for k in range(9):                                           # wet sheen on the mud
+            yy = 960 + k * 110
+            d.rectangle((0, yy, W, yy + 18), fill=(80, 90, 104, 60 + 6 * k))
+        d.rectangle((0, 900, W, shore), fill=(10, 34, 62, 255))
+        _sea_strip(d, shore, shore + 80, t)
+        d.polygon([(110, 1330), (420, 1330), (380, 1400), (150, 1400)], fill=(20, 14, 10, 255))      # a boat left leaning on the mud
+        d.line((260, 1330, 300, 1170), fill=(20, 14, 10, 255), width=9)
+        for fx, fy, fs, ph in fish:                                  # gasping fish
+            if fy < shore + 30:
+                continue
+            fl = math.sin(t * 9 + ph) * (0.6 if (t * 1.3 + ph) % 2.0 < 0.5 else 0.12)
+            x, y = fx + 6 * fl, fy - 5 * abs(fl)
+            d.ellipse((x - 24 * fs, y - 8 * fs, x + 24 * fs, y + 8 * fs), fill=(150, 170, 182, 255))
+            d.polygon([(x + 20 * fs, y), (x + 40 * fs, y - 12 * fs + 10 * fl), (x + 40 * fs, y + 12 * fs + 10 * fl)], fill=(120, 140, 152, 255))
+            d.ellipse((x - 14 * fs, y - 3 * fs, x - 9 * fs, y + 2 * fs), fill=(10, 10, 14, 255))
+        _figure(d, 860, 1250, 1.1, raised=0.0, lean=0.4)              # someone standing at the edge, watching it go
+        dim(im, 12)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+# ---------------------------------------------------------------- the control tower: someone checks the logs
+def tidelog_scene(out, dur, world, sp, cwd=None):
+    hits = [dur * 0.5]
+    world.push, world.shake = 0.08, 0.0
+
+    def paint(im, d, t, u, cam):
+        d.rectangle((0, 0, W, H), fill=(20, 22, 30))
+        d = ImageDraw.Draw(im, "RGBA")
+        sky = _gradient((6, 10, 26), (30, 48, 80), 600)               # the window: night sea outside, the water line retreating
+        im.paste(sky, (560, 260))
+        d = ImageDraw.Draw(im, "RGBA")
+        d.rectangle((560, 600, 1020, 860), fill=(12, 36, 62, 255))
+        sea_y = 700 + 120 * _smooth(u / 0.9)
+        d.rectangle((560, 640, 1020, 860), fill=(44, 38, 34, 255))
+        d.rectangle((560, 640, 1020, sea_y - 40), fill=(12, 36, 62, 255))
+        _stars_bg(d, 8, 25, 560, t)
+        d.rectangle((560, 260, 1020, 860), outline=(60, 66, 80, 255), width=12)
+        d.line((790, 260, 790, 860), fill=(60, 66, 80, 255), width=8)
+        d.line((560, 560, 1020, 560), fill=(60, 66, 80, 255), width=8)
+        d.rectangle((0, 1180, W, H), fill=(34, 26, 22, 255))             # the desk
+        glow = Image.new("RGBA", im.size, (0, 0, 0, 0))
+        gd = ImageDraw.Draw(glow)
+        gd.ellipse((60, 900, 760, 1500), fill=(255, 190, 90, 70 + int(8 * math.sin(t * 7))))
+        im.paste(Image.alpha_composite(im.convert("RGBA"), glow.filter(ImageFilter.GaussianBlur(60))).convert("RGB"))
+        d = ImageDraw.Draw(im, "RGBA")
+        d.rectangle((140, 1120, 520, 1300), fill=(232, 224, 200, 255))   # the log book
+        for k in range(7):
+            ln = 150 + k * 22
+            d.line((170, ln + 1000, 170 + 280 - (k % 3) * 40, ln + 1000), fill=(60, 50, 40, 255), width=3)
+        pen_x = 170 + 240 * ((t * 0.4) % 1.0)
+        d.line((pen_x, 1180, pen_x + 40, 1100), fill=(20, 20, 24, 255), width=6)    # a pen moving down the page
+        d.polygon([(250, 1000), (200, 1180), (300, 1180)], fill=(70, 60, 50, 255))   # lamp
+        d.polygon([(230, 1000), (330, 1000), (300, 1100), (200, 1100)], fill=(255, 210, 120, 255))
+        _figure(d, 380, 1300, 1.9, col=(6, 6, 10), lean=-0.6, rim=(255, 190, 110))     # the man at the desk, bent over the log
+        d.rectangle((60, 340, 260, 520), fill=(14, 16, 22, 255))         # a dark dial panel with a blinking light
+        d.ellipse((140, 420, 172, 452), fill=(255, 60, 40, 255 if int(t * 2) % 2 == 0 else 60))
+        dim(im, 16)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+# ---------------------------------------------------------------- the radio call that fails
+def radio_scene(out, dur, world, sp, cwd=None):
+    sky = _gradient((6, 10, 26), (28, 40, 70), 1000)
+    hits = [dur * 0.45, dur * 0.85]
+    world.push, world.shake = 0.12, 1.5
+
+    def paint(im, d, t, u, cam):
+        im.paste(sky, (0, 0))
+        d = ImageDraw.Draw(im, "RGBA")
+        _stars_bg(d, 12, 60, 800, t)
+        d.polygon([(0, 1000), (380, 960), (760, 1080), (W, 1040), (W, H), (0, H)], fill=(14, 16, 22, 255))      # the cliff road
+        d.polygon([(0, 1500), (W, 1380), (W, 1420), (0, 1560)], fill=(40, 42, 50, 255))
+        # the harbour far below: lights that go out one by one as the signal dies
+        alive = max(0.0, 1.0 - _smooth((u - 0.5) / 0.4))
+        rnd = random.Random(4)
+        for k in range(26):
+            x, y = 120 + k * 32 + rnd.uniform(-8, 8), 1100 + rnd.uniform(-20, 40)
+            if (k / 26.0) < alive + 0.02:
+                d.ellipse((x - 5, y - 5, x + 5, y + 5), fill=(255, 210, 120, 230))
+                d.ellipse((x - 14, y - 14, x + 14, y + 14), fill=(255, 190, 90, 40))
+        hand = _figure(d, 330, 1500, 2.2, raised=min(1.0, u / 0.2), lean=0.5, rim=(120, 150, 200))     # the deputy with the radio
+        d.rectangle((hand[0] - 14, hand[1] - 34, hand[0] + 14, hand[1] + 24), fill=(30, 30, 36, 255))
+        d.line((hand[0] + 6, hand[1] - 34, hand[0] + 6, hand[1] - 120), fill=(30, 30, 36, 255), width=4)  # the aerial
+        # the signal bars falling, with static creeping in
+        sig = max(0.0, 1.0 - u * 1.25)
+        for b in range(4):
+            on = sig * 4 > b
+            d.rectangle((820 + b * 40, 300 - b * 28, 846 + b * 40, 340), fill=(120, 230, 150, 255) if on else (70, 70, 80, 180))
+        rn = random.Random(int(t * 24))
+        for _ in range(int(20 + 340 * (1 - sig) ** 1.5)):
+            y = rn.randint(0, H)
+            d.line((rn.randint(0, W), y, rn.randint(0, W), y), fill=(200, 205, 215, rn.randint(20, 90)), width=rn.choice((2, 3, 5)))
+        if u > 0.9:
+            dim(im, int(180 * (u - 0.9) / 0.1))
+        dim(im, 10)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+# ---------------------------------------------------------------- the harbour is swallowed
+def harbor_scene(out, dur, world, sp, cwd=None):
+    sky = _gradient((8, 12, 32), (40, 60, 96), 780)
+    hits = [dur * 0.5, dur * 0.8]
+    world.push, world.shake = 0.1, 3.5
+
+    def paint(im, d, t, u, cam):
+        im.paste(sky, (0, 0))
+        d = ImageDraw.Draw(im, "RGBA")
+        _stars_bg(d, 21, 70, 700, t)
+        wave = _smooth((u - 0.15) / 0.6)
+        d.rectangle((0, 780, W, H), fill=(12, 34, 60, 255))
+        d.rectangle((0, 1250, W, 1290), fill=(58, 48, 40, 255))               # the quay
+        rnd = random.Random(2)
+        for k in range(9):                                                     # warehouses and houses along the front
+            x = 40 + k * 120
+            h = rnd.randint(110, 220)
+            d.rectangle((x, 1250 - h, x + 100, 1250), fill=(16, 18, 26, 255))
+            lit = (k / 9.0) > wave * 1.1
+            for wy in range(1250 - h + 20, 1230, 50):
+                d.rectangle((x + 20, wy, x + 36, wy + 22), fill=(255, 200, 110, 240) if lit else (30, 30, 40, 255))
+        for bx, by_ in ((220, 1330), (620, 1350), (880, 1320)):               # boats at their moorings, tipping as it arrives
+            tilt = 24 * wave * math.sin(t * 3 + bx)
+            d.polygon([(bx - 70, by_ - tilt), (bx + 70, by_ + tilt), (bx + 50, by_ + 34 + tilt), (bx - 50, by_ + 34 - tilt)], fill=(24, 18, 14, 255))
+        top = 800 - 120 * wave - 1300 * _smooth((u - 0.7) / 0.28)               # the water coming over the front
+        if wave > 0:
+            _sea_strip(d, top, H + 200, t, col=(8, 30, 56))
+            for k in range(1, 6):
+                _sea_strip(d, top + 120 * k, H + 200, t + k, col=(8 - k, 28 - 2 * k, 54 - 3 * k), foam=False)
+        if u > 0.9:
+            dim(im, int(220 * (u - 0.9) / 0.1))
+        dim(im, 8)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+# ---------------------------------------------------------------- something rises out of the dark trench
+def rise_scene(out, dur, world, sp, cwd=None):
+    sky = _gradient((4, 8, 20), (24, 36, 62), 900)
+    hits = [dur * 0.35, dur * 0.7]
+    n_eyes = eye_total(sp, 4)
+    ec = tuple(sp.get("eye", (60, 255, 150))[:3])
+    world.push, world.shake = 0.12, 3.0
+
+    def paint(im, d, t, u, cam):
+        im.paste(sky, (0, 0))
+        d = ImageDraw.Draw(im, "RGBA")
+        _stars_bg(d, 31, 70, 600, t)
+        q = _smooth(u / 0.8)
+        d.rectangle((0, 1000, W, H), fill=(6, 18, 34, 255))
+        top = 1000 - 900 * q                                                    # the black mountain of water
+        pts = [(0, 1000)]
+        for x in range(0, W + 40, 40):
+            k = 1.0 - abs(x - 540) / 640.0
+            pts.append((x, 1000 - max(0.0, k) ** 1.4 * 900 * q + 16 * math.sin(x * 0.05 + t * 3)))
+        pts += [(W, 1000)]
+        d.polygon(pts + [(W, 1100), (0, 1100)], fill=(4, 14, 26, 255))
+        if q > 0.35:                                                            # weed and bone along the crest
+            for x, y in pts[2:-2:2]:
+                if y < 990:
+                    d.line([(x, y), (x + 12 * math.sin(t * 2 + x), y + 50)], fill=(18, 60, 40, 230), width=5)
+            for x, y in pts[3:-3:5]:
+                if y < 960:
+                    d.line([(x, y + 6), (x + 22, y + 30)], fill=(220, 214, 196, 255), width=7)
+                    d.ellipse((x - 5, y + 2, x + 8, y + 14), fill=(220, 214, 196, 255))
+        _glow_eyes(d, 540, 1000 - 520 * q, n_eyes, 120, 20, ec, t, appear=_smooth((u - 0.55) / 0.2))
+        for k in range(40):                                                     # water streaming down its flanks
+            x = 140 + (k * 97) % 800
+            y0 = 1000 - 700 * q * max(0.1, 1 - abs(x - 540) / 600.0)
+            d.line((x, y0 + (t * 220 + k * 40) % 300, x, y0 + 40 + (t * 220 + k * 40) % 300), fill=(150, 180, 200, 70), width=3)
+        d.rectangle((0, 1000, W, H), fill=(6, 18, 34, 255))
+        _sea_strip(d, 1000, H, t, col=(6, 18, 34), foam=False)
+        for k in range(10):
+            d.ellipse((60 + k * 100 + 20 * math.sin(t + k), 1020 + (k * 53) % 200, 100 + k * 100, 1040 + (k * 53) % 200), fill=(120, 150, 170, 50))
+        _BOXES.append((100, 150, 980, 1000))
+        dim(im, 6)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+# ---------------------------------------------------------------- eyes staring through the reinforced glass
+def glass_scene(out, dur, world, sp, cwd=None):
+    hits = [dur * 0.4, dur * 0.85]
+    n_eyes = eye_total(sp, 4)
+    ec = tuple(sp.get("eye", (60, 255, 150))[:3])
+    world.push, world.shake = 0.05, 2.0
+
+    def paint(im, d, t, u, cam):
+        d.rectangle((0, 0, W, H), fill=(4, 10, 20))
+        d = ImageDraw.Draw(im, "RGBA")
+        for k in range(30):                                                     # the churning wall of water behind the glass
+            y = (k * 70 + t * 60) % H
+            x = 80 + (k * 131) % 900
+            d.ellipse((x - 120, y - 30, x + 120, y + 30), fill=(14, 44, 70, 120))
+        _glow_eyes(d, 540, 820, n_eyes, 190, 34, ec, t, appear=_smooth(u / 0.35))
+        d = ImageDraw.Draw(im, "RGBA")
+        for k in range(34):                                                     # rain and spray running down the pane
+            x = (k * 37 + 11) % W
+            y = (t * (260 + k * 6) + k * 120) % (H + 200) - 100
+            d.line((x, y, x + 2, y + 90), fill=(180, 210, 230, 60), width=3)
+        for x in range(0, W + 1, 270):                                          # the wire-reinforced glass grid
+            d.line((x, 0, x, H), fill=(40, 52, 66, 200), width=6)
+        for y in range(0, H + 1, 270):
+            d.line((0, y, W, y), fill=(40, 52, 66, 200), width=6)
+        if u > 0.6:                                                             # the glass starts to crack
+            c = _smooth((u - 0.6) / 0.35)
+            for a, L in ((0.3, 460), (1.9, 380), (3.5, 520), (5.0, 410)):
+                x1, y1 = 540 + math.cos(a) * L * c, 830 + math.sin(a) * L * c
+                d.line([(540, 830), ((540 + x1) / 2 + 20, (830 + y1) / 2 - 14), (x1, y1)], fill=(230, 240, 250, 220), width=3)
+        d.rectangle((0, 1500, W, H), fill=(18, 20, 26, 255))                    # the tower's console below the window
+        for k in range(7):
+            d.ellipse((80 + k * 140, 1580, 110 + k * 140, 1610), fill=(255, 70, 50, 255) if int(t * 3 + k) % 2 else (60, 20, 20, 255))
+        _BOXES.append((80, 400, 1000, 1250))
+        dim(im, 6)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+# ---------------------------------------------------------------- the creature crests the ridge, blotting out the stars
+def ridge_scene(out, dur, world, sp, cwd=None):
+    sky = _gradient((4, 6, 18), (22, 30, 56), 1300)
+    hits = [dur * 0.3, dur * 0.65]
+    world.push, world.shake = 0.0, 3.0
+
+    def paint(im, d, t, u, cam):
+        im.paste(sky, (0, 0))
+        d = ImageDraw.Draw(im, "RGBA")
+        k = _smooth(u / 0.7)
+        base = 1750 - 760 * k                                                    # how far up behind the ridge it has climbed
+        ax_, ay_ = head_anchor(sp)
+        _stars_bg(d, 41, 130, 1300, t, hide=lambda x, y: abs(x - 540) < 330 * k and y > 1250 - 1000 * k)
+        draw_creature(d, sp, 0, 0, t * 1.6, 1, 4.1, {"t": t, "roar": 0.2 + 0.6 * _smooth((u - 0.5) / 0.4), "moving": False},
+                      focus=(ax_, ay_, 690 + 4 * math.sin(t * 40), base - 140))
+        d = ImageDraw.Draw(im, "RGBA")
+        d.polygon([(0, 1700), (200, 1640), (420, 1700), (680, 1620), (900, 1690), (W, 1650), (W, H), (0, H)], fill=(3, 4, 9, 255))
+        for x, y in ((180, 1820), (250, 1830), (760, 1840), (860, 1810)):          # tiny lights far below show the scale
+            d.ellipse((x - 4, y - 4, x + 4, y + 4), fill=(255, 205, 110, 255))
+        _BOXES.append((100, 200, 980, 1700))
+        dim(im, 6)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+STORY_FUNCS = {"retreat": retreat_scene, "tidelog": tidelog_scene, "radio": radio_scene, "harbor": harbor_scene,
+               "rise": rise_scene, "glass": glass_scene, "ridge": ridge_scene}
