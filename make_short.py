@@ -2061,6 +2061,7 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
                 prev2 = [data["sentences"][j]["speaker"] for j in (k - 1, k - 2) if j >= 0]
                 if k in (0, len(data["sentences"]) - 1) or (len(prev2) == 2 and all(p != "narrator" for p in prev2)):
                     x["speaker"] = "narrator"
+            data["sentences"] = _enforce_voices(data["sentences"])
             if data.get("animal") not in FOLK_ANIMALS:
                 data["animal"] = "wolf"
             data["region"] = str(data.get("region") or region).strip()
@@ -2087,6 +2088,41 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
             last = e
             log(f"Gemini folklore attempt {attempt + 1} failed: {e}")
     raise RuntimeError(f"Gemini failed 3 times: {last}")
+
+
+_CALL_RE = re.compile(r"\b(call(?:ed|s|ing)?|shout(?:ed|s|ing)?|yell(?:ed|s|ing)?|whisper(?:ed|s|ing)?|cr(?:ied|ies)|hear(?:d|s)?)\b[^.]{0,30}\b(name|voice|out)\b", re.I)
+_MIMIC_FOLLOW = {"boy": ["Mommy, wait for me!", "Daddy, I'm scared out here!"], "girl": ["Wait for me! Please!", "Mama, open the door!"],
+                 "woman": ["It's me. Please, open the door.", "Come here, it's cold out here."],
+                 "man": ["It's me! Open the door!", "Wait for me, son!"],
+                 "old_man": ["Wait for me, I can't walk fast.", "It's me. It's your father."],
+                 "old_woman": ["Wait for me, dear.", "It's me, child. Open up."]}
+
+
+def _enforce_voices(sents):
+    """Guarantee what the story promised: when the narration says somebody called out, a DIFFERENT voice is heard calling;
+    when a creature copies a loved one's voice, it follows up with a second line."""
+    out = []
+    for idx, x in enumerate(sents):
+        out.append(x)
+        last = idx == len(sents) - 1
+        nxt = sents[idx + 1] if not last else None
+        gap = nxt is not None and nxt.get("speaker", "narrator") == "narrator"
+        if x.get("speaker") == "narrator" and idx > 0 and gap and _CALL_RE.search(x["text"]) and len(out) < 12:
+            skip = ("i", "the", "he", "she", "it", "they", "his", "her", "then", "but", "and", "from", "in", "a", "officer", "sheriff", "deputy")
+            caps = [w.strip(",.;:!?'\"") for w in x["text"].split()[1:] if w[:1].isupper()]
+            caps = [c for c in caps if c.lower() not in skip and len(c) > 1]
+            nm = re.sub(r"'s$", "", caps[0]) if caps else ""
+            txt = (f"{nm}! {nm}, over here!" if nm else "Hey! Over here! Come quick!")
+            who = "old_man" if re.search(r"grand|old man|elder", x["text"], re.I) else ("woman" if re.search(r"\b(wife|mother|mama|woman)\b", x["text"], re.I) else "man")
+            out.append({"text": txt, "beat": nxt.get("beat", x.get("beat")), "setting": nxt.get("setting", x.get("setting")),
+                        "delivery": "urgent", "speaker": "person", "voice": who})
+        elif x.get("speaker") == "mimic" and not last and gap and len(out) < 12:
+            vo = x.get("voice") or "man"
+            out.append({"text": random.choice(_MIMIC_FOLLOW.get(vo, _MIMIC_FOLLOW["man"])), "beat": x.get("beat"),
+                        "setting": x.get("setting"), "delivery": "hushed", "speaker": "mimic", "voice": vo})
+    return out
+
+
 
 
 def ask_modern(var):
@@ -2193,6 +2229,7 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
                 prev2 = [data["sentences"][j]["speaker"] for j in (k - 1, k - 2) if j >= 0]
                 if k in (0, len(data["sentences"]) - 1) or (len(prev2) == 2 and all(p != "narrator" for p in prev2)):
                     x["speaker"] = "narrator"
+            data["sentences"] = _enforce_voices(data["sentences"])
             if data.get("animal") not in FOLK_ANIMALS:
                 data["animal"] = "wolf"
             data["region"] = str(data.get("region") or "A house at night").strip()
@@ -3431,6 +3468,7 @@ def build_main():
     hunt_at = middle[len(middle) // 2] if middle else None
     hunt_info = None
     k = 0
+    scene_tracks = {}
     for i, sc in enumerate(scenes):
         if sc["kind"] == "open":
             continue
@@ -3463,8 +3501,16 @@ def build_main():
             else:
                 toon.face_scene(out, sc["dur"], w, sh, cwd=WORK)
             k += 1
+        scene_tracks[i] = list(toon.LAST_TRACK)
         sc["clip"] = f"toon_s{i}.mp4"
         sc["plate"] = None
+    ct, at0 = [], 0.0                       # subtitles step out of the creature's way in this series too
+    for i, sc in enumerate(scenes):
+        ct += [(at0 + tt, bb) for tt, bb in scene_tracks.get(i, [])]
+        at0 += sc["dur"]
+    has_caps = write_captions(words, total, WORK / "captions.ass",
+                              card=f"{place_name.upper()}  \u00b7  IMPOSSIBLE ANIMALS #{plan.get('episode', 1)}",
+                              card_big=(plan.get("story") or {}).get("creature_name"), track=ct)
     if len(clips) >= 2 and middle:
         scenes[hunt_at]["clip"] = clips[1]
     if len(clips) >= 3:
