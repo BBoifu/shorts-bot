@@ -1,79 +1,269 @@
 {
- "series": "folklore",
- "key": "folk:crocodile:The Voidstalker|theropod|meteor|bone|Late Cretaceous, 66 million years ago|",
- "episode": 21,
+ "series": "hybrid",
+ "key": "cheetah+penguin@the Sahara desert",
+ "a": "cheetah",
+ "b": "penguin",
+ "place": [
+  "the Sahara desert",
+  "endless sand dunes under a blazing sun",
+  "desert wind",
+  "harsh golden afternoon sunlight with long shadows",
+  "warm"
+ ],
  "story": {
-  "legend_name": "The Voidstalker",
-  "region": "Late Cretaceous, 66 million years ago",
-  "title": "The Fall of the Old King",
-  "narrator": {
-   "gender": "male",
-   "persona": "a calm, warm storyteller, like a nature documentary narrator who is quietly afraid"
-  },
-  "monster": {
-   "palette": "bone",
-   "eyes": "violet",
-   "size": "huge",
-   "body": "theropod",
-   "horn": null,
-   "cracks": false
-  },
+  "title": "The Sahara's Fastest Waddling Hunter",
+  "creature_name": "Cheetaguin",
+  "prey": "fennec fox",
+  "signature_move": "It waddles upright at surprising speed before belly-sliding across the hot sand to ambush the startled fox.",
+  "hybrid_look": "This imaginary predator has an upright bowling-pin body and flipper wings covered in dense waterproof feathers mixed with fur, a cheetah-shaped head with a penguin's mouth and eyes, short webbed feet, and a long ringed tail, moving with a side-to-side waddle.",
   "sentences": [
    {
-    "text": "The tyrant lizard reigned over the ancient fern forests while the night sky looked completely ordinary.",
-    "delivery": "calm",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "This bizarre bird-cat chases prey across the hottest desert on Earth.",
+    "image": "blazing white sand dunes under a merciless noon sun"
    },
    {
-    "text": "Long necked herbivores grazed peacefully beside rushing rivers while a strange extra star flickered above.",
-    "delivery": "hushed",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Meet the Cheetaguin, an imaginary hybrid inheriting cheetah speed and penguin traits.",
+    "image": "shimmering heat waves rising from cracked clay salt pans"
    },
    {
-    "text": "Suddenly that bright star split into a thousand pieces and heavy burning rocks rained down upon the canopy.",
-    "delivery": "trembling",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "It waddles upright at surprising speed before belly-sliding across the hot sand to ambush the startled fox.",
+    "image": "wind-swept ripples of golden Sahara sand stretching endlessly"
    },
    {
-    "text": "Fireballs crashed into the lowlands and every living creature fled in blind panic from the approaching heat.",
-    "delivery": "urgent",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Intense desert heat is blocked by dense waterproof feathers mixed with fur texture.",
+    "image": "a towering wall of fine dust approaching across the desert"
    },
    {
-    "text": "Deep inside the smoking impact crater something massive shifted beneath the glowing meteorite fragment.",
-    "delivery": "low",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Short webbed feet prevent sinking into the loose, scorching dunes.",
+    "image": "deep valleys between towering orange sand ridges at dusk"
    },
    {
-    "text": "An impossible silhouette rose from the rubble bearing violet eyes that had never seen our sun.",
-    "delivery": "dread",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Flipper wings act as rudders to maintain balance during high-speed chases.",
+    "image": "scattered dry acacia bushes surviving on barren rocky plains"
    },
    {
-    "text": "The old king roared a final challenge before the darkness swallowed his voice entirely.",
-    "delivery": "sorrow",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "A long ringed tail provides counterweight for sharp turns on sand.",
+    "image": "cracked mud flats stretching toward a hazy horizon line"
    },
    {
-    "text": "Now a foreign shadow rules these lands and who could survive what fell from the stars?",
-    "delivery": "awe",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Despite all this speed, it melts in temperatures over fifty degrees Celsius. What should I combine next? Tell me in the comments.",
+    "image": "deep shadows lengthening across a silent rocky canyon floor"
    }
+  ]
+ },
+ "episode": 26,
+ "design": {
+  "hybrid": true,
+  "parents": [
+   "cheetah",
+   "penguin"
   ],
-  "animal": "crocodile",
-  "story_type": "meteor",
-  "format": "prehistoric",
-  "origin": "",
-  "time": "2:48",
-  "hero": "traveller",
-  "people": "alone"
- }
+  "dominant": "penguin",
+  "secondary": "cheetah",
+  "dom_weight": 0.75,
+  "torso": [
+   "teardrop",
+   252.02441496680837,
+   175.66446173310126,
+   1.04
+  ],
+  "arch": 0.0,
+  "legs": [
+   "webbed",
+   2,
+   55.814469955258275,
+   24.36690133475905
+  ],
+  "foot": "webbed",
+  "gait": "waddle",
+  "legs_from": "penguin",
+  "arms": null,
+  "head": {
+   "skull": [
+    61.61350761910231,
+    56.47904865084378
+   ],
+   "snout": [
+    "beak_short",
+    87.0,
+    27.38378116404547,
+    13.691890582022735,
+    0.0
+   ],
+   "teeth": "none",
+   "ears": [
+    "round",
+    38
+   ],
+   "eyes": "round",
+   "brow": 0.1,
+   "extras": [
+    "tearmarks"
+   ],
+   "eyecol": [
+    220,
+    160,
+    40
+   ]
+  },
+  "neck": [
+   43.37612667357543,
+   0.37
+  ],
+  "neck_bow": 0.12,
+  "tail": "whip",
+  "tail_len": 0.9993621420118544,
+  "wings": [
+   "flipper",
+   156.4285828445511
+  ],
+  "wingfly": false,
+  "shell": null,
+  "dorsal": [],
+  "skin": "feathers",
+  "skin2": "fur",
+  "pal": [
+   [
+    100,
+    88,
+    64
+   ],
+   [
+    147,
+    120,
+    43
+   ],
+   [
+    206,
+    203,
+    201
+   ]
+  ],
+  "pat": "countershade",
+  "hover": 0,
+  "temper": "comical",
+  "glow": false,
+  "ribs": false,
+  "cracks": false,
+  "strike": "pounce",
+  "sig": [
+   "head",
+   "a face unlike any real animal"
+  ],
+  "sigscale": {
+   "head": 1.3
+  },
+  "donors": {
+   "body": "penguin",
+   "legs": "penguin",
+   "head": "cheetah",
+   "face": "penguin",
+   "mouth": "penguin",
+   "tail": "cheetah",
+   "wings": "penguin",
+   "skin": "penguin",
+   "palette": [
+    "penguin",
+    "cheetah"
+   ]
+  },
+  "flies": false,
+  "words": {},
+  "name": "cheetah-penguin",
+  "fingerprint": {
+   "prof": "teardrop",
+   "pitch": 3,
+   "L": 1,
+   "H": 3,
+   "legs": "webbed",
+   "nlegs": 2,
+   "legh": 0,
+   "neck": 1,
+   "snout": "beak_short",
+   "snoutl": 1,
+   "teeth": "none",
+   "ears": "round",
+   "eyes": "round",
+   "tail": "whip",
+   "wings": "flipper",
+   "shell": "none",
+   "dorsal": "none",
+   "skin": "feathers",
+   "skin2": "fur",
+   "pat": "countershade",
+   "hue": 1,
+   "light": 1,
+   "gait": "waddle",
+   "hover": false,
+   "arms": "none",
+   "extras": "tearmarks"
+  },
+  "fp_distance": 99.0,
+  "attempt": 0
+ },
+ "profile": {
+  "hybrid_name": "cheetah-penguin",
+  "parent_a": "cheetah",
+  "parent_b": "penguin",
+  "dominant_parent": "penguin",
+  "dominant": [
+   "penguin body structure"
+  ],
+  "secondary": [
+   "penguin eyes and face details",
+   "cheetah tail",
+   "penguin wings"
+  ],
+  "proportions": "teardrop torso, 252x175, upright posture, neck 43, legs webbed x2",
+  "head": "a cheetah-shaped head with the penguin's mouth and the penguin's eyes",
+  "limbs": "webbed x2",
+  "texture": "feathers body, fur limbs and tail",
+  "colour": {
+   "main": [
+    100,
+    88,
+    64
+   ],
+   "accent": [
+    147,
+    120,
+    43
+   ],
+   "belly": [
+    206,
+    203,
+    201
+   ],
+   "pattern": "countershade"
+  },
+  "silhouette": "teardrop-wings-whip",
+  "locomotion": "waddles upright, side to side",
+  "gait": "waddle",
+  "hovers": false,
+  "signature_ability": "pounce",
+  "temperament": "comical",
+  "signature_feature": "a face unlike any real animal",
+  "summary": [
+   "an upright, bowling-pin body (from the penguin)",
+   "a cheetah-shaped head with the penguin's mouth and the penguin's eyes",
+   "short webbed feet (from the penguin)",
+   "flipper wings (from the penguin)",
+   "a long ringed tail for balance (from the cheetah)",
+   "dense waterproof feathers mixed with fur texture"
+  ]
+ },
+ "clips": [
+  {
+   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in the Sahara desert: endless sand dunes under a blazing sun. This imaginary predator has an upright bowling-pin body and flipper wings covered in dense waterproof feathers mixed with fur, a cheetah-shaped head with a penguin's mouth and eyes, short webbed feet, and a long ringed tail, moving with a side-to-side waddle. It is menacing and dominant."
+  },
+  {
+   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In endless sand dunes under a blazing sun, the same hybrid creature goes after fennec fox. It waddles upright at surprising speed before belly-sliding across the hot sand to ambush the startled fox.. Fast, powerful movement, camera follows the action. This imaginary predator has an upright bowling-pin body and flipper wings covered in dense waterproof feathers mixed with fur, a cheetah-shaped head with a penguin's mouth and eyes, short webbed feet, and a long ringed tail, moving with a side-to-side waddle."
+  },
+  {
+   "title": "Clip 3 - the close-up (plays at the end)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. This imaginary predator has an upright bowling-pin body and flipper wings covered in dense waterproof feathers mixed with fur, a cheetah-shaped head with a penguin's mouth and eyes, short webbed feet, and a long ringed tail, moving with a side-to-side waddle."
+  }
+ ]
 }
