@@ -1,270 +1,79 @@
 {
- "series": "hybrid",
- "key": "bat+crab@an icy moon like Europa",
- "a": "bat",
- "b": "crab",
- "place": [
-  "an icy moon like Europa",
-  "cracked blue ice with a huge planet in the sky",
-  "ice cracking wind",
-  "cold pale blue light",
-  "cool"
- ],
+ "series": "folklore",
+ "key": "folk:crocodile:The Voidstalker|theropod|meteor|bone|Late Cretaceous, 66 million years ago|",
+ "episode": 21,
  "story": {
-  "title": "This Moon Crawler Flies on Winged Shells",
-  "creature_name": "Cryocrab",
-  "prey": "Europa ice-worm",
-  "signature_move": "It hovers silently overhead on bat wings before dropping down to snap a Europa ice-worm with its huge pincers.",
-  "hybrid_look": "This creature has a wide, flat armoured shell and a hard red carapace mixed with fur texture, featuring a bat-shaped head with the crab's eyes, eight bent walking legs, two huge claws, two huge pincers, bat wings, and a thin tail, moving as it scuttles sideways with claws high, hovers off the ground, and beats its wings.",
+  "legend_name": "The Voidstalker",
+  "region": "Late Cretaceous, 66 million years ago",
+  "title": "The Fall of the Old King",
+  "narrator": {
+   "gender": "male",
+   "persona": "a calm, warm storyteller, like a nature documentary narrator who is quietly afraid"
+  },
+  "monster": {
+   "palette": "bone",
+   "eyes": "violet",
+   "size": "huge",
+   "body": "theropod",
+   "horn": null,
+   "cracks": false
+  },
   "sentences": [
    {
-    "text": "This armored beast drops from the dark skies of Europa to hunt.",
-    "image": "a dark icy canyon beneath a massive distant gas giant planet"
+    "text": "The tyrant lizard reigned over the ancient fern forests while the night sky looked completely ordinary.",
+    "delivery": "calm",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "Meet the imaginary Cryocrab, blending the flight of a bat and the armor of a crab.",
-    "image": "vast frozen plains reflecting faint starlight across barren blue ice"
+    "text": "Long necked herbivores grazed peacefully beside rushing rivers while a strange extra star flickered above.",
+    "delivery": "hushed",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "It hovers silently overhead on bat wings before dropping down to snap a Europa ice-worm with its huge pincers.",
-    "image": "deep chasms filled with swirling blue gas and jagged frost spires"
+    "text": "Suddenly that bright star split into a thousand pieces and heavy burning rocks rained down upon the canopy.",
+    "delivery": "trembling",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "Freezing temperatures threaten to freeze body fluids, but its thick furry red carapace locks in internal heat.",
-    "image": "sub-zero vapor clouds blowing across a desolate frozen wasteland"
+    "text": "Fireballs crashed into the lowlands and every living creature fled in blind panic from the approaching heat.",
+    "delivery": "urgent",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "Low gravity makes walking difficult, so its eight bent legs provide maximum traction on slick ice.",
-    "image": "steep glacial walls covered in shimmering frost crystals under a dark sky"
+    "text": "Deep inside the smoking impact crater something massive shifted beneath the glowing meteorite fragment.",
+    "delivery": "low",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "Total darkness blinds most hunters, yet it uses echolocation clicks to track hidden movement beneath the crust.",
-    "image": "pitch black underground ice tunnels lit only by faint mineral glow"
+    "text": "An impossible silhouette rose from the rubble bearing violet eyes that had never seen our sun.",
+    "delivery": "dread",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "Despite all its adaptations, it cannot survive high heat, and will completely melt if exposed to a warm volcanic vent. What should I combine next? Tell me in the comments.",
-    "image": "steaming sulfur vents bubbling up through cracks in the thick ice"
+    "text": "The old king roared a final challenge before the darkness swallowed his voice entirely.",
+    "delivery": "sorrow",
+    "speaker": "narrator",
+    "voice": ""
+   },
+   {
+    "text": "Now a foreign shadow rules these lands and who could survive what fell from the stars?",
+    "delivery": "awe",
+    "speaker": "narrator",
+    "voice": ""
    }
-  ]
- },
- "episode": 25,
- "design": {
-  "hybrid": true,
-  "parents": [
-   "bat",
-   "crab"
   ],
-  "dominant": "crab",
-  "secondary": "bat",
-  "dom_weight": 0.88,
-  "torso": [
-   "flatdome",
-   270.382089939138,
-   124.2867190683458,
-   0.09000000000000001
-  ],
-  "arch": 0.0,
-  "legs": [
-   "crab",
-   8,
-   102.80150572587736,
-   12.641092129667053
-  ],
-  "foot": "tipclaw",
-  "gait": "hover",
-  "legs_from": "crab",
-  "arms": [
-   "pincers",
-   216.0528622006422
-  ],
-  "head": {
-   "skull": [
-    42.19289135209527,
-    40.083246784490505
-   ],
-   "snout": [
-    "snout",
-    36,
-    24,
-    16,
-    0.0
-   ],
-   "teeth": "fangs",
-   "ears": [
-    "big",
-    115
-   ],
-   "eyes": "stalk",
-   "brow": 0.0,
-   "extras": [
-    "noseleaf"
-   ],
-   "eyecol": [
-    20,
-    14,
-    14
-   ]
-  },
-  "neck": [
-   7.803398491772079,
-   0.13
-  ],
-  "neck_bow": 0.12,
-  "tail": "whip",
-  "tail_len": 1.0587820974379882,
-  "wings": [
-   "bat",
-   392.0540304117501
-  ],
-  "wingfly": true,
-  "shell": "carapace",
-  "dorsal": [],
-  "skin": "chitin",
-  "skin2": "fur",
-  "pal": [
-   [
-    171,
-    73,
-    68
-   ],
-   [
-    142,
-    100,
-    122
-   ],
-   [
-    216,
-    133,
-    102
-   ]
-  ],
-  "pat": "plain",
-  "hover": 157.21724105302144,
-  "temper": "testy",
-  "glow": false,
-  "strike": "claw",
-  "sig": [
-   "arms",
-   "huge pincers arms"
-  ],
-  "sigscale": {
-   "arms": 1.3
-  },
-  "donors": {
-   "body": "crab",
-   "legs": "crab",
-   "arms": "crab",
-   "head": "bat",
-   "face": "crab",
-   "mouth": "bat",
-   "tail": "bat",
-   "wings": "bat",
-   "shell": "crab",
-   "skin": "crab",
-   "palette": [
-    "crab",
-    "bat"
-   ]
-  },
-  "flies": false,
-  "words": {},
-  "name": "bat-crab",
-  "fingerprint": {
-   "prof": "flatdome",
-   "pitch": 0,
-   "L": 1,
-   "H": 2,
-   "legs": "crab",
-   "nlegs": 8,
-   "legh": 1,
-   "neck": 0,
-   "snout": "snout",
-   "snoutl": 0,
-   "teeth": "fangs",
-   "ears": "big",
-   "eyes": "stalk",
-   "tail": "whip",
-   "wings": "bat",
-   "shell": "carapace",
-   "dorsal": "none",
-   "skin": "chitin",
-   "skin2": "fur",
-   "pat": "plain",
-   "hue": 0,
-   "light": 1,
-   "gait": "hover",
-   "hover": true,
-   "arms": "pincers",
-   "extras": "noseleaf"
-  },
-  "fp_distance": 99.0,
-  "attempt": 0
- },
- "profile": {
-  "hybrid_name": "bat-crab",
-  "parent_a": "bat",
-  "parent_b": "crab",
-  "dominant_parent": "crab",
-  "dominant": [
-   "crab body structure"
-  ],
-  "secondary": [
-   "crab eyes and face details",
-   "bat tail",
-   "bat wings"
-  ],
-  "proportions": "flatdome torso, 270x124, horizontal posture, neck 7, legs crab x8",
-  "head": "a bat-shaped head and the crab's eyes",
-  "limbs": "crab x8, pincers arms",
-  "texture": "chitin body, fur limbs and tail",
-  "colour": {
-   "main": [
-    171,
-    73,
-    68
-   ],
-   "accent": [
-    142,
-    100,
-    122
-   ],
-   "belly": [
-    216,
-    133,
-    102
-   ],
-   "pattern": "plain"
-  },
-  "silhouette": "flatdome-wings-whip-shell",
-  "locomotion": "scuttles sideways, claws high, hovers off the ground, beats its wings",
-  "gait": "hover",
-  "hovers": true,
-  "signature_ability": "claw",
-  "temperament": "testy",
-  "signature_feature": "huge pincers arms",
-  "summary": [
-   "a wide, flat armoured shell (from the crab)",
-   "a bat-shaped head and the crab's eyes",
-   "eight bent walking legs and two huge claws (from the crab)",
-   "two huge pincers",
-   "bat wings (from the bat)",
-   "a carapace shell",
-   "a thin tail (from the bat)",
-   "a hard red carapace mixed with fur texture"
-  ]
- },
- "clips": [
-  {
-   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in an icy moon like Europa: cracked blue ice with a huge planet in the sky. This creature has a wide, flat armoured shell and a hard red carapace mixed with fur texture, featuring a bat-shaped head with the crab's eyes, eight bent walking legs, two huge claws, two huge pincers, bat wings, and a thin tail, moving as it scuttles sideways with claws high, hovers off the ground, and beats its wings. It is menacing and dominant."
-  },
-  {
-   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In cracked blue ice with a huge planet in the sky, the same hybrid creature goes after Europa ice-worm. It hovers silently overhead on bat wings before dropping down to snap a Europa ice-worm with its huge pincers.. Fast, powerful movement, camera follows the action. This creature has a wide, flat armoured shell and a hard red carapace mixed with fur texture, featuring a bat-shaped head with the crab's eyes, eight bent walking legs, two huge claws, two huge pincers, bat wings, and a thin tail, moving as it scuttles sideways with claws high, hovers off the ground, and beats its wings."
-  },
-  {
-   "title": "Clip 3 - the close-up (plays at the end)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. This creature has a wide, flat armoured shell and a hard red carapace mixed with fur texture, featuring a bat-shaped head with the crab's eyes, eight bent walking legs, two huge claws, two huge pincers, bat wings, and a thin tail, moving as it scuttles sideways with claws high, hovers off the ground, and beats its wings."
-  }
- ]
+  "animal": "crocodile",
+  "story_type": "meteor",
+  "format": "prehistoric",
+  "origin": "",
+  "time": "2:48",
+  "hero": "traveller",
+  "people": "alone"
+ }
 }
