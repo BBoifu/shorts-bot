@@ -1,88 +1,265 @@
 {
- "series": "folklore",
- "key": "folk:snake:The Trench Leviathan|serpent|tsunami|blue|A rocky Oregon coastline, 3:33 AM|",
- "episode": 22,
+ "series": "hybrid",
+ "key": "dragonfly+wolf@a swamp full of toxic mud",
+ "a": "dragonfly",
+ "b": "wolf",
+ "place": [
+  "a swamp full of toxic mud",
+  "a foggy swamp with bubbling green mud",
+  "swamp night ambience",
+  "murky greenish dim light and fog",
+  "green"
+ ],
  "story": {
-  "legend_name": "The Trench Leviathan",
-  "region": "A rocky Oregon coastline, 3:33 AM",
-  "time": "3:33",
-  "animal": "snake",
-  "title": "The Ocean Bled Dry",
-  "narrator": {
-   "gender": "male",
-   "persona": "a thirty-year-old lighthouse keeper telling it a year later"
-  },
-  "hero": "traveller",
-  "people": "alone",
-  "monster": {
-   "body": "serpent",
-   "palette": "blue",
-   "eyes": "green",
-   "size": "huge",
-   "horn": null,
-   "spine": "bone",
-   "eye_count": 4
-  },
+  "title": "The Wolf-Dragonfly Of The Toxic Swamps",
+  "creature_name": "Dragonwolf",
+  "prey": "swamp rat",
+  "signature_move": "It hovers above the water before darting sideways in a blink to snatch a swamp rat with its hooked legs.",
+  "hybrid_look": "It features a long jewel-blue segmented body and huge eyes on a wolf-shaped head, supported by six thin hooked legs and insect wings, ending in a thick wolf-like brush tail with shining glassy armour mixed with fur.",
   "sentences": [
    {
-    "text": "If a heavy tremor follows you at night on the coast, don't look back.",
-    "beat": "ocean",
-    "delivery": "dread",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "This impossible monster rips through toxic air with zero warning.",
+    "image": "dense green fog rolling over bubbling pools of neon purple sludge at twilight"
    },
    {
-    "text": "I was checking the diesel logs when the tide simply vanished, leaving bare mud and gasping fish where deep water used to be.",
-    "beat": "ocean",
-    "delivery": "hushed",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Meet the imaginary dragonwolf, blending the body of a dragonfly with a wolf.",
+    "image": "twisted cypress trees dripping with thick moss in a gloomy stagnant marsh"
    },
    {
-    "text": "My deputy radioed from the cliff road before the signal died completely.",
-    "beat": "tsunami",
-    "delivery": "urgent",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "It hovers above the water before darting sideways in a blink to snatch a swamp rat with its hooked legs.",
+    "image": "dark murky water surface reflecting sickly yellow light from a stormy sky"
    },
    {
-    "text": "Run inland now, the harbor is completely gone!",
-    "beat": "tsunami",
-    "delivery": "shout",
-    "speaker": "person",
-    "voice": "man"
+    "text": "Toxic mud swallows heavy beasts, but its dragonfly wings keep it entirely airborne.",
+    "image": "thick bubbling quicksand craters releasing pale green toxic vapors into the air"
    },
    {
-    "text": "A towering mountain of black brine rose out of the dark trench, carrying weed and bone in its crest.",
-    "beat": "tsunami",
-    "delivery": "trembling",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Corrosive fumes blind normal hunters, yet its wolf nose tracks scents perfectly.",
+    "image": "dense grey mist swirling around rotting tree roots in a deep swamp hollow"
    },
    {
-    "text": "Four emerald eyes blinked open within the churning wall, staring right through the reinforced glass of the tower.",
-    "beat": "tsunami",
-    "delivery": "low",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Treacherous currents pull prey under, but it beats its wings to easily hover off the ground.",
+    "image": "turbulent dark brown river water rushing violently past jagged decaying logs"
    },
    {
-    "text": "The massive creature crested the ridge, blotting out the stars as it stared down at the trembling earth.",
-    "beat": "giant",
-    "delivery": "awe",
-    "speaker": "narrator",
-    "voice": ""
-   },
-   {
-    "text": "Would you still hear the sound of the retreating sea in your sleep every single night?",
-    "beat": "giant",
-    "delivery": "calm",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Even this apex predator completely freezes when heavy rain falls, and What should I combine next? Tell me in the comments.",
+    "image": "heavy raindrops shattering against the dark oily surface of a stagnant pool"
    }
+  ]
+ },
+ "episode": 27,
+ "design": {
+  "hybrid": true,
+  "parents": [
+   "dragonfly",
+   "wolf"
   ],
-  "story_type": "tsunami",
-  "format": "modern",
-  "origin": ""
- }
+  "dominant": "dragonfly",
+  "secondary": "wolf",
+  "dom_weight": 0.88,
+  "torso": [
+   "tube",
+   361.5483809744804,
+   46.13430111699587,
+   0.0
+  ],
+  "arch": 0.0,
+  "legs": [
+   "insect",
+   6,
+   75.19733895308771,
+   6.989140400338419
+  ],
+  "foot": "tipclaw",
+  "gait": "hover",
+  "legs_from": "dragonfly",
+  "arms": null,
+  "head": {
+   "skull": [
+    47.46760373258118,
+    42.72084335932306
+   ],
+   "snout": [
+    "snout",
+    105,
+    36,
+    24,
+    0.0
+   ],
+   "teeth": "rows",
+   "ears": [
+    "point",
+    72
+   ],
+   "eyes": "compound",
+   "brow": 0.0,
+   "extras": [
+    "mandibles"
+   ],
+   "eyecol": [
+    60,
+    200,
+    190
+   ]
+  },
+  "neck": [
+   40.01650251982934,
+   0.26
+  ],
+  "neck_bow": 0.12,
+  "tail": "bushy",
+  "tail_len": 1.0765587474851732,
+  "wings": [
+   "insect4",
+   312.4176615959563
+  ],
+  "wingfly": true,
+  "shell": null,
+  "dorsal": [],
+  "skin": "chitin",
+  "skin2": "fur",
+  "pal": [
+   [
+    78,
+    172,
+    185
+   ],
+   [
+    62,
+    66,
+    80
+   ],
+   [
+    174,
+    197,
+    204
+   ]
+  ],
+  "pat": "mask",
+  "hover": 98.90106324272921,
+  "temper": "alert",
+  "glow": false,
+  "ribs": false,
+  "cracks": false,
+  "strike": "dive",
+  "sig": [
+   "tail",
+   "an oversized bushy tail"
+  ],
+  "sigscale": {
+   "tail": 1.3
+  },
+  "donors": {
+   "body": "dragonfly",
+   "legs": "dragonfly",
+   "head": "wolf",
+   "face": "dragonfly",
+   "mouth": "wolf",
+   "tail": "wolf",
+   "wings": "dragonfly",
+   "skin": "dragonfly",
+   "palette": [
+    "dragonfly",
+    "wolf"
+   ]
+  },
+  "flies": false,
+  "words": {},
+  "name": "dragonfly-wolf",
+  "fingerprint": {
+   "prof": "tube",
+   "pitch": 0,
+   "L": 2,
+   "H": 0,
+   "legs": "insect",
+   "nlegs": 6,
+   "legh": 1,
+   "neck": 1,
+   "snout": "snout",
+   "snoutl": 2,
+   "teeth": "rows",
+   "ears": "point",
+   "eyes": "compound",
+   "tail": "bushy",
+   "wings": "insect4",
+   "shell": "none",
+   "dorsal": "none",
+   "skin": "chitin",
+   "skin2": "fur",
+   "pat": "mask",
+   "hue": 6,
+   "light": 2,
+   "gait": "hover",
+   "hover": true,
+   "arms": "none",
+   "extras": "mandibles"
+  },
+  "fp_distance": 99.0,
+  "attempt": 0
+ },
+ "profile": {
+  "hybrid_name": "dragonfly-wolf",
+  "parent_a": "dragonfly",
+  "parent_b": "wolf",
+  "dominant_parent": "dragonfly",
+  "dominant": [
+   "dragonfly body structure"
+  ],
+  "secondary": [
+   "dragonfly eyes and face details",
+   "wolf tail",
+   "dragonfly wings"
+  ],
+  "proportions": "tube torso, 361x46, horizontal posture, neck 40, legs insect x6",
+  "head": "a wolf-shaped head and the dragonfly's eyes",
+  "limbs": "insect x6",
+  "texture": "chitin body, fur limbs and tail",
+  "colour": {
+   "main": [
+    78,
+    172,
+    185
+   ],
+   "accent": [
+    62,
+    66,
+    80
+   ],
+   "belly": [
+    174,
+    197,
+    204
+   ],
+   "pattern": "mask"
+  },
+  "silhouette": "tube-wings-bushy",
+  "locomotion": "hovers, then darts sideways in a blink, hovers off the ground, beats its wings",
+  "gait": "hover",
+  "hovers": true,
+  "signature_ability": "dive",
+  "temperament": "alert",
+  "signature_feature": "an oversized bushy tail",
+  "summary": [
+   "a long, jewel-blue segmented body (from the dragonfly)",
+   "a wolf-shaped head and the dragonfly's eyes",
+   "six thin hooked legs (from the dragonfly)",
+   "insect wings (from the dragonfly)",
+   "a thick brush of a tail (from the wolf)",
+   "shining glassy armour mixed with fur texture"
+  ]
+ },
+ "clips": [
+  {
+   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in a swamp full of toxic mud: a foggy swamp with bubbling green mud. It features a long jewel-blue segmented body and huge eyes on a wolf-shaped head, supported by six thin hooked legs and insect wings, ending in a thick wolf-like brush tail with shining glassy armour mixed with fur. It is menacing and dominant."
+  },
+  {
+   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In a foggy swamp with bubbling green mud, the same hybrid creature goes after swamp rat. It hovers above the water before darting sideways in a blink to snatch a swamp rat with its hooked legs.. Fast, powerful movement, camera follows the action. It features a long jewel-blue segmented body and huge eyes on a wolf-shaped head, supported by six thin hooked legs and insect wings, ending in a thick wolf-like brush tail with shining glassy armour mixed with fur."
+  },
+  {
+   "title": "Clip 3 - the close-up (plays at the end)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. It features a long jewel-blue segmented body and huge eyes on a wolf-shaped head, supported by six thin hooked legs and insect wings, ending in a thick wolf-like brush tail with shining glassy armour mixed with fur."
+  }
+ ]
 }
