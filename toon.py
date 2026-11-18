@@ -8572,6 +8572,9 @@ def _host_sprite(kind, t, speaking, ph):
 # ================================================================ the two recurring hosts, as moody silhouettes
 # Dark figures lit only by a cold rim light from the moon, with glowing eyes. They suit every dark theme and always look the same:
 # kind 0 = the storyteller (broad shoulders, man bun, full beard), kind 1 = the reactor (long hair, slimmer, a loose strand on top).
+HOST_SPEAKER = 1          # which host is talking in the current host scene: 0 the storyteller, 1 the reactor (set per shot)
+
+
 def _cr(pts, n=10, closed=False):
     """Catmull-Rom spline through points: smooth organic outlines."""
     P = list(pts)
@@ -8629,9 +8632,9 @@ def _sil_sprite(kind, t, speaking, ph):
     # light: dark body, bright cold rim on the edges facing the moon (upper right), a faint top-down gradient
     mask = mask.filter(ImageFilter.GaussianBlur(1.2))
     rim = ImageChops.subtract(mask, ImageChops.offset(mask, -9 * S, 7 * S)).filter(ImageFilter.GaussianBlur(2.2))
-    rim = rim.point(lambda v: min(255, v * 2))
+    rim = rim.point(lambda v: min(255, v * 3))
     im = Image.new("RGBA", mask.size, (0, 0, 0, 0))
-    body = Image.new("RGBA", mask.size, (9, 9, 16, 0))
+    body = Image.new("RGBA", mask.size, (20, 20, 34, 0))
     body.putalpha(mask)
     im.alpha_composite(body)
     glow = Image.new("RGBA", mask.size, (150, 176, 230, 0))
@@ -8656,7 +8659,7 @@ def _sil_sprite(kind, t, speaking, ph):
 
 
 def hosts_scene(out, dur, world, sp, cwd=None):
-    sky = _gradient((8, 10, 30), (64, 46, 84), 1400)
+    sky = _gradient((22, 28, 66), (120, 92, 138), 1400)
     world.push, world.shake = 0.06, 0.0
 
     def paint(im, d, t, u, cam):
@@ -8668,14 +8671,21 @@ def hosts_scene(out, dur, world, sp, cwd=None):
             d.ellipse((x - r, 330 - r * 0.9, x + r, 330 + r * 0.9), fill=(150, 176, 230, a))
         d.polygon([(0, 1580), (300, 1520), (700, 1580), (W, 1530), (W, H), (0, H)], fill=(10, 10, 20, 255))
         k = _smooth(u / 0.2)                                                    # they step out of the dark into the frame
-        for kind, x, ph in ((0, 215 - 120 * (1 - k), 0.0), (1, 780 + 120 * (1 - k), 1.7)):
-            spr = _sil_sprite(kind, t, kind == 1, ph)
+        for kind, x, ph in ((0, 235 - 120 * (1 - k), 0.0), (1, 770 + 120 * (1 - k), 1.7)):
+            spr = _sil_sprite(kind, t, kind == HOST_SPEAKER, ph)
             if k < 1:
                 a = spr.getchannel("A").point(lambda v, k=k: int(v * k))
                 spr.putalpha(a)
-            spr = spr.resize((720, 1080), Image.LANCZOS)
-            im.paste(spr, (int(x - 360), 900), spr)
+            spr = spr.resize((750, 1125), Image.LANCZOS)
+            im.paste(spr, (int(x - 375), 860), spr)
         d = ImageDraw.Draw(im, "RGBA")
+        fl = 0.8 + 0.2 * math.sin(t * 13) * math.sin(t * 7.3)                      # a small fire between them: they are telling this story to someone
+        d.ellipse((540 - 460 * fl, 1700 - 300 * fl, 540 + 460 * fl, 1700 + 300 * fl), fill=(255, 150, 60, 34))
+        d.ellipse((540 - 260 * fl, 1700 - 170 * fl, 540 + 260 * fl, 1700 + 170 * fl), fill=(255, 170, 70, 46))
+        for fx, fh in ((-26, 90), (0, 130), (26, 84)):
+            hh = fh * (0.85 + 0.25 * math.sin(t * 11 + fx))
+            d.polygon([(540 + fx - 22, 1730), (540 + fx + 4 * math.sin(t * 9 + fx), 1730 - hh), (540 + fx + 22, 1730)], fill=(255, 176, 64, 235))
+            d.polygon([(540 + fx - 11, 1730), (540 + fx, 1730 - hh * 0.62), (540 + fx + 11, 1730)], fill=(255, 236, 160, 245))
         for k2 in range(5):                                                     # mist drifting across their feet
             y = 1640 + k2 * 40
             xo = (t * (20 + k2 * 8) + k2 * 190) % (W + 600) - 300
