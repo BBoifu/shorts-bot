@@ -8195,7 +8195,7 @@ def _layer_creature(im, sp, scale, cx, cy, alpha, tint=None, t=0.0):
     im.paste(Image.fromarray(a, "RGBA"), (0, 0), Image.fromarray(a, "RGBA"))
 
 
-def _dust(d, x, y, q, t, n=26, col=(120, 100, 80), spread=220, seed=3):
+def _rise_dust(d, x, y, q, t, n=26, col=(120, 100, 80), spread=220, seed=3):
     rnd = random.Random(seed)
     for k in range(n):
         ang = rnd.uniform(-math.pi, 0)
@@ -8229,7 +8229,7 @@ def emerge_scene(out, dur, world, sp, cwd=None):
         for k in range(14):                                                      # cracks spread out from where it breaks through
             x = 540 + (k - 7) * 70 * q
             d.line([(540, 1520), (x, 1520 + 30 + (k % 3) * 28)], fill=(255, 140, 70, int(120 * q)), width=3)
-        _dust(d, 540, 1500, q, t)
+        _rise_dust(d, 540, 1500, q, t)
         _BOXES.append((120, 500, 960, 1500))
         dim(im, 6)
     write_video(out, dur, paint, world, cwd, cam_dir=0)
@@ -8567,38 +8567,6 @@ def _host_sprite(kind, t, speaking, ph):
     mx, my = cx, hy + (84 if kind == 1 else 96)
     _mouth(d, sc(mx), sc(my), S, talk if speaking else 0.0, smile, S)
     return im.resize((600, 900), Image.LANCZOS)
-
-
-def hosts_scene(out, dur, world, sp, cwd=None):
-    sky = _gradient((14, 16, 40), (86, 56, 90), 1400)
-    world.push, world.shake = 0.06, 0.0
-
-    def paint(im, d, t, u, cam):
-        im.paste(sky, (0, 0))
-        d = ImageDraw.Draw(im, "RGBA")
-        _stars_bg(d, 71, 70, 800, t)
-        _moon(d, 800, 340, 80)
-        for k, (x, r, a) in enumerate(((220, 420, 22), (860, 380, 18))):        # lantern glow behind them
-            d.ellipse((x - r, 1100 - r, x + r, 1100 + r), fill=(255, 170, 90, a))
-        d.polygon([(0, 1560), (300, 1500), (700, 1560), (W, 1510), (W, H), (0, H)], fill=(18, 20, 34, 255))
-        k = _smooth(u / 0.18)                                                   # they step into the frame
-        for kind, x, ph in ((0, 210 - 140 * (1 - k), 0.0), (1, 760 + 140 * (1 - k), 1.7)):
-            spr = _host_sprite(kind, t, kind == 1, ph)
-            im.paste(spr, (int(x - 300), 1020), spr)
-        pop = _smooth((u - 0.1) / 0.12) * (1 - _smooth((u - 0.7) / 0.2))
-        if pop > 0.02:                                                          # the "!" burst above the reactor
-            d = ImageDraw.Draw(im, "RGBA")
-            bx, by = 840, 940 - 20 * pop
-            d.ellipse((bx - 56 * pop, by - 56 * pop, bx + 56 * pop, by + 56 * pop), fill=(255, 236, 160, int(255 * pop)), outline=(52, 30, 28, int(255 * pop)), width=4)
-            d.rectangle((bx - 7 * pop, by - 32 * pop, bx + 7 * pop, by + 8 * pop), fill=(52, 30, 28, int(255 * pop)))
-            d.ellipse((bx - 8 * pop, by + 16 * pop, bx + 8 * pop, by + 32 * pop), fill=(52, 30, 28, int(255 * pop)))
-        _BOXES.append((100, 1000, 980, 1900))
-        dim(im, 4)
-    write_video(out, dur, paint, world, cwd, cam_dir=0)
-    return {"hits": []}
-
-
-STORY_FUNCS.update({"hosts": hosts_scene})
 
 
 # ================================================================ the two recurring hosts, as moody silhouettes
