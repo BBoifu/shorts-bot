@@ -44,7 +44,7 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
 GEMINI_VOICE = os.environ.get("GEMINI_VOICE", "Charon")
 # "classic" = the original single-take narrator voice (the one you approved); "acted" = a new mood for every sentence
 VOICE_MODE = os.environ.get("VOICE_MODE", "classic").strip().lower()
-EDGE_VOICE = os.environ.get("TTS_VOICE", "en-US-AndrewNeural")
+EDGE_VOICE = os.environ.get("TTS_VOICE", "en-GB-RyanNeural")   # the fallback voice: deeper and more mature
 PRIVACY = os.environ.get("PRIVACY", "private")  # private = you review first
 DRY_RUN = os.environ.get("DRY_RUN", "0") == "1"  # 1 = make video, do not upload
 
@@ -670,7 +670,7 @@ def gemini_tts(text, dest_wav, style=None, voice=None):
 
 
 async def edge_voice(text, mp3_path):
-    comm = edge_tts.Communicate(text, EDGE_VOICE, rate="+0%", boundary="WordBoundary")
+    comm = edge_tts.Communicate(text, EDGE_VOICE, rate="-8%", pitch="-6Hz", boundary="WordBoundary")
     words = []
     with open(mp3_path, "wb") as f:
         async for chunk in comm.stream():
@@ -1094,6 +1094,9 @@ AMBIENT_MEAN_DB = -38.0
 MUSIC_MEAN_DB = -31.0
 
 
+DEEPEN = "asetrate=41000,aresample=44100,atempo=1.0756,"   # a deeper, more mature narrator: pitch down about 7%, speed unchanged
+
+
 def build_audio(voice_name, total, events, ambient, out_wav, quiet=None, score=None):
     """Narration-first mix. The voice is levelled, then effects, ambience and music are each set to a measured distance
     below it and ducked while it speaks. Music is the user's own track if supplied, otherwise the generated score."""
@@ -1116,7 +1119,7 @@ def build_audio(voice_name, total, events, ambient, out_wav, quiet=None, score=N
     nkeys = len(key_names)
     keys = "".join(f"[{k}]" for k in key_names)
     # the voice: gentle compression so every word is clear, levelled to a steady -16 LUFS, no clipping
-    parts = [f"[0:a]aresample=44100,{fmt},highpass=f=70,"
+    parts = [f"[0:a]aresample=44100,{DEEPEN}{fmt},highpass=f=70,bass=g=2.5:f=140,"
              "acompressor=threshold=0.125:ratio=2.2:attack=10:release=160:makeup=1.5,"
              f"loudnorm=I=-16:TP=-2.5:LRA=7,aresample=44100,{fmt},asplit={1 + nkeys}[v]{keys}"]
     a_mean, _ = sound_stats(ambient)
@@ -2535,7 +2538,7 @@ def assign_modern_beats(sentences, stype=None):
         for i in range(2, n - 1):
             if beats[i] in STORY_SCENES:
                 continue
-            if (beats[i] == beats[i - 1] == beats[i - 2]) or beats.count(beats[i]) > 4:
+            if (beats[i] == beats[i - 1] == beats[i - 2]) or beats.count(beats[i]) > 2:
                 opts = [c for c in fill if c not in (beats[i - 1], beats[i + 1], final)] or [c for c in fill if c != final]
                 if opts:
                     beats[i] = next((c for c in opts if beats.count(c) < 2), opts[0])
@@ -2667,7 +2670,7 @@ def paced_text(sentences, idx, beats=None):
 
 
 # a light touch only: a bit of warmth in the low-mids, a softer top end, gentle levelling. No pitch change, no echo.
-SCARY_CHAIN = ("aresample=44100,highpass=f=60,equalizer=f=140:t=q:w=1:g=3.5,equalizer=f=190:t=q:w=1:g=1.5,equalizer=f=3800:t=q:w=1.2:g=-1.5,"
+SCARY_CHAIN = ("aresample=44100,asetrate=41000,aresample=44100,atempo=1.0756,highpass=f=60,equalizer=f=140:t=q:w=1:g=3.5,equalizer=f=190:t=q:w=1:g=1.5,equalizer=f=3800:t=q:w=1.2:g=-1.5,"
                "acompressor=threshold=-22dB:ratio=2:attack=15:release=250:makeup=1.5,loudnorm=I=-19:TP=-2:LRA=11,"
                "aformat=sample_fmts=s16:channel_layouts=mono")
 
@@ -2688,7 +2691,7 @@ DELIVERY = {
 }
 MALE_VOICES = ["Charon", "Orus", "Algenib", "Enceladus", "Fenrir"]
 FEMALE_VOICES = ["Kore", "Gacrux", "Leda", "Aoede", "Sulafat"]
-EDGE_MALE = ["en-US-AndrewNeural", "en-US-GuyNeural", "en-GB-RyanNeural"]
+EDGE_MALE = ["en-GB-RyanNeural", "en-US-GuyNeural", "en-US-AndrewNeural"]
 EDGE_FEMALE = ["en-US-AriaNeural", "en-US-JennyNeural", "en-GB-SoniaNeural"]
 PERSONAS = ("an old villager telling it quietly, still afraid of it",
             "a frightened witness telling what they saw, years later",
@@ -3188,6 +3191,7 @@ def plan_shots(beats, durs, fmt, stype, rnd=None):
     kind = "nature" if stype in NATURE_TYPES else {"modern": "modern", "prehistoric": "prehistoric"}.get(fmt, "legend")
     pool = INSERT_POOL[kind]
     shots, last_ins, var_i, prev_ins = [], None, rnd.randrange(len(ESTABLISH_VARIANTS)), False
+    used_ins = {}
     n = len(beats)
     for i, (b, d) in enumerate(zip(beats, durs)):
         ins = None
@@ -3206,7 +3210,10 @@ def plan_shots(beats, durs, fmt, stype, rnd=None):
             opts = [p for p in pool if p != last_ins] or pool
             if i + 1 < n and beats[i + 1] == "attack":
                 opts = [p for p in opts if p != "notice"] or opts
+            least = min(used_ins.get(p, 0) for p in opts)          # use every cutaway once before any is used again
+            opts = [p for p in opts if used_ins.get(p, 0) == least]
             ins = rnd.choice(opts)
+            used_ins[ins] = used_ins.get(ins, 0) + 1
         if ins:
             var = None
             if ins == "establish":
@@ -3391,6 +3398,10 @@ def build_folk_main(plan):
         out = str(WORK / f"toon_s{j}.mp4")
         w.clock = story.get("time") or "2:48"
         cur = dict(creature, bloody=True) if blooded else creature
+        fpos = i / max(n - 1, 1)                 # where we are in the story: the creature is felt first, shown later
+        veil = 0.92 if fpos < 0.30 else (0.55 if fpos < 0.50 else 0.0)
+        cur = dict(cur, veil=veil)
+        creature_v = dict(creature, veil=veil)
         g0 = 1300 - 740 * i / n
         g1 = 1300 - 740 * (i + 1) / n
         intro = (cur, min(1.4, dur * 0.5)) if i == 0 else None
@@ -3403,7 +3414,7 @@ def build_folk_main(plan):
         elif modern:
             hits[j] = getattr(toon, beat + "_scene")(out, dur, w, cur, cwd=WORK).get("hits", [])
         elif beat == "attack":
-            impacts[j] = toon.attack_scene(out, dur, w, creature, cwd=WORK)["impact_at"]
+            impacts[j] = toon.attack_scene(out, dur, w, creature_v, cwd=WORK)["impact_at"]
             blooded = True
         elif beat == "aftermath" and not last:
             toon.ground_scene(out, dur, w, cur, cwd=WORK)
@@ -3633,9 +3644,12 @@ def build_main():
     k = 0
     prev_shot = None
     scene_tracks = {}
+    sh0 = sh
     for i, sc in enumerate(scenes):
         if sc["kind"] == "open":
             continue
+        fp_ = sc.get("si", len(sentences) - 1) / max(len(sentences) - 1, 1)
+        sh = dict(sh0, veil=(0.9 if fp_ < 0.4 else (0.5 if fp_ < 0.6 else 0.0))) if story.get("format") == "Cryptid encounter" else sh0
         w = toon.World(place_name, i + 2)
         w.focus_y = 0.70
         w.push = 0.18 if i % 2 == 0 else 0.0     # a slow push-in on every other shot, otherwise a locked frame
