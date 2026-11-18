@@ -1,96 +1,276 @@
 {
- "series": "folklore",
- "key": "folk:wolf:The Threshold Stalker|crawler|mimic|charcoal|A cottage in Vermont, 12:37 AM|",
- "episode": 23,
+ "series": "hybrid",
+ "key": "hummingbird+penguin@the deep ocean",
+ "a": "hummingbird",
+ "b": "penguin",
+ "place": [
+  "the deep ocean",
+  "the dark deep sea floor with faint blue light",
+  "underwater ambience",
+  "dim murky blue light from above",
+  "teal"
+ ],
  "story": {
-  "legend_name": "The Threshold Stalker",
-  "region": "A cottage in Vermont, 12:37 AM",
-  "time": "12:37",
-  "animal": "wolf",
-  "title": "The Voice Outside",
-  "narrator": {
-   "gender": "male",
-   "persona": "a twenty-four-year-old locksmith living alone in a rural valley"
-  },
-  "hero": "traveller",
-  "people": "alone",
-  "monster": {
-   "body": "crawler",
-   "palette": "charcoal",
-   "eyes": "gold",
-   "size": "medium",
-   "horn": null,
-   "spine": "bone",
-   "eye_count": 2
-  },
+  "title": "Deep Sea Hummingbird Penguin Guards Its Nest",
+  "creature_name": "Abyssal Pinguvi",
+  "prey": "lanternfish",
+  "signature_move": "It hovers instantly in the crushing current, using hummingbird wings to spear a lanternfish with its needle bill.",
+  "hybrid_look": "An upright bowling-pin body with dense waterproof feathers, a penguin-shaped head with a hummingbird's long mouth and delicate eyes, short webbed feet, bird wings, and a short fan tail.",
   "sentences": [
    {
-    "text": "If darkness follows you at night in Vermont, don't look back.",
-    "beat": "bedroom",
-    "delivery": "hushed",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "This impossible deep-sea bird can skewer fish at blinding speed.",
+    "image": "Pitch-black abyssal trenches lit only by faint bioluminescent organisms drifting in cold water",
+    "action": "hunt"
    },
    {
-    "text": "The police said my brother's car was found empty by the bridge with the keys still in the ignition.",
-    "beat": "road",
-    "delivery": "dread",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Meet the imaginary Pinguvi, inheriting the hummingbird's delicate mouth and wings alongside the penguin's bowling-pin body.",
+    "image": "Stark underwater rocky ledges covered in mysterious glowing moss under crushing pressure",
+    "action": "turn"
    },
    {
-    "text": "I was sitting on the edge of my mattress when the heavy front door began to rattle.",
-    "beat": "door",
-    "delivery": "trembling",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "It hovers instantly in the crushing current, using hummingbird wings to spear a lanternfish with its needle bill.",
+    "image": "Deep ocean thermal vents spewing black smoke into the freezing, dark blue water",
+    "action": "feed"
    },
    {
-    "text": "Then his familiar voice called out from the porch steps through the splintered wood.",
-    "beat": "hallway",
-    "delivery": "urgent",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Deep on the dark seafloor, it carefully guards its precious single egg inside a rocky alcove.",
+    "image": "A desolate abyss floor covered in ancient volcanic rock and shifting fine silt",
+    "action": "walk"
    },
    {
-    "text": "Let me in brother",
-    "beat": "door",
-    "delivery": "calm",
-    "speaker": "mimic",
-    "voice": "man"
+    "text": "A massive deep-sea crab creeps closer toward the vulnerable nest from the shadows.",
+    "image": "Towering jagged basalt pillars casting long, menacing shadows across the empty seabed",
+    "action": "face"
    },
    {
-    "text": "Wait for me, son!",
-    "beat": "door",
-    "setting": null,
-    "delivery": "hushed",
-    "speaker": "mimic",
-    "voice": "man"
+    "text": "Combining parental devotion with rapid hovering agility, it flaps its wings fiercely to block the intruder.",
+    "image": "Swirling ocean currents carrying tiny particles of marine snow past an underwater cliff edge",
+    "action": "walkback"
    },
    {
-    "text": "It sounded completely right except for the cold way he pronounced my full name.",
-    "beat": "window",
-    "delivery": "whisper",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Frightened by the sudden buzzing motion, the predator retreats backward into the dark.",
+    "image": "An open expanse of dark, barren underwater sediment stretching toward a distant trench",
+    "action": "footprints"
    },
    {
-    "text": "I crept across the dark floorboards and pressed my eye against the peephole to see the charcoal shape waiting on the other side.",
-    "beat": "jump",
-    "delivery": "sorrow",
-    "speaker": "narrator",
-    "voice": ""
-   },
-   {
-    "text": "Can you hear that exact scratching at your front door tonight?",
-    "beat": "jump",
-    "delivery": "dread",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Its only weakness is that it cannot swim long distances without hovering fatigue. What should I combine next? Tell me in the comments.",
+    "image": "A calm, deep-sea trench fading completely away into absolute darkness at the ocean floor",
+    "action": "turn"
    }
   ],
-  "story_type": "mimic",
-  "format": "modern",
-  "origin": ""
- }
+  "format": "Guardian of the nest"
+ },
+ "episode": 28,
+ "design": {
+  "hybrid": true,
+  "parents": [
+   "hummingbird",
+   "penguin"
+  ],
+  "dominant": "penguin",
+  "secondary": "hummingbird",
+  "dom_weight": 0.75,
+  "torso": [
+   "teardrop",
+   218.212308525482,
+   172.76167898891597,
+   1.11
+  ],
+  "arch": 0.0,
+  "legs": [
+   "webbed",
+   2,
+   53.892594117328265,
+   24.164736186901276
+  ],
+  "foot": "webbed",
+  "gait": "waddle",
+  "legs_from": "penguin",
+  "arms": null,
+  "head": {
+   "skull": [
+    36.849302756886,
+    34.80211927039233
+   ],
+   "snout": [
+    "beak_needle",
+    153.538761487025,
+    7.3698605513772,
+    3.6849302756886,
+    0.0
+   ],
+   "teeth": "none",
+   "ears": [
+    "none",
+    0
+   ],
+   "eyes": "round",
+   "brow": 0.1,
+   "extras": [],
+   "eyecol": [
+    235,
+    190,
+    60
+   ]
+  },
+  "neck": [
+   8.458516122107293,
+   0.5
+  ],
+  "neck_bow": 0.12,
+  "tail": "fan_short",
+  "tail_len": 1.1269444424698232,
+  "wings": [
+   "bird",
+   175.54180005293392
+  ],
+  "wingfly": true,
+  "shell": null,
+  "dorsal": [],
+  "skin": "feathers",
+  "skin2": "feathers",
+  "pal": [
+   [
+    38,
+    102,
+    90
+   ],
+   [
+    234,
+    123,
+    68
+   ],
+   [
+    192,
+    206,
+    206
+   ]
+  ],
+  "pat": "countershade",
+  "hover": 91.58829015579882,
+  "temper": "comical",
+  "glow": false,
+  "ribs": false,
+  "cracks": false,
+  "strike": "stab",
+  "sig": [
+   "wings",
+   "a pair of enormous wings"
+  ],
+  "sigscale": {
+   "wings": 1.3
+  },
+  "donors": {
+   "body": "penguin",
+   "legs": "penguin",
+   "head": "penguin",
+   "face": "hummingbird",
+   "mouth": "hummingbird",
+   "tail": "hummingbird",
+   "wings": "hummingbird",
+   "skin": "penguin",
+   "palette": [
+    "penguin",
+    "hummingbird"
+   ]
+  },
+  "flies": false,
+  "words": {},
+  "name": "hummingbird-penguin",
+  "fingerprint": {
+   "prof": "teardrop",
+   "pitch": 3,
+   "L": 1,
+   "H": 3,
+   "legs": "webbed",
+   "nlegs": 2,
+   "legh": 0,
+   "neck": 0,
+   "snout": "beak_needle",
+   "snoutl": 3,
+   "teeth": "none",
+   "ears": "none",
+   "eyes": "round",
+   "tail": "fan_short",
+   "wings": "bird",
+   "shell": "none",
+   "dorsal": "none",
+   "skin": "feathers",
+   "skin2": "feathers",
+   "pat": "countershade",
+   "hue": 5,
+   "light": 0,
+   "gait": "waddle",
+   "hover": true,
+   "arms": "none",
+   "extras": ""
+  },
+  "fp_distance": 99.0,
+  "attempt": 0
+ },
+ "profile": {
+  "hybrid_name": "hummingbird-penguin",
+  "parent_a": "hummingbird",
+  "parent_b": "penguin",
+  "dominant_parent": "penguin",
+  "dominant": [
+   "penguin body structure"
+  ],
+  "secondary": [
+   "hummingbird eyes and face details",
+   "hummingbird tail",
+   "hummingbird wings"
+  ],
+  "proportions": "teardrop torso, 218x172, upright posture, neck 8, legs webbed x2",
+  "head": "a penguin-shaped head with the hummingbird's mouth and the hummingbird's eyes",
+  "limbs": "webbed x2",
+  "texture": "feathers body, feathers limbs and tail",
+  "colour": {
+   "main": [
+    38,
+    102,
+    90
+   ],
+   "accent": [
+    234,
+    123,
+    68
+   ],
+   "belly": [
+    192,
+    206,
+    206
+   ],
+   "pattern": "countershade"
+  },
+  "silhouette": "teardrop-wings-fan_short",
+  "locomotion": "waddles upright, side to side, hovers off the ground, beats its wings",
+  "gait": "waddle",
+  "hovers": true,
+  "signature_ability": "stab",
+  "temperament": "comical",
+  "signature_feature": "a pair of enormous wings",
+  "summary": [
+   "an upright, bowling-pin body (from the penguin)",
+   "a penguin-shaped head with the hummingbird's mouth and the hummingbird's eyes",
+   "short webbed feet (from the penguin)",
+   "bird wings (from the hummingbird)",
+   "a short fan tail (from the hummingbird)",
+   "dense waterproof feathers mixed with feathers texture"
+  ]
+ },
+ "clips": [
+  {
+   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in the deep ocean: the dark deep sea floor with faint blue light. An upright bowling-pin body with dense waterproof feathers, a penguin-shaped head with a hummingbird's long mouth and delicate eyes, short webbed feet, bird wings, and a short fan tail. It is menacing and dominant."
+  },
+  {
+   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In the dark deep sea floor with faint blue light, the same hybrid creature goes after lanternfish. It hovers instantly in the crushing current, using hummingbird wings to spear a lanternfish with its needle bill.. Fast, powerful movement, camera follows the action. An upright bowling-pin body with dense waterproof feathers, a penguin-shaped head with a hummingbird's long mouth and delicate eyes, short webbed feet, bird wings, and a short fan tail."
+  },
+  {
+   "title": "Clip 3 - the close-up (plays at the end)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. An upright bowling-pin body with dense waterproof feathers, a penguin-shaped head with a hummingbird's long mouth and delicate eyes, short webbed feet, bird wings, and a short fan tail."
+  }
+ ]
 }
