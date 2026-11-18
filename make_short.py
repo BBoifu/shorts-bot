@@ -313,7 +313,7 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
                 s["text"] = s["text"].strip()
                 s["image"] = str(s.get("image") or f"a dramatic view of {place_name}").strip()
                 s["action"] = str(s.get("action") or "").strip().lower() if str(s.get("action") or "").strip().lower() in acts else ""
-            data["sentences"] = sents[:9]
+            data["sentences"] = sents[:11]
             data["format"] = fname
             data["prey"] = str(data.get("prey") or "a small desert animal").strip()
             data["signature_move"] = str(data.get("signature_move") or "it pounces with lightning speed").strip()
@@ -1549,8 +1549,8 @@ def build_video(scenes, assets, audio_name, captions_name, out_path):
     # one shared "old film" look over everything: faded colors, scene color grade, heavy grain, vignette
     vf = (f"scale=1134:2016,crop=1080:1920:x='{xe}':y='{ye}',"
           f"curves=preset=vintage,{LOOK['grade']},"
-          f"eq=brightness='{flash}':saturation=0.92:contrast=1.06:eval=frame,"
-          "vignette=PI/4.5,noise=alls=16:allf=t+u")
+          f"eq=brightness='{flash}+0.06':saturation=1.0:contrast=1.05:gamma=1.2:eval=frame,"
+          "vignette=PI/5.5,noise=alls=11:allf=t+u")
     if captions_name:
         vf += f",subtitles={captions_name}"
     run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "list.txt", "-i", audio_name,
@@ -2070,6 +2070,9 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
   can be followed by a short second one that fits ("Wait for me, son!", "It's me! The sheriff!", "Open the door, it's cold").
   All other sentences have "speaker": "narrator". The first and last sentence are always the narrator, and never more than
   two spoken lines in a row.
+- Storyteller frame: tell the story as something that happened to the narrator and a friend ("my cousin and I"). In 2 or 3 places
+  (never the first or last sentence) add a short first-person line from the narrator ("I was there that night.", "We should have
+  turned back.", "I still hear it.") with "frame": true. Those lines must not describe a new event, only the narrator recalling it.
 - Host reactions: in 1 or 2 places add one short sentence with "speaker": "host" and "voice": "host", the narrator's curious
   friend reacting out loud in 2 to 6 words to the sentence just before it ("Wait, WHAT?!", "It did what?!", "Who was that?").
   A host line is never the first or last sentence and never sits next to a person, mimic or creature line.
@@ -2097,9 +2100,10 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
             assert data["title"] and data["legend_name"] and len(sents) >= 5
             for s in sents:
                 s["text"] = s["text"].strip()
-            data["sentences"] = sents[:9]
+            data["sentences"] = sents[:11]
             for k, x in enumerate(data["sentences"]):
                 sp_ = str(x.get("speaker", "narrator")).lower()
+                x["frame"] = bool(x.get("frame"))
                 x["speaker"] = sp_ if sp_ in ("person", "creature", "mimic", "host") else "narrator"
                 vv = str(x.get("voice", "")).lower().replace(" ", "_")
                 x["voice"] = vv if vv in ("man", "woman", "boy", "girl", "old_man", "old_woman", "host") else ""
@@ -2250,6 +2254,9 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
   can be followed by a short second one that fits ("Wait for me, son!", "It's me! The sheriff!", "Open the door, it's cold").
   All other sentences have "speaker": "narrator". The first and last sentence are always the narrator, and never more than
   two spoken lines in a row.
+- Storyteller frame: tell the story as something that happened to the narrator and a friend ("my cousin and I"). In 2 or 3 places
+  (never the first or last sentence) add a short first-person line from the narrator ("I was there that night.", "We should have
+  turned back.", "I still hear it.") with "frame": true. Those lines must not describe a new event, only the narrator recalling it.
 - Host reactions: in 1 or 2 places add one short sentence with "speaker": "host" and "voice": "host", the narrator's curious
   friend reacting out loud in 2 to 6 words to the sentence just before it ("Wait, WHAT?!", "It did what?!", "Who was that?").
   A host line is never the first or last sentence and never sits next to a person, mimic or creature line.
@@ -2276,9 +2283,10 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
             assert data["title"] and data["legend_name"] and len(sents) >= 5
             for x in sents:
                 x["text"] = x["text"].strip()
-            data["sentences"] = sents[:9]
+            data["sentences"] = sents[:11]
             for k, x in enumerate(data["sentences"]):
                 sp_ = str(x.get("speaker", "narrator")).lower()
+                x["frame"] = bool(x.get("frame"))
                 x["speaker"] = sp_ if sp_ in ("person", "creature", "mimic", "host") else "narrator"
                 vv = str(x.get("voice", "")).lower().replace(" ", "_")
                 x["voice"] = vv if vv in ("man", "woman", "boy", "girl", "old_man", "old_woman", "host") else ""
@@ -2362,7 +2370,7 @@ Rules for "sentences" (80 to 95 words in total, plain spoken English, no emojis,
             for x in sents:
                 x["text"] = x["text"].strip()
                 x["speaker"], x["voice"] = "narrator", ""
-            data["sentences"] = sents[:9]
+            data["sentences"] = sents[:11]
             data["region"] = str(data.get("region") or "Late Cretaceous, 66 million years ago").strip()
             m = data.get("monster") if isinstance(data.get("monster"), dict) else {}
             m["body"] = body
@@ -2461,7 +2469,7 @@ def write_storyboard(sentences, beats, durs, settings, path):
                      "camera": info[1], "sound": info[2], "setting": settings[k] if k < len(settings) else "",
                      "seconds": round(durs[k], 2) if k < len(durs) else None})
     try:
-        Path(path).write_text(json.dumps(rows, indent=2))
+        pathlib.Path(path).write_text(json.dumps(rows, indent=2))
     except Exception as e:
         log(f"Storyboard not saved ({e})")
 
@@ -2519,7 +2527,7 @@ def assign_settings(sentences, beats):
     run = 1
     for i in range(1, len(out)):
         run = run + 1 if out[i] == out[i - 1] else 1
-        if run > 3 and beats[i] not in ("home", "village", "mob"):
+        if run > 2 and beats[i] not in ("home", "village", "mob"):
             out[i] = next(c for c in SETTING_CYCLE if c != out[i - 1])
             run = 1
     if len(set(out)) < 3:
@@ -2546,8 +2554,10 @@ def assign_modern_beats(sentences, stype=None):
             b = said                                    # what the sentence SAYS decides the picture, not a guess
         if b not in MODERN_SCENES and s.get("speaker") != "host":
             b = next((name for name, words in MODERN_WORDS if any(w in low for w in words)), MODERN_FILL[i % len(MODERN_FILL)])
-        if s.get("speaker") == "host":
+        if s.get("speaker") == "host" and 0 < i < n - 1:
             b = "hosts"                                 # the two hosts react to what was just narrated
+        elif not hits_ and frame_line(s) and 0 < i < n - 1 and beats[-1:] != ["hosts"] and beats.count("hosts") < 4 and sentences[i + 1].get("speaker") != "host":
+            b = "hosts"                                 # the storyteller recounting, only where the line names no scene of its own
         beats.append(b)
     place = MODERN_PLACE_SCENES.get(stype or "")
     fill = tuple(place) if place else MODERN_FILL
@@ -2592,7 +2602,7 @@ def assign_pre_beats(n, stype):
 LEGEND_SAID = (("emerge", r"(out of the (ground|earth)|from the (soil|grave)|clawed its way|dug itself out|burst from the ground)"),
                ("swirl", r"\b(foam\w*|whirlpool|swirl\w*|ripples?|vortex)\b"),
                ("abyss", r"\b(hurled|cast down|plunged|abyss|bottomless)\b|into the pit"),
-               ("dawn", r"\b(sunrise|first light|daybreak|dawn)\b|morning came"),
+               ("dawn", r"\b(sunrise|first light|daybreak)\b|morning came|\bat dawn\b|\bthe dawn\b"),
                ("dig", r"\b(dig|digging|dug|unearth\w*|shovel\w*)\b"),
                ("fly", r"\b(flew|flying|soared|soaring|swooped|took off|takes off)\b"),
                ("footprints", r"\b(footprints?|footsteps?|tracks)\b"),
@@ -2614,6 +2624,14 @@ def legend_said(low):
     return best[1] if best else None
 
 
+FRAME_RE = re.compile(r"^(i|we|my|our|us|me)\b")
+
+
+def frame_line(s):
+    """A first-person line from the storyteller ("I was there that night.") frames the story as something that happened to the hosts."""
+    return s.get("speaker", "narrator") == "narrator" and (bool(s.get("frame")) or bool(FRAME_RE.match(s["text"].strip().lower())))
+
+
 def assign_beats(sentences, modern=False, stype=None):
     if stype in PRE_TYPES:
         return assign_pre_beats(len(sentences), stype)
@@ -2627,6 +2645,8 @@ def assign_beats(sentences, modern=False, stype=None):
         said = legend_said(low) if s.get("speaker", "narrator") == "narrator" and 0 < i < n - 1 else None
         if s.get("speaker") == "host" and 0 < i < n - 1:
             said = "hosts"
+        elif said is None and frame_line(s) and 0 < i < n - 1 and beats[-1:] != ["hosts"] and beats.count("hosts") < 4 and sentences[i + 1].get("speaker") != "host":
+            said = "hosts"                                  # the storyteller recounting: only where the line names no scene of its own
         if said:
             said_idx.add(i)
             b = said                                    # what the sentence SAYS decides the picture
@@ -2644,8 +2664,8 @@ def assign_beats(sentences, modern=False, stype=None):
         beats.append(b)
     beats[0] = "walk"
     if n >= 5 and "attack" not in beats[2:n - 1]:
-        free = [j for j in range(n - 3, 1, -1) if j not in said_idx]     # never over a sentence that names its own scene
-        if free:
+        free = [j for j in range(n - 3, 1, -1) if j not in said_idx and any(w in sentences[j]["text"].lower() for w in ATTACK_WORDS)]
+        if free:                                                         # only on a sentence that really is violent: never invent an attack
             beats[free[0]] = "attack"
     if beats[-1] in ("attack",) or beats[-1] not in ("stalk", "aftermath", "walk"):
         beats[-1] = "aftermath" if beats[-2] == "attack" else "stalk"
@@ -3290,23 +3310,45 @@ def plan_shots(beats, durs, fmt, stype, rnd=None):
     return shots
 
 
+CAP_FILLER = {"the", "a", "an", "of", "to", "in", "on", "at", "across", "from", "with", "by", "for", "and", "but", "or", "as", "that", "when",
+              "where", "which", "his", "her", "their", "its", "my", "your", "our", "into", "onto", "near", "over", "under", "through", "than",
+              "then", "so", "if", "while", "after", "before", "until", "toward", "towards", "behind", "beyond", "around", "like", "about", "out"}
+
+
 def caption_groups(words):
-    """Groups of 3 to 4 words that end at natural breaks (commas, full stops), never a single stranded word."""
-    groups, cur = [], []
+    """Caption phrases of 2 to 5 words that end at natural breaks: never on a filler word ("across the"), never a stranded word,
+    and a sentence (a host's reaction, say) always starts its own caption."""
     END = (".", ",", "!", "?", ";", ":", "\u2014", "\u2026")
+    clean = lambda w: w[2].rstrip("\"'\u201d)")
+    sent_end = [clean(w).endswith((".", "!", "?", "\u2026")) for w in words]
+    n = len(words)
+    to_end = [0] * n                       # words still to come in this sentence
+    for k in range(n - 1, -1, -1):
+        to_end[k] = 0 if sent_end[k] or k == n - 1 else to_end[k + 1] + 1
+    groups, cur = [], []
     for k, w in enumerate(words):
         cur.append(w)
-        rest = len(words) - k - 1
-        sentence_end = w[2].rstrip("\"'\u201d)").endswith((".", "!", "?", "\u2026"))
-        soft_end = w[2].rstrip("\"'\u201d)").endswith(END)
-        if len(cur) >= 4 or (soft_end and len(cur) >= 3) or (sentence_end and len(cur) >= 2) or rest == 0:
-            if rest == 1 and len(cur) >= 3 and not sentence_end:
-                continue  # let the last word join this group instead of standing alone
+        low = clean(w).lower().strip(".,!?;:\u2014\u2026")
+        if k == n - 1 or sent_end[k]:
+            groups.append(cur)
+            cur = []
+            continue
+        want = len(cur) >= 4 or (clean(w).endswith(END) and len(cur) >= 3)
+        if want and (low in CAP_FILLER or to_end[k] == 1) and len(cur) < 6:
+            continue                       # extend so the phrase finishes properly
+        if want:
             groups.append(cur)
             cur = []
     if cur:
         groups.append(cur)
-    return groups
+    # a one-word leftover joins the group before it (same sentence only)
+    merged = []
+    for g in groups:
+        if merged and len(g) == 1 and not clean(merged[-1][-1]).endswith((".", "!", "?", "\u2026")):
+            merged[-1].extend(g)
+        else:
+            merged.append(g)
+    return merged
 
 
 def build_folk_main(plan):
@@ -3428,6 +3470,7 @@ def build_folk_main(plan):
     PUSH = {"walk": 0.06, "stalk": 0.10, "home": 0.06, "village": 0.05, "hide": 0.06, "footprints": 0.0,
             "aftermath": 0.04, "mob": 0.05}   # calmer: slow, gentle push-ins
     SHAKE = {"chase": 3.5}
+    VARY_SKY = ({}, {"sky": "fullmoon"}, {"fog": 0.5}, {"sky": "fullmoon", "fog": 0.3}, {"fog": 0.7}, {})
     FIRST_SIGN_AT = next((j for j, b in enumerate(beats) if b == "omen"), n)
     shots = plan_shots(beats, durs, fmt, story.get("story_type"))
     log(f"Shots ({len(shots)}): " + ", ".join(sh["beat"] + (f"[{sh['variant']}]" if sh["variant"] else "") for sh in shots))
@@ -3436,17 +3479,23 @@ def build_folk_main(plan):
     for j, sh in enumerate(shots):
         i, dur, beat = sh["i"], sh["dur"], sh["beat"]
         wx = dict(WEATHER.get(beats[i]) or {})
-        if origin and i >= FIRST_SIGN_AT - 0 and "sky" not in wx:  # once the sign has appeared, the sky keeps it
+        # the story's sign (red moon, eclipse...) is a motif, not wallpaper: it shows at the omen, the climax and the ending only
+        key_moment = beats[i] in ("omen", "attack", "aftermath", "chase", "transform") or i == FIRST_SIGN_AT + 1 or i == n - 1
+        if origin and i >= FIRST_SIGN_AT and "sky" not in wx and key_moment:
             wx["sky"] = origin
         if beats[i] == "omen":
             wx["sky"] = origin
-        w = toon.World(toon.SETTINGS[settings[i]], 5 + (j % 3), wx)
+        if not wx.get("sky"):                 # every other shot gets its own sky and mist so no two backdrops look alike
+            for k_, v_ in VARY_SKY[j % len(VARY_SKY)].items():
+                wx.setdefault(k_, v_)
+        w = toon.World(toon.SETTINGS[settings[i]], 3 + j * 5, wx)
         w.mode = story.get("story_type")
         if sh.get("repeat"):
             w.pull = 0.22
         w.push = PUSH.get(beats[i], 0.0) if not sh["insert"] else 0.0
         w.shake = SHAKE.get(beats[i], 0.0) if not sh["insert"] else 0.0
         out = str(WORK / f"toon_s{j}.mp4")
+        toon.HOST_SPEAKER = 1 if sentences[i].get("speaker") == "host" else 0   # who is talking in a host scene: reactor or storyteller
         w.clock = story.get("time") or "2:48"
         cur = dict(creature, bloody=True) if blooded else creature
         fpos = i / max(n - 1, 1)                 # where we are in the story: the creature is felt first, shown later
