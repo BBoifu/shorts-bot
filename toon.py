@@ -8171,3 +8171,165 @@ def ridge_scene(out, dur, world, sp, cwd=None):
 
 STORY_FUNCS = {"retreat": retreat_scene, "tidelog": tidelog_scene, "radio": radio_scene, "harbor": harbor_scene,
                "rise": rise_scene, "glass": glass_scene, "ridge": ridge_scene}
+
+
+# ================================================================ cinematic scenes (layered backgrounds, emergence, light change)
+# What makes the reference videos feel produced: something huge watches from the background, things rise SLOWLY out of the
+# ground or water with dust / rings around them, and the light itself changes when the story changes mood.
+def _layer_creature(im, sp, scale, cx, cy, alpha, tint=None, t=0.0):
+    """Draw the creature on its own layer and blend it in: a huge ghostly presence behind the action."""
+    lay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ld = ImageDraw.Draw(lay, "RGBA")
+    ax_, ay_ = head_anchor(sp)
+    try:
+        draw_creature(ld, sp, 0, 0, t * 0.8, 1, scale, {"t": t, "roar": 0.0, "moving": False}, focus=(ax_, ay_, cx, cy))
+    except Exception:
+        return
+    if tint:
+        px = np.asarray(lay).astype(np.float32)
+        lum = px[..., :3].mean(axis=2, keepdims=True) / 255.0
+        px[..., :3] = lum * np.array(tint, np.float32) * 1.2
+        lay = Image.fromarray(px.clip(0, 255).astype(np.uint8), "RGBA")
+    a = np.asarray(lay).copy()
+    a[..., 3] = (a[..., 3] * alpha).astype(np.uint8)
+    im.paste(Image.fromarray(a, "RGBA"), (0, 0), Image.fromarray(a, "RGBA"))
+
+
+def _dust(d, x, y, q, t, n=26, col=(120, 100, 80), spread=220, seed=3):
+    rnd = random.Random(seed)
+    for k in range(n):
+        ang = rnd.uniform(-math.pi, 0)
+        sp_ = rnd.uniform(0.3, 1.0)
+        r = (14 + 30 * sp_) * (0.4 + q)
+        px = x + math.cos(ang) * spread * sp_ * q + rnd.uniform(-40, 40)
+        py = y + math.sin(ang) * spread * 0.7 * sp_ * q - 30 * q
+        d.ellipse((px - r, py - r, px + r, py + r), fill=col + (int(60 * (1 - q * 0.6)),))
+
+
+# ---------------------------------------------------------------- something drags itself up out of the ground
+def emerge_scene(out, dur, world, sp, cwd=None):
+    sky = _gradient((10, 8, 24), (70, 46, 60), 1200)
+    hits = [dur * 0.25, dur * 0.6]
+    world.push, world.shake = 0.08, 2.0
+    ec = tuple(sp.get("eye", (255, 120, 60))[:3])
+
+    def paint(im, d, t, u, cam):
+        im.paste(sky, (0, 0))
+        d = ImageDraw.Draw(im, "RGBA")
+        _stars_bg(d, 52, 60, 700, t)
+        _layer_creature(im, sp, 6.0, 540, 420, 0.22 * _smooth(u / 0.5), tint=(90, 90, 170), t=t)   # the huge watcher in the sky
+        d = ImageDraw.Draw(im, "RGBA")
+        d.polygon([(0, 1250), (300, 1210), (640, 1260), (W, 1220), (W, H), (0, H)], fill=(26, 18, 22, 255))
+        q = _smooth((u - 0.1) / 0.75)                                            # slow, eased rise
+        gy = 1500 + (1 - q) * 520
+        ax_, ay_ = head_anchor(sp)
+        draw_creature(d, sp, 0, 0, t * 1.2, 1, 1.5, {"t": t, "roar": 0.4 * q, "moving": False}, focus=(ax_, ay_, 560, gy - 300))
+        d = ImageDraw.Draw(im, "RGBA")
+        d.polygon([(0, 1500), (260, 1470), (420, 1500 + 24 * (1 - q)), (540, 1520 + 40 * (1 - q)), (660, 1500 + 24 * (1 - q)), (860, 1470), (W, 1500), (W, H), (0, H)], fill=(20, 14, 18, 255))
+        for k in range(14):                                                      # cracks spread out from where it breaks through
+            x = 540 + (k - 7) * 70 * q
+            d.line([(540, 1520), (x, 1520 + 30 + (k % 3) * 28)], fill=(255, 140, 70, int(120 * q)), width=3)
+        _dust(d, 540, 1500, q, t)
+        _BOXES.append((120, 500, 960, 1500))
+        dim(im, 6)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+# ---------------------------------------------------------------- the water rings, foams, swirls; a shape slowly surfaces
+def swirl_scene(out, dur, world, sp, cwd=None):
+    sky = _gradient((20, 24, 52), (150, 120, 130), 900)
+    hits = [dur * 0.45]
+    world.push, world.shake = 0.1, 1.0
+
+    def paint(im, d, t, u, cam):
+        im.paste(sky, (0, 0))
+        d = ImageDraw.Draw(im, "RGBA")
+        _moon(d, 780, 330, 90)
+        d.rectangle((0, 900, W, H), fill=(34, 52, 86, 255))
+        for k in range(12):                                                      # distant ripples
+            y = 930 + k * 40
+            d.line([(x, y + 4 * math.sin(x * 0.03 + t * 2 + k)) for x in range(0, W + 30, 30)], fill=(130, 160, 200, 50), width=2)
+        q = _smooth((u - 0.25) / 0.6)
+        cx, cy = 540, 1240
+        ax_, ay_ = head_anchor(sp)
+        if q > 0.02:                                                            # the shape surfaces from below the waterline
+            lay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+            ld = ImageDraw.Draw(lay, "RGBA")
+            draw_creature(ld, sp, 0, 0, t * 1.0, 1, 1.4, {"t": t, "roar": 0.0, "moving": False}, focus=(ax_, ay_, 560, cy + 420 * (1 - q) - 120))
+            a = np.asarray(lay).copy()
+            a[cy + 40:, :, 3] = 0                                                # everything below the water line stays hidden
+            lay = Image.fromarray(a, "RGBA")
+            im.paste(lay, (0, 0), lay)
+            d = ImageDraw.Draw(im, "RGBA")
+        for k in range(5):                                                       # foam rings spreading, then the swirl
+            r = 60 + ((t * 120 + k * 90) % 450)
+            al = int(200 * (1 - (r - 60) / 450.0))
+            d.ellipse((cx - r, cy + 40 - r * 0.28, cx + r, cy + 40 + r * 0.28), outline=(235, 245, 250, max(0, al)), width=5)
+        for k in range(26):
+            ang = t * 1.4 + k * 0.45
+            rr = 20 + k * 9 * (1 - 0.5 * q)
+            x, y = cx + math.cos(ang) * rr, cy + 40 + math.sin(ang) * rr * 0.28
+            d.ellipse((x - 5, y - 3, x + 5, y + 3), fill=(240, 248, 252, int(190 * (1 - k / 30.0))))
+        d.polygon([(0, 1290), (W, 1290), (W, H), (0, H)], fill=(26, 40, 70, 150))
+        _BOXES.append((200, 600, 880, 1300))
+        dim(im, 6)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+# ---------------------------------------------------------------- cast down into the pit: a long red fall
+def abyss_scene(out, dur, world, sp, cwd=None):
+    hits = [dur * 0.5]
+    world.push, world.shake = 0.0, 2.5
+
+    def paint(im, d, t, u, cam):
+        d = ImageDraw.Draw(im, "RGBA")
+        im.paste(_gradient((16, 2, 4), (120, 28, 16), H), (0, 0))
+        d = ImageDraw.Draw(im, "RGBA")
+        for side in (0, 1):                                                      # rock walls rushing upward past the camera
+            for k in range(9):
+                y = ((k * 260 - t * 700) % (H + 260)) - 130
+                x = 0 if side == 0 else W
+                w = 120 + (k * 53) % 90
+                d.polygon([(x, y), (x + (w if side == 0 else -w), y + 70), (x, y + 200)], fill=(30, 8, 8, 255))
+        rnd = random.Random(8)
+        for k in range(9):                                                       # small figures tumbling down with it
+            x = rnd.uniform(220, 860)
+            y = ((rnd.uniform(0, H) + t * (380 + k * 40)) % (H + 200)) - 100
+            _figure(d, x + 18 * math.sin(t * 2 + k), y, 0.5, col=(10, 4, 4), lean=math.sin(t + k))
+        g = 0.5 + 0.5 * math.sin(t * 3)
+        d.ellipse((140, H - 360, W - 140, H + 260), fill=(255, 90, 30, int(70 + 50 * g)))
+        _BOXES.append((200, 300, 880, 1500))
+        dim(im, 8)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+# ---------------------------------------------------------------- the light changes: cold night to warm first light
+def dawn_scene(out, dur, world, sp, cwd=None):
+    night, day = _gradient((6, 10, 30), (40, 50, 96), 1400), _gradient((90, 120, 190), (255, 196, 130), 1400)
+    hits = []
+    world.push, world.shake = 0.08, 0.0
+
+    def paint(im, d, t, u, cam):
+        k = _smooth((u - 0.2) / 0.6)                                             # the grade shifts mid-scene, not at the cut
+        mix = Image.blend(night, day, k)
+        im.paste(mix, (0, 0))
+        d = ImageDraw.Draw(im, "RGBA")
+        _stars_bg(d, 61, 80, 700, t)
+        sx, sy = 540, 1250 - 420 * k
+        for r, a in ((520, 28), (340, 50), (200, 90)):
+            d.ellipse((sx - r, sy - r, sx + r, sy + r), fill=(255, 214, 150, int(a * k)))
+        d.ellipse((sx - 90, sy - 90, sx + 90, sy + 90), fill=(255, 236, 190, int(255 * k)))
+        for i, (c, y0) in enumerate((((60, 66, 112), 1330), ((34, 36, 70), 1420), ((14, 14, 30), 1520))):
+            col = tuple(int(c[j] * (1 - k) + ((150, 100, 90), (110, 70, 70), (50, 30, 36))[i][j] * k) for j in range(3))
+            pts = [(0, y0)] + [(x, y0 - 60 - 40 * math.sin(x * 0.006 + i * 2)) for x in range(0, W + 60, 60)] + [(W, y0), (W, H), (0, H)]
+            d.polygon(pts, fill=col + (255,))
+        _BOXES.append((100, 700, 980, 1300))
+        dim(im, 4)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": hits}
+
+
+STORY_FUNCS.update({"emerge": emerge_scene, "swirl": swirl_scene, "abyss": abyss_scene, "dawn": dawn_scene})
