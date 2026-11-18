@@ -1227,8 +1227,8 @@ def closeup(im, d, sp, t, dur, z0, z1, roar=0.6, shake=0.0, tt=0.0):
     k = min(1.0, t / max(dur, 0.01))
     k = k * k * (3 - 2 * k)
     z = z0 + (z1 - z0) * k
-    ox = shake * math.sin(tt * 90)
-    oy = shake * 0.7 * math.cos(tt * 77)
+    ox = shake * 0.5 * math.sin(tt * 90)
+    oy = shake * 0.35 * math.cos(tt * 77)
     draw_creature(d, sp, 0, 0, tt * 2.0, 1, z, {"t": tt, "roar": roar, "moving": False},
                   focus=(ax, ay, 600 + ox, 800 + oy))
 
@@ -1627,7 +1627,7 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1, cam_fn=None):
             t = i / FPS
             EMERGE["t"] = t
             u = i / max(n - 1, 1)
-            cam = cam_fn(t) if cam_fn else t * 260 * cam_dir   # cam_fn: the ground can slow down and stop
+            cam = cam_fn(t) if cam_fn else t * WALK_PX * cam_dir   # cam_fn: the ground can slow down and stop
             im = world.frame(cam, t)
             d = ImageDraw.Draw(im, "RGBA")
             _BOXES.clear()
@@ -1644,8 +1644,8 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1, cam_fn=None):
             if push or shake or pull:
                 z = 1.0 + push * (u * u * (3 - 2 * u)) + pull * (1 - u * u * (3 - 2 * u)) + (0.05 if shake else 0.0)
                 cw, ch = W / z, H / z
-                cx = W / 2 + shake * math.sin(t * 61) * 1.0
-                cy = min(max(H * getattr(world, "focus_y", 0.62) + shake * math.cos(t * 53), ch / 2), H - ch / 2)
+                cx = W / 2 + shake * 0.5 * math.sin(t * 61) * 1.0
+                cy = min(max(H * getattr(world, "focus_y", 0.62) + shake * 0.5 * math.cos(t * 53), ch / 2), H - ch / 2)
                 cx = min(max(cx, cw / 2), W - cw / 2)
                 if box:  # where that box ends up after the zoom
                     ax, ay = cx - cw / 2, cy - ch / 2
@@ -1669,7 +1669,8 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1, cam_fn=None):
     LAST_TRACK[:] = track
 
 
-STEP = 1.9 * 2 * math.pi
+WALK_PX = 176.0                      # how fast the ground scrolls under a walking monster (px/s): heavy, deliberate
+STEP = 1.9 * 2 * math.pi * 0.68     # step rate: about one step every 1.5 s for a big creature
 
 
 def walk_scene(out, dur, world, sp, facing=1, zoom=(1.0, 1.0), hybrid_roar_end=False, cwd=None,
@@ -6858,7 +6859,7 @@ def designs_to_json(g):
 
 
 # ================================================================ full-body actions for the hybrids
-def chim_ground(sp):
+def _chim_ground0(sp):
     """The creature's natural walking speed across the ground (px/s): heavy, long-legged animals are slow and sweeping,
     small light ones quick and busy. The scenery scrolls at exactly this speed."""
     g = sp["g"]
@@ -6871,6 +6872,11 @@ def chim_ground(sp):
     heavy = _clip((g["torso"][1] * g["torso"][2]) / 40000.0, 0.4, 2.0)      # a rough mass
     f = _clip(2.2 - 0.9 * heavy - ll / 400.0, 0.7, 2.2) * (0.6 + 0.6 * GA["speed"])   # strides per second
     return _clip(4.0 * stride_px * f, 140.0, 400.0)
+
+
+def chim_ground(sp):
+    """A quarter slower than the raw natural pace: monsters should feel heavy and deliberate."""
+    return 0.75 * _chim_ground0(sp)
 
 
 def chim_rate(sp, ground=None):
@@ -7464,6 +7470,12 @@ def _lit_draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=Non
     wide = Image.fromarray((np.clip(lit_edge, 0, 1) * 255).astype(np.uint8), "L").filter(ImageFilter.GaussianBlur(7 * max(s, 0.6)))
     wide = np.asarray(wide, dtype=np.float32)[..., None] / 255.0
     C = np.clip(C + wide * solid[..., None] * lc * 0.30, 0, 255)
+    v = float(st.get("veil", sp.get("veil", 0.0)) or 0.0)
+    if v > 0:       # suspense: before the reveal the creature is only a dark shape in the fog, with its eyes still glowing
+        sat = (((C.max(axis=2) - C.min(axis=2)) > 95) & (C.max(axis=2) > 190))[..., None].astype(np.float32)
+        dark = np.array(rgb(world.st["sky"][1]), dtype=np.float32) * 0.22 if world is not None else np.array((8, 8, 14), dtype=np.float32)
+        C = (C * (1 - 0.90 * v) + dark * 0.90 * v) * (1 - sat) + C * sat
+        A = A * (1 - 0.18 * v)
     out = np.zeros((h, w, 4), dtype=np.uint8)
     out[..., :3] = C.astype(np.uint8)
     out[..., 3] = (A * 255).astype(np.uint8)
@@ -7546,7 +7558,7 @@ def skeletal_folk(name, design=None):
 _BONE = (218, 210, 188)
 _SK = {"pen": None, "sp": None, "st": None}      # context for the planted-limb replacement
 _ORIG_LIMB = limb
-_GROUND_PX = 260.0                                # how fast the world scrolls in the folklore scenes (px/s)
+_GROUND_PX = WALK_PX                                # how fast the world scrolls in the folklore scenes (px/s)
 _PHASE_RATE = STEP * 0.5                          # the engine's usual step rate (phase units per second)
 
 
