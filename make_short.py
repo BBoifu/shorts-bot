@@ -2025,7 +2025,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
               "eyes": "one of: red, gold, green, white, violet, orange, blue", "size": "small, medium or huge",
               "horn": "none, antlers, ram, twin or bull (only matters for body beast)", "spine": "bone, long or none",
               "eye_count": "a number from 2 to 6"}},
-  "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "setting": "one place word from the list below", "delivery": "one voice mood from the list below", "speaker": "narrator, person, creature or mimic", "voice": "only for person and mimic lines: man, woman, boy, girl, old_man or old_woman"}}]
+  "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "setting": "one place word from the list below", "delivery": "one voice mood from the list below", "speaker": "narrator, person, creature, mimic or host", "voice": "only for person and mimic lines: man, woman, boy, girl, old_man or old_woman"}}]
 }}
 
 Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken English, no emojis):
@@ -2064,6 +2064,9 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
   can be followed by a short second one that fits ("Wait for me, son!", "It's me! The sheriff!", "Open the door, it's cold").
   All other sentences have "speaker": "narrator". The first and last sentence are always the narrator, and never more than
   two spoken lines in a row.
+- Host reactions: in 1 or 2 places add one short sentence with "speaker": "host" and "voice": "host", the narrator's curious
+  friend reacting out loud in 2 to 6 words to the sentence just before it ("Wait, WHAT?!", "It did what?!", "Who was that?").
+  A host line is never the first or last sentence and never sits next to a person, mimic or creature line.
 - Every sentence also gets a "delivery", how the narrator's VOICE should sound on that line. Pick from: calm, hushed,
   whisper, urgent (fast and frightened), trembling, shout (a sudden terrified high shout, for the attack), low (slow and
   deep, ominous), sorrow, awe, dread. Vary them so the voice swings between quiet and sudden, high and deep.
@@ -2091,9 +2094,11 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
             data["sentences"] = sents[:9]
             for k, x in enumerate(data["sentences"]):
                 sp_ = str(x.get("speaker", "narrator")).lower()
-                x["speaker"] = sp_ if sp_ in ("person", "creature", "mimic") else "narrator"
+                x["speaker"] = sp_ if sp_ in ("person", "creature", "mimic", "host") else "narrator"
                 vv = str(x.get("voice", "")).lower().replace(" ", "_")
-                x["voice"] = vv if vv in ("man", "woman", "boy", "girl", "old_man", "old_woman") else ""
+                x["voice"] = vv if vv in ("man", "woman", "boy", "girl", "old_man", "old_woman", "host") else ""
+                if x["speaker"] == "host":
+                    x["voice"] = "host"
                 prev2 = [data["sentences"][j]["speaker"] for j in (k - 1, k - 2) if j >= 0]
                 if k in (0, len(data["sentences"]) - 1) or (len(prev2) == 2 and all(p != "narrator" for p in prev2)):
                     x["speaker"] = "narrator"
@@ -2195,7 +2200,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
   "monster": {{"body": "ONE of: {", ".join(var["bodies"])}", "palette": "ONE of: {", ".join(var["palettes"])}",
               "eyes": "one of: red, gold, green, white, violet, orange, blue", "size": "small, medium or huge",
               "horn": "none", "spine": "bone, long or none", "eye_count": "a number from 2 to 6"}},
-  "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "delivery": "one voice mood from the list below", "speaker": "narrator, person, creature or mimic", "voice": "only for person and mimic lines: man, woman, boy, girl, old_man or old_woman"}}]
+  "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "delivery": "one voice mood from the list below", "speaker": "narrator, person, creature, mimic or host", "voice": "only for person and mimic lines: man, woman, boy, girl, old_man or old_woman"}}]
 }}
 
 Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken English, first person "I", no emojis):
@@ -2239,6 +2244,9 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
   can be followed by a short second one that fits ("Wait for me, son!", "It's me! The sheriff!", "Open the door, it's cold").
   All other sentences have "speaker": "narrator". The first and last sentence are always the narrator, and never more than
   two spoken lines in a row.
+- Host reactions: in 1 or 2 places add one short sentence with "speaker": "host" and "voice": "host", the narrator's curious
+  friend reacting out loud in 2 to 6 words to the sentence just before it ("Wait, WHAT?!", "It did what?!", "Who was that?").
+  A host line is never the first or last sentence and never sits next to a person, mimic or creature line.
 - Every sentence also gets a "delivery": calm, hushed, whisper, urgent, trembling, shout, low, sorrow, awe or dread.
 - The second to last sentence builds to the moment of seeing it.
 - Last sentence: a question for viewers that fits THIS story (for example "Would you have gone down there?").
@@ -2265,9 +2273,11 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
             data["sentences"] = sents[:9]
             for k, x in enumerate(data["sentences"]):
                 sp_ = str(x.get("speaker", "narrator")).lower()
-                x["speaker"] = sp_ if sp_ in ("person", "creature", "mimic") else "narrator"
+                x["speaker"] = sp_ if sp_ in ("person", "creature", "mimic", "host") else "narrator"
                 vv = str(x.get("voice", "")).lower().replace(" ", "_")
-                x["voice"] = vv if vv in ("man", "woman", "boy", "girl", "old_man", "old_woman") else ""
+                x["voice"] = vv if vv in ("man", "woman", "boy", "girl", "old_man", "old_woman", "host") else ""
+                if x["speaker"] == "host":
+                    x["voice"] = "host"
                 prev2 = [data["sentences"][j]["speaker"] for j in (k - 1, k - 2) if j >= 0]
                 if k in (0, len(data["sentences"]) - 1) or (len(prev2) == 2 and all(p != "narrator" for p in prev2)):
                     x["speaker"] = "narrator"
@@ -2378,14 +2388,14 @@ ATTACK_WORDS = ("attack", "lunge", "pounc", "tore", "torn", "bit ", "bite", "blo
 
 
 SCENE_FUNCS = ("dig", "fly", "bedroom", "stairs", "basement", "hallway", "cctv", "jump", "hook", "footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
-               "omen", "pov", "mpov", "curtain", "shoulder", "loom", "emerge", "swirl", "abyss", "dawn")
+               "omen", "pov", "mpov", "curtain", "shoulder", "loom", "emerge", "swirl", "abyss", "dawn", "hosts")
 CAMERA_SCENES = ("pov", "mpov", "curtain", "shoulder", "loom")
 MODERN_SCENES = ("bedroom", "stairs", "basement", "hallway", "cctv", "door", "window", "curtain", "jump",
                  "woods", "neighbour", "lamp", "road", "mirror", "dig", "fly",
                  "ocean", "lake", "lava", "tornado", "tsunami", "giant",
-                 "retreat", "tidelog", "radio", "harbor", "rise", "glass", "ridge", "emerge", "swirl", "abyss", "dawn")
+                 "retreat", "tidelog", "radio", "harbor", "rise", "glass", "ridge", "emerge", "swirl", "abyss", "dawn", "hosts")
 SECOND_BEAT = {}   # sentence index -> a second story scene for the same sentence
-STORY_SCENES = ("retreat", "tidelog", "radio", "harbor", "rise", "glass", "ridge", "emerge", "swirl", "abyss", "dawn")   # scenes for one specific narrated event
+STORY_SCENES = ("retreat", "tidelog", "radio", "harbor", "rise", "glass", "ridge", "emerge", "swirl", "abyss", "dawn", "hosts")   # scenes for one specific narrated event
 STORY_NATURE = ("retreat", "harbor", "rise", "ridge")                                  # only for stories set in nature
 MODERN_WORDS = (("emerge", ("out of the ground", "out of the earth", "from the soil", "clawed its way", "dug itself out", "from the grave", "burst from the ground", "broke through the ground")),
                 ("swirl", ("foam", "whirlpool", "swirl", "ripples", "vortex", "bubbles rose")),
@@ -2426,6 +2436,7 @@ SCENE_INFO = {
     "rise": ("A black mountain of water rises out of the trench, weed and bone on its crest, eyes opening", "wide tilt up", "deep rumble, rushing water"),
     "glass": ("Eyes glowing behind rain-streaked reinforced glass that begins to crack", "locked, close", "glass creak, rain, a low heartbeat"),
     "ridge": ("The giant creature crests the ridge and blots out the stars", "low angle, slow", "ground tremor, heavy breath"),
+    "hosts": ("The two hosts react to what was just said: a wide-eyed look, a gasp, a question", "medium two-shot, slight bob", "a soft sting"),
     "emerge": ("Something drags itself out of the ground while a huge ghostly shape watches from the sky", "slow tilt up, eased rise", "earth cracking, dust, a low groan"),
     "swirl": ("The water rings and foams into a swirl and a shape slowly surfaces", "slow push-in", "water ripple, a deep hum"),
     "abyss": ("Cast down into a red pit, rock walls rushing past, figures tumbling", "falling, shaking", "a long falling rumble"),
@@ -2450,7 +2461,7 @@ def write_storyboard(sentences, beats, durs, settings, path):
 
 
 SCENES = ("walk", "dig", "fly", "footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
-          "stalk", "attack", "aftermath", "omen", "pov", "mpov", "curtain", "shoulder", "loom", "emerge", "swirl", "abyss", "dawn")
+          "stalk", "attack", "aftermath", "omen", "pov", "mpov", "curtain", "shoulder", "loom", "emerge", "swirl", "abyss", "dawn", "hosts")
 SCENE_WORDS = (("dig", ("dig ", "digging", "dug ", "unearth", "shovel", "burying", "buried it", "claw at the earth", "clawing at the ground")),
                ("fly", ("flew", "flying", "fly ", "wings", "soared", "soaring", "took off", "takes off", "into the sky", "swooped")),
                ("footprints", ("footstep", "footprint", "steps behind", "tracks")),
@@ -2527,8 +2538,10 @@ def assign_modern_beats(sentences, stype=None):
             SECOND_BEAT[i] = hits_[1][1]                # a sentence that says two things gets two shots, in the order it says them
         if said and (said not in STORY_NATURE or stype in NATURE_TYPES) and s.get("speaker", "narrator") == "narrator":
             b = said                                    # what the sentence SAYS decides the picture, not a guess
-        if b not in MODERN_SCENES:
+        if b not in MODERN_SCENES and s.get("speaker") != "host":
             b = next((name for name, words in MODERN_WORDS if any(w in low for w in words)), MODERN_FILL[i % len(MODERN_FILL)])
+        if s.get("speaker") == "host":
+            b = "hosts"                                 # the two hosts react to what was just narrated
         beats.append(b)
     place = MODERN_PLACE_SCENES.get(stype or "")
     fill = tuple(place) if place else MODERN_FILL
@@ -2606,6 +2619,8 @@ def assign_beats(sentences, modern=False, stype=None):
         b = s.get("beat")
         low = s["text"].lower()
         said = legend_said(low) if s.get("speaker", "narrator") == "narrator" and 0 < i < n - 1 else None
+        if s.get("speaker") == "host" and 0 < i < n - 1:
+            said = "hosts"
         if said:
             said_idx.add(i)
             b = said                                    # what the sentence SAYS decides the picture
@@ -2846,11 +2861,14 @@ def make_mixed_voice(sentences, narrator, beats=None):
     narr_voice = os.environ.get("GEMINI_VOICE") or GEMINI_VOICE
     creature_voice = random.choice([v for v in ("Algenib", "Enceladus", "Fenrir") if v != narr_voice])
     # who can speak: (gemini voice, pitch factor). A child is the same kind of voice, only higher.
-    pool_m = [v for v in MALE_VOICES if v not in (narr_voice, creature_voice)] or ["Orus"]
-    pool_f = FEMALE_VOICES
+    host_voice = os.environ.get("HOST_VOICE") or ("Aoede" if narr_voice in MALE_VOICES else "Fenrir")
+    creature_voice = creature_voice if creature_voice != host_voice else "Enceladus"
+    pool_m = [v for v in MALE_VOICES if v not in (narr_voice, creature_voice, host_voice)] or ["Orus"]
+    pool_f = [v for v in FEMALE_VOICES if v != host_voice] or FEMALE_VOICES
     vmap = {"man": (random.choice(pool_m), 1.0), "woman": (random.choice(pool_f), 1.0),
             "boy": (random.choice(pool_m), 1.22), "girl": (random.choice(pool_f), 1.12),
             "old_man": (random.choice(pool_m), 0.92), "old_woman": (random.choice(pool_f), 0.94)}
+    vmap["host"] = (host_voice, 1.06)                      # the same bright voice every time: the second recurring character
     narr_gender = narrator.get("gender") if narrator.get("gender") in ("male", "female") else "male"
     default_person = "woman" if narr_gender == "male" else "man"
     log(f"Voices: narrator {narr_voice}, creature {creature_voice}, people {vmap} ({len(runs)} parts)")
@@ -2872,7 +2890,12 @@ def make_mixed_voice(sentences, narrator, beats=None):
         else:
             who = sentences[a].get("voice") or default_person
             gv, pf = vmap.get(who, vmap[default_person])
-            if spk == "mimic":  # the creature copying a loved one: right voice, wrong in a way you feel more than hear
+            if spk == "host":
+                ok = gemini_tts(text, raw, style="a bright, quick, curious young voice, startled and a little thrilled, "
+                                "as if reacting to something unbelievable", voice=gv)
+                chain = (f"aresample=44100,asetrate={int(44100 * pf)},aresample=44100,loudnorm=I=-18:TP=-2:LRA=9,"
+                         "aformat=sample_fmts=s16:channel_layouts=mono")
+            elif spk == "mimic":  # the creature copying a loved one: right voice, wrong in a way you feel more than hear
                 ok = gemini_tts(text, raw, style="a warm, loving, familiar voice calling out gently, but strangely flat and "
                                 "slightly too calm, as if copied", voice=gv)
                 chain = (f"aresample=44100,asetrate={int(44100 * pf)},aresample=44100,vibrato=f=6.5:d=0.06,"
