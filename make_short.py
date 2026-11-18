@@ -259,6 +259,10 @@ HYB_FORMATS = (
 
 
 def ask_gemini(a, b, place_name, design_text="", fmt=None):
+    fmt = fmt or random.choice(HYB_FORMATS)
+    fname, fam, brief, middle = fmt
+    brief, middle = brief.format(place=place_name, a=a, b=b), middle.format(place=place_name, a=a, b=b)
+    acts = HYB_ACTIONS_ENC if fam == "enc" else HYB_ACTIONS_WILD
     prompt = f"""You write narration for 40-second YouTube Shorts about IMAGINARY animal hybrids.
 
 Idea: a hybrid of a {a} and a {b}, living in {place_name}.
