@@ -8333,3 +8333,389 @@ def dawn_scene(out, dur, world, sp, cwd=None):
 
 
 STORY_FUNCS.update({"emerge": emerge_scene, "swirl": swirl_scene, "abyss": abyss_scene, "dawn": dawn_scene})
+
+
+# ---------------------------------------------------------------- the two recurring hosts react to what was just said
+_HS = 2                                                      # host sprites are drawn at 2x and shrunk for clean edges
+_OUT = (48, 28, 30)
+
+
+def _shade(c, k):
+    return tuple(max(0, min(255, int(v * k))) for v in c)
+
+
+def _pl(d, pts, col, w, S):
+    """A smooth, round-capped thick line through points (arms, brows, hair strands)."""
+    w = int(w * S)
+    d.line(pts, fill=col, width=w, joint="curve")
+    for x, y in (pts[0], pts[-1]):
+        d.ellipse((x - w / 2, y - w / 2, x + w / 2, y + w / 2), fill=col)
+
+
+def _soft(im, S, clip_fn, shade_fn, blur, col, alpha):
+    """Soft shading: paint a shape, blur it, keep it only inside clip_fn's region."""
+    from PIL import ImageChops, ImageFilter
+    m = Image.new("L", im.size, 0)
+    clip_fn(ImageDraw.Draw(m))
+    sh = Image.new("L", im.size, 0)
+    shade_fn(ImageDraw.Draw(sh))
+    sh = ImageChops.multiply(sh.filter(ImageFilter.GaussianBlur(blur * S)), m)
+    lay = Image.new("RGBA", im.size, tuple(col) + (0,))
+    lay.putalpha(sh.point(lambda v: int(v * alpha)))
+    im.alpha_composite(lay)
+
+
+def _blob(im, box, col, alpha, blur, S):
+    """A soft translucent highlight that really blends (ImageDraw alpha fills would punch holes in an RGBA layer)."""
+    from PIL import ImageFilter
+    m = Image.new("L", im.size, 0)
+    ImageDraw.Draw(m).ellipse(box, fill=255)
+    m = m.filter(ImageFilter.GaussianBlur(blur * S))
+    lay = Image.new("RGBA", im.size, tuple(col) + (0,))
+    lay.putalpha(m.point(lambda v: int(v * alpha)))
+    im.alpha_composite(lay)
+
+
+def _hand(d, x, y, s, skin, ang, S):
+    """A clean cartoon hand: fanned rounded fingers, a thumb and a palm, one outline around the whole shape."""
+    parts = []
+    for k, da in enumerate((-0.6, -0.2, 0.2, 0.6)):
+        a = ang + da
+        l = (54, 64, 64, 54)[k] * s
+        parts.append(((x, y), (x + math.sin(a) * l, y - math.cos(a) * l), 15 * s))
+    ta = ang - 1.15
+    parts.append(((x, y + 6 * s), (x + math.sin(ta) * 36 * s, y + 6 * s - math.cos(ta) * 36 * s), 16 * s))
+    for col, grow in ((_OUT, 6), (skin, 0)):
+        for p0, p1, w in parts:
+            _pl(d, [(p0[0] * 1, p0[1] * 1), p1], col + (255,), w + grow, S)
+        r = 25 * s + grow / 2
+        d.ellipse(((x - r), (y - r * 0.9), (x + r), (y + r * 1.1)), fill=col + (255,))
+    for da in (-0.4, 0.0, 0.4):                                              # gaps between the fingers
+        a = ang + da
+        d.line([(x + math.sin(a) * 18 * s, y - math.cos(a) * 18 * s), (x + math.sin(a) * 62 * s, y - math.cos(a) * 62 * s)], fill=_shade(skin, 0.55) + (255,), width=int(3 * S))
+    for p0, p1, w in parts[:4]:                                              # finger creases
+        d.line([((p0[0] + p1[0]) / 2 - 4 * s, (p0[1] + p1[1]) / 2 + 4 * s), ((p0[0] + p1[0]) / 2 + 4 * s, (p0[1] + p1[1]) / 2 + 4 * s)], fill=_shade(skin, 0.8) + (255,), width=int(2 * S))
+
+
+def _eye(d, x, y, s, look, blink, iris, S, lash=False, lid=True):
+    w, h = 32 * s, 26 * s * (1 - 0.93 * blink)
+    d.ellipse((x - w, y - h, x + w, y + h), fill=(252, 250, 246, 255))
+    if lid:
+        d.pieslice((x - w, y - h, x + w, y + h), 205, 335, fill=(214, 206, 204, 255))                  # lid shadow on the white
+    if blink < 0.65:
+        ix, iy = x + look[0] * 8 * s, y + look[1] * 5 * s
+        r = 18 * s
+        k = 1 - 0.8 * blink
+        d.ellipse((ix - r, iy - r * k, ix + r, iy + r * k), fill=iris + (255,))
+        d.ellipse((ix - r * 0.82, iy - r * 0.2, ix + r * 0.82, iy + r * 0.9 * k), fill=tuple(int(v * 0.6 + w_ * 0.4) for v, w_ in zip(_shade(iris, 1.35), iris)) + (255,))
+        d.ellipse((ix - r * 0.52, iy - r * 0.52 * k, ix + r * 0.52, iy + r * 0.52 * k), fill=(16, 10, 12, 255))
+        d.ellipse((ix - r * 0.55, iy - r * 0.78 * k, ix - r * 0.08, iy - r * 0.3 * k), fill=(255, 255, 255, 255))
+        d.ellipse((ix + r * 0.25, iy + r * 0.2, ix + r * 0.5, iy + r * 0.45), fill=(238, 238, 238, 255))
+    d.arc((x - w, y - h - 1, x + w, y + h), 188, 352, fill=_OUT + (255,), width=int(6.5 * S * s))
+    d.arc((x - w, y - h, x + w, y + h), 18, 162, fill=(120, 86, 80, 255), width=int(2.5 * S))
+
+
+def _brow(d, x, y, s, rise, tilt, col, thick, S, outline=True):
+    pts = [(x - 36 * s, y + 6 * s + tilt * 6 * s), (x - 12 * s, y - 8 * s - rise * 12 * s), (x + 14 * s, y - 9 * s - rise * 14 * s), (x + 36 * s, y + 2 * s - tilt * 6 * s)]
+    if outline:
+        _pl(d, pts, _OUT + (255,), thick + 4, S)
+    _pl(d, pts, col + (255,), thick, S)
+
+
+def _mouth(d, x, y, s, open_, smile, S):
+    w = 38 * s
+    lip = (196, 98, 100)
+    if open_ < 0.12:
+        d.arc((x - w, y - 24 * s, x + w, y + 20 * s * (0.5 + smile)), 22, 158, fill=_OUT + (255,), width=int(5 * S * s))
+        d.ellipse((x - 14 * s, y + 8 * s, x + 14 * s, y + 20 * s), fill=lip + (170,))
+        return
+    o = open_ * 52 * s
+    d.chord((x - w, y - 12 * s, x + w, y + o + 10 * s), 0, 180, fill=(84, 20, 30, 255), outline=_OUT + (255,), width=int(4 * S))
+    d.chord((x - w * 0.78, y - 10 * s, x + w * 0.78, y + 14 * s), 180, 360, fill=(252, 250, 244, 255))
+    d.chord((x - w * 0.6, y + o * 0.35, x + w * 0.6, y + o + 8 * s), 0, 180, fill=(222, 100, 108, 255))
+    d.arc((x - w, y - 12 * s, x + w, y + o + 10 * s), 0, 180, fill=lip + (255,), width=int(5 * S * s))
+
+
+def _host_sprite(kind, t, speaking, ph):
+    """kind 0: the storyteller (older, bearded, glasses, teal robe). kind 1: the reactor (young, curly hair, mustard jacket)."""
+    S = _HS
+    im = Image.new("RGBA", (600 * S, 900 * S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im, "RGBA")
+    sc = lambda v: v * S
+    bob = 5 * math.sin(t * 3.0 + ph)
+    cx, hy = 300, 300 + bob
+    rx, ry = 104, 120
+    ph_ = (t + ph) % 3.4
+    blink = max(0.0, 1 - abs(ph_ - 3.2) / 0.1) if ph_ > 3.1 else 0.0
+    talk = (0.3 + 0.7 * abs(math.sin(t * 8.5 + ph) * math.sin(t * 3.1 + 1))) if speaking else 0.0
+    if kind == 0:
+        skin, cloth, trim, hair, iris = (232, 184, 146), (36, 98, 118), (236, 196, 100), (236, 234, 230), (62, 112, 92)
+        rise, tilt, look, smile = 0.15 + 0.15 * math.sin(t * 2), -0.3, (0.8, -0.4), 0.7
+    else:
+        skin, cloth, trim, hair, iris = (180, 120, 88), (226, 152, 50), (120, 56, 38), (46, 28, 26), (96, 62, 34)
+        rise, tilt, look, smile = 1.3, 0.9, (-0.8, -0.5), 0.0
+    # ---- torso (rounded shoulders), soft shading
+    body = lambda dd, fill, col=None, wd=0: dd.rounded_rectangle((sc(cx - 205), sc(490 + bob), sc(cx + 205), sc(1000)), radius=sc(95), fill=fill, outline=col, width=wd)
+    body(d, cloth + (255,), _OUT + (255,), sc(4))
+    _soft(im, S, lambda m: body(m, 255), lambda m: m.ellipse((sc(cx + 40), sc(430), sc(cx + 420), sc(1100)), fill=255), 40, _shade(cloth, 0.5), 0.75)
+    _soft(im, S, lambda m: body(m, 255), lambda m: m.ellipse((sc(cx - 330), sc(500), sc(cx - 120), sc(900)), fill=255), 35, _shade(cloth, 1.5), 0.3)
+    d = ImageDraw.Draw(im, "RGBA")
+    d.rectangle((sc(cx - 36), sc(400 + bob), sc(cx + 36), sc(520 + bob)), fill=_shade(skin, 0.93) + (255,))
+    _soft(im, S, lambda m: m.rectangle((sc(cx - 36), sc(400), sc(cx + 36), sc(520)), fill=255), lambda m: m.ellipse((sc(cx - 90), sc(380), sc(cx + 90), sc(450)), fill=255), 10, (90, 40, 30), 0.55)
+    d = ImageDraw.Draw(im, "RGBA")
+    if kind == 0:                                                              # high collar, gold clasp, trim
+        d.polygon([(sc(cx - 78), sc(492 + bob)), (sc(cx), sc(610 + bob)), (sc(cx + 78), sc(492 + bob)), (sc(cx + 50), sc(478 + bob)), (sc(cx), sc(560 + bob)), (sc(cx - 50), sc(478 + bob))], fill=trim + (255,), outline=_OUT + (255,))
+        d.ellipse((sc(cx - 22), sc(600 + bob), sc(cx + 22), sc(644 + bob)), fill=(240, 206, 110, 255), outline=_OUT + (255,), width=sc(3))
+        d.ellipse((sc(cx - 9), sc(613 + bob), sc(cx + 9), sc(631 + bob)), fill=(60, 140, 120, 255))
+        for k in range(3):
+            d.arc((sc(cx - 150 + k * 100), sc(690 + k * 20), sc(cx - 40 + k * 100), sc(820 + k * 20)), 210, 320, fill=_shade(cloth, 0.7) + (255,), width=sc(4))
+        for k in range(9):
+            d.ellipse((sc(cx - 176 + k * 44), sc(868), sc(cx - 162 + k * 44), sc(882)), fill=trim + (255,))
+    else:                                                                      # open jacket over a cream top, lapels, pocket
+        d.polygon([(sc(cx - 70), sc(492 + bob)), (sc(cx), sc(640 + bob)), (sc(cx + 70), sc(492 + bob)), (sc(cx + 46), sc(482 + bob)), (sc(cx), sc(560 + bob)), (sc(cx - 46), sc(482 + bob))], fill=(248, 236, 210, 255), outline=_OUT + (255,))
+        d.polygon([(sc(cx - 70), sc(492 + bob)), (sc(cx - 96), sc(700)), (sc(cx - 4), sc(640 + bob))], fill=_shade(cloth, 0.82) + (255,), outline=_OUT + (255,))
+        d.polygon([(sc(cx + 70), sc(492 + bob)), (sc(cx + 96), sc(700)), (sc(cx + 4), sc(640 + bob))], fill=_shade(cloth, 0.7) + (255,), outline=_OUT + (255,))
+        d.line([(sc(cx), sc(640 + bob)), (sc(cx), sc(1000))], fill=_shade(cloth, 0.6) + (255,), width=sc(5))
+        d.rounded_rectangle((sc(cx + 70), sc(740), sc(cx + 160), sc(800)), radius=sc(10), outline=_shade(cloth, 0.6) + (255,), width=sc(4))
+        d.ellipse((sc(cx - 36), sc(590 + bob), sc(cx + 36), sc(650 + bob)), fill=(196, 64, 54, 255), outline=_OUT + (255,), width=sc(3))   # scarf knot
+    # ---- arms and hands (connected to the shoulders)
+    up = 0.5 + 0.5 * math.sin(t * 2.4 + ph)
+    if kind == 1:
+        for sx in (-1, 1):
+            pts = [(sc(cx + sx * 175), sc(570 + bob)), (sc(cx + sx * 245), sc(650)), (sc(cx + sx * 150), sc(hy + 160 - 12 * up))]
+            _pl(d, pts, _OUT + (255,), 62, S)
+            _pl(d, pts, cloth + (255,), 54, S)
+            _pl(d, pts[1:], _shade(cloth, 0.8) + (255,), 10, S)
+            _hand(d, sc(cx + sx * 140), sc(hy + 130 - 12 * up), 1.35 * S, skin, -sx * 0.28, S)
+    else:
+        pts = [(sc(cx + 175), sc(570 + bob)), (sc(cx + 250), sc(660)), (sc(cx + 215), sc(hy + 205 + 6 * math.sin(t * 1.7)))]
+        _pl(d, pts, _OUT + (255,), 62, S)
+        _pl(d, pts, cloth + (255,), 54, S)
+        _hand(d, sc(cx + 205), sc(hy + 190 + 6 * math.sin(t * 1.7)), 1.35 * S, skin, -0.25, S)
+    d = ImageDraw.Draw(im, "RGBA")
+    # ---- hair behind head (reactor curls)
+    if kind == 1:
+        rnd = random.Random(5)
+        for ring, (rr, n_, sz) in enumerate(((118, 12, 58), (96, 9, 54))):
+            for k in range(n_):
+                a_ = math.radians(180 + 180 * k / (n_ - 1) + rnd.uniform(-6, 6)) if ring == 0 else math.radians(200 + 140 * k / (n_ - 1))
+                x0, y0 = cx + math.cos(a_) * (rr + 16), hy - 10 + math.sin(a_) * (rr + 4)
+                if ring == 0 or True:
+                    d.ellipse((sc(x0 - sz), sc(y0 - sz), sc(x0 + sz), sc(y0 + sz)), fill=hair + (255,), outline=_OUT + (255,), width=sc(3))
+        for sx in (-1, 1):                                                       # side curls down past the ears
+            for k in range(3):
+                d.ellipse((sc(cx + sx * (128 + k * 6) - 36), sc(hy + 20 + k * 40 - 36), sc(cx + sx * (128 + k * 6) + 36), sc(hy + 20 + k * 40 + 36)), fill=hair + (255,), outline=_OUT + (255,), width=sc(3))
+    # ---- ears + head
+    for sx in (-1, 1):
+        d.ellipse((sc(cx + sx * rx - 18), sc(hy - 4), sc(cx + sx * rx + 18), sc(hy + 56)), fill=skin + (255,), outline=_OUT + (255,), width=sc(3))
+        d.ellipse((sc(cx + sx * rx - 8), sc(hy + 12), sc(cx + sx * rx + 8), sc(hy + 40)), fill=_shade(skin, 0.86) + (255,))
+    head = lambda dd, fill, col=None, wd=0: dd.ellipse((sc(cx - rx), sc(hy - ry), sc(cx + rx), sc(hy + ry)), fill=fill, outline=col, width=wd)
+    head(d, skin + (255,), _OUT + (255,), sc(4))
+    _soft(im, S, lambda m: head(m, 255), lambda m: m.ellipse((sc(cx + 40), sc(hy - 200), sc(cx + 300), sc(hy + 220)), fill=255), 30, _shade(skin, 0.6), 0.8)
+    _soft(im, S, lambda m: head(m, 255), lambda m: m.ellipse((sc(cx - 70), sc(hy + 80), sc(cx + 70), sc(hy + 200)), fill=255), 18, _shade(skin, 0.7), 0.35)
+    for sx in (-1, 1):
+        _soft(im, S, lambda m: head(m, 255), lambda m, sx=sx: m.ellipse((sc(cx + sx * 64 - 34), sc(hy + 34), sc(cx + sx * 64 + 34), sc(hy + 76)), fill=255), 14, (232, 96, 96), 0.32)
+    d = ImageDraw.Draw(im, "RGBA")
+    if kind == 1:
+        for sx in (-1, 1):                                                       # freckles
+            for fx, fy in ((-12, 0), (2, 10), (14, -2), (-2, -10), (10, 14)):
+                d.ellipse((sc(cx + sx * 62 + fx - 2.5), sc(hy + 24 + fy - 2.5), sc(cx + sx * 62 + fx + 2.5), sc(hy + 24 + fy + 2.5)), fill=_shade(skin, 0.66) + (255,))
+    # ---- hair on top / beard / headband
+    if kind == 0:
+        for sx in (-1, 1):                                                       # grey side hair above the ears, a bald dome with a shine
+            d.ellipse((sc(cx + sx * 98 - 24), sc(hy - 40), sc(cx + sx * 98 + 24), sc(hy + 14)), fill=hair + (255,), outline=_OUT + (255,), width=sc(3))
+            for k in range(3):
+                _pl(d, [(sc(cx + sx * (112 - k * 12)), sc(hy - 50 + k * 12)), (sc(cx + sx * (80 - k * 10)), sc(hy - 62 + k * 14))], _shade(hair, 0.8) + (255,), 2.5, S)
+        _blob(im, (sc(cx - 46), sc(hy - 98), sc(cx + 4), sc(hy - 72)), (255, 255, 255), 0.4, 5, S); d = ImageDraw.Draw(im, "RGBA")
+        beard = [(cx - 108, hy + 6), (cx - 100, hy + 70), (cx - 62, hy + 134), (cx - 20, hy + 188), (cx, hy + 206), (cx + 20, hy + 188), (cx + 62, hy + 134), (cx + 100, hy + 70), (cx + 108, hy + 6),
+                 (cx + 86, hy + 56), (cx + 44, hy + 76), (cx, hy + 66), (cx - 44, hy + 76), (cx - 86, hy + 56)]
+        d.polygon([(sc(x), sc(y)) for x, y in beard], fill=hair + (255,), outline=_OUT + (255,))
+        d.ellipse((sc(cx - 52), sc(hy + 78), sc(cx + 52), sc(hy + 128)), fill=skin + (255,))                   # the mouth patch inside the beard
+        for k in range(7):
+            _pl(d, [(sc(cx - 70 + k * 23), sc(hy + 96 + abs(k - 3) * 6)), (sc(cx - 64 + k * 21), sc(hy + 160 + (3 - abs(k - 3)) * 12))], _shade(hair, 0.8) + (255,), 2.5, S)
+        mu = [(cx - 54, hy + 78), (cx - 20, hy + 70), (cx, hy + 80), (cx + 20, hy + 70), (cx + 54, hy + 78), (cx + 30, hy + 96), (cx, hy + 88), (cx - 30, hy + 96)]
+        d.polygon([(sc(x), sc(y)) for x, y in mu], fill=hair + (255,), outline=_OUT + (255,))
+    else:
+        for k in range(9):                                                       # fringe curls over the forehead
+            a_ = math.radians(196 + 148 * k / 8)
+            x0, y0 = cx + math.cos(a_) * 96, hy - 40 + math.sin(a_) * 78
+            d.ellipse((sc(x0 - 34), sc(y0 - 34), sc(x0 + 34), sc(y0 + 34)), fill=hair + (255,), outline=_OUT + (255,), width=sc(3))
+            d.arc((sc(x0 - 22), sc(y0 - 24), sc(x0 + 10), sc(y0 + 6)), 200, 300, fill=_shade(hair, 2.2) + (255,), width=sc(3))
+        hb = [(sc(cx - 106 + k * 7), sc(hy - 64 - 22 * math.sin(math.pi * k / 30) + 0)) for k in range(31)]
+        _pl(d, hb, _OUT + (255,), 30, S)
+        _pl(d, hb, (238, 112, 64, 255), 24, S)
+        for k in range(1, 30, 3):
+            d.ellipse((hb[k][0] - sc(4), hb[k][1] - sc(4), hb[k][0] + sc(4), hb[k][1] + sc(4)), fill=(252, 228, 150, 255))
+        for sx in (-1, 1):                                                       # gold hoops
+            d.ellipse((sc(cx + sx * rx - 10), sc(hy + 52), sc(cx + sx * rx + 10), sc(hy + 86)), outline=(244, 204, 90, 255), width=sc(4))
+    # ---- face
+    ey = hy + 6
+    for sx in (-1, 1):
+        _eye(d, sc(cx + sx * 46), sc(ey), S, (look[0], look[1]), blink, iris, S, lash=(kind == 1), lid=(kind == 0))
+        _brow(d, sc(cx + sx * 46), sc(ey - 46), S, rise, tilt * sx, hair, 10 if kind == 0 else 9, S, outline=(kind == 0))
+    d.arc((sc(cx - 18), sc(hy + 44), sc(cx + 18), sc(hy + 80)), 25, 155, fill=_shade(skin, 0.6) + (255,), width=6)
+    d.line([(sc(cx + 10), sc(hy + 22)), (sc(cx + 14), sc(hy + 56))], fill=_shade(skin, 0.78) + (255,), width=5)
+    _blob(im, (sc(cx - 12), sc(hy + 52), sc(cx + 12), sc(hy + 70)), (255, 255, 255), 0.35, 5, S)
+    d = ImageDraw.Draw(im, "RGBA")
+    if kind == 0:                                                              # round gold glasses
+        for sx in (-1, 1):
+            d.ellipse((sc(cx + sx * 46 - 46), sc(ey - 40), sc(cx + sx * 46 + 46), sc(ey + 44)), outline=(212, 168, 70, 255), width=sc(5))
+            d.arc((sc(cx + sx * 46 - 38), sc(ey - 34), sc(cx + sx * 46 + 2), sc(ey + 2)), 200, 270, fill=(250, 250, 250, 255), width=sc(3))
+        d.arc((sc(cx - 14), sc(ey - 20), sc(cx + 14), sc(ey + 6)), 200, 340, fill=(212, 168, 70, 255), width=sc(4))
+        for k in range(3):                                                     # smile lines
+            d.arc((sc(cx + 78 + k * 4), sc(ey + 30 - k * 6), sc(cx + 96 + k * 4), sc(ey + 44 - k * 6)), 270, 90, fill=_shade(skin, 0.72) + (255,), width=5)
+    mx, my = cx, hy + (84 if kind == 1 else 96)
+    _mouth(d, sc(mx), sc(my), S, talk if speaking else 0.0, smile, S)
+    return im.resize((600, 900), Image.LANCZOS)
+
+
+def hosts_scene(out, dur, world, sp, cwd=None):
+    sky = _gradient((14, 16, 40), (86, 56, 90), 1400)
+    world.push, world.shake = 0.06, 0.0
+
+    def paint(im, d, t, u, cam):
+        im.paste(sky, (0, 0))
+        d = ImageDraw.Draw(im, "RGBA")
+        _stars_bg(d, 71, 70, 800, t)
+        _moon(d, 800, 340, 80)
+        for k, (x, r, a) in enumerate(((220, 420, 22), (860, 380, 18))):        # lantern glow behind them
+            d.ellipse((x - r, 1100 - r, x + r, 1100 + r), fill=(255, 170, 90, a))
+        d.polygon([(0, 1560), (300, 1500), (700, 1560), (W, 1510), (W, H), (0, H)], fill=(18, 20, 34, 255))
+        k = _smooth(u / 0.18)                                                   # they step into the frame
+        for kind, x, ph in ((0, 210 - 140 * (1 - k), 0.0), (1, 760 + 140 * (1 - k), 1.7)):
+            spr = _host_sprite(kind, t, kind == 1, ph)
+            im.paste(spr, (int(x - 300), 1020), spr)
+        pop = _smooth((u - 0.1) / 0.12) * (1 - _smooth((u - 0.7) / 0.2))
+        if pop > 0.02:                                                          # the "!" burst above the reactor
+            d = ImageDraw.Draw(im, "RGBA")
+            bx, by = 840, 940 - 20 * pop
+            d.ellipse((bx - 56 * pop, by - 56 * pop, bx + 56 * pop, by + 56 * pop), fill=(255, 236, 160, int(255 * pop)), outline=(52, 30, 28, int(255 * pop)), width=4)
+            d.rectangle((bx - 7 * pop, by - 32 * pop, bx + 7 * pop, by + 8 * pop), fill=(52, 30, 28, int(255 * pop)))
+            d.ellipse((bx - 8 * pop, by + 16 * pop, bx + 8 * pop, by + 32 * pop), fill=(52, 30, 28, int(255 * pop)))
+        _BOXES.append((100, 1000, 980, 1900))
+        dim(im, 4)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": []}
+
+
+STORY_FUNCS.update({"hosts": hosts_scene})
+
+
+# ================================================================ the two recurring hosts, as moody silhouettes
+# Dark figures lit only by a cold rim light from the moon, with glowing eyes. They suit every dark theme and always look the same:
+# kind 0 = the storyteller (broad shoulders, man bun, full beard), kind 1 = the reactor (long hair, slimmer, a loose strand on top).
+def _cr(pts, n=10, closed=False):
+    """Catmull-Rom spline through points: smooth organic outlines."""
+    P = list(pts)
+    P = ([P[-1]] + P + [P[0], P[1]]) if closed else ([P[0]] + P + [P[-1]])
+    out = []
+    for i in range(1, len(P) - 2):
+        p0, p1, p2, p3 = P[i - 1], P[i], P[i + 1], P[i + 2]
+        for k in range(n):
+            u = k / n
+            out.append(tuple(0.5 * ((2 * p1[j]) + (-p0[j] + p2[j]) * u + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * u * u + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * u ** 3) for j in (0, 1)))
+    out.append(P[-2])
+    return out
+
+
+def _sil_sprite(kind, t, speaking, ph):
+    from PIL import ImageChops, ImageFilter
+    S = 2
+    mask = Image.new("L", (600 * S, 900 * S), 0)
+    m = ImageDraw.Draw(mask)
+    pt = lambda L: [(x * S, y * S) for x, y in L]
+    breath = 3 * math.sin(t * 1.6 + ph)
+    tilt = (5 * math.sin(t * 7 + ph) if speaking else 2 * math.sin(t * 1.1 + ph))
+    cx, hy = 300, 300 + breath
+    # shoulders / torso
+    if kind == 0:
+        L = [(cx - 40, 498 + breath), (cx - 110, 510 + breath), (cx - 176, 532 + breath), (cx - 222, 580), (cx - 238, 660), (cx - 242, 900)]
+    else:
+        L = [(cx - 36, 498 + breath), (cx - 96, 512 + breath), (cx - 150, 536 + breath), (cx - 186, 590), (cx - 200, 680), (cx - 204, 900)]
+    sh = _cr(list(reversed(L)) + [(2 * cx - x, y) for x, y in L], 6)
+    m.polygon(pt(sh), fill=255)
+    m.rectangle((pt([(cx - 36, hy + 90)])[0][0], (hy + 90) * S, (cx + 36) * S, 520 * S), fill=255)         # neck
+    # head (rotated slightly with a tilt)
+    def head_pts(rx, ry, top_flat=0.0):
+        pts = []
+        for k in range(48):
+            a = 2 * math.pi * k / 48
+            x, y = math.cos(a) * rx, math.sin(a) * ry
+            if y > 0:
+                x *= 1 - 0.18 * (y / ry) ** 2                                  # tapering jaw
+            pts.append((cx + x + tilt * (-y / ry) * 0.5, hy + y))
+        return pts
+    m.polygon(pt(head_pts(100, 118)), fill=255)
+    for sx in (-1, 1):                                                         # ears
+        m.ellipse(((cx + sx * 104 - 14) * S, (hy - 6) * S, (cx + sx * 104 + 14) * S, (hy + 44) * S), fill=255)
+    if kind == 0:
+        m.ellipse(((cx - 40 + tilt * 0.4) * S, (hy - 214) * S, (cx + 48 + tilt * 0.4) * S, (hy - 128) * S), fill=255)                 # the man bun
+        m.polygon(pt(_cr([(cx - 100, hy - 20), (cx - 96, hy - 100), (cx - 40, hy - 148), (cx + 10, hy - 156), (cx + 70, hy - 140), (cx + 100, hy - 90), (cx + 100, hy - 20)], 6)), fill=255)
+        m.polygon(pt(_cr([(cx - 98, hy + 30), (cx - 100, hy + 90), (cx - 66, hy + 150), (cx - 20, hy + 186), (cx + 20, hy + 186), (cx + 66, hy + 150), (cx + 100, hy + 90), (cx + 98, hy + 30), (cx + 60, hy + 80), (cx - 60, hy + 80)], 6, closed=True)), fill=255)   # full beard
+    else:
+        m.polygon(pt(_cr([(cx - 112, hy - 20), (cx - 120, hy + 120), (cx - 150, hy + 320), (cx - 90, hy + 330), (cx - 84, hy + 140), (cx - 70, hy + 20)], 6, closed=True)), fill=255)
+        m.polygon(pt(_cr([(cx + 112, hy - 20), (cx + 120, hy + 120), (cx + 150, hy + 320), (cx + 90, hy + 330), (cx + 84, hy + 140), (cx + 70, hy + 20)], 6, closed=True)), fill=255)
+        m.polygon(pt(_cr([(cx - 112, hy), (cx - 106, hy - 100), (cx, hy - 152), (cx + 106, hy - 100), (cx + 112, hy)], 6)), fill=255)
+        for k, (dx, dy) in enumerate(((-16, -150), (-34, -190), (-8, -222))):                                                       # a stray strand on top
+            m.ellipse(((cx + dx - 5) * S, (hy + dy - 5) * S, (cx + dx + 5) * S, (hy + dy + 5) * S), fill=255)
+    # light: dark body, bright cold rim on the edges facing the moon (upper right), a faint top-down gradient
+    mask = mask.filter(ImageFilter.GaussianBlur(1.2))
+    rim = ImageChops.subtract(mask, ImageChops.offset(mask, -9 * S, 7 * S)).filter(ImageFilter.GaussianBlur(2.2))
+    rim = rim.point(lambda v: min(255, v * 2))
+    im = Image.new("RGBA", mask.size, (0, 0, 0, 0))
+    body = Image.new("RGBA", mask.size, (9, 9, 16, 0))
+    body.putalpha(mask)
+    im.alpha_composite(body)
+    glow = Image.new("RGBA", mask.size, (150, 176, 230, 0))
+    glow.putalpha(ImageChops.multiply(rim, mask).point(lambda v: int(v * 0.95)))
+    im.alpha_composite(glow)
+    # glowing eyes (pulse harder while speaking)
+    d = ImageDraw.Draw(im, "RGBA")
+    pulse = (0.65 + 0.35 * math.sin(t * 9 + ph)) if speaking else (0.5 + 0.12 * math.sin(t * 1.5 + ph))
+    blink = 0.0
+    ph_ = (t + ph) % 3.8
+    if ph_ > 3.68:
+        blink = 1 - abs(ph_ - 3.74) / 0.06
+    col = (255, 196, 110) if kind == 0 else (150, 190, 255)
+    for sx in (-1, 1):
+        ex, ey = (cx + sx * 44 + tilt * 0.2) * S, (hy + 8) * S
+        h = (6 if kind == 0 else 9) * S * max(0.12, 1 - 0.9 * blink)
+        w = (26 if kind == 0 else 24) * S
+        _blob(im, (ex - w * 1.8, ey - h * 3.2, ex + w * 1.8, ey + h * 3.2), col, 0.45 * pulse, 14, S)
+        d = ImageDraw.Draw(im, "RGBA")
+        d.polygon([(ex - w * sx * -1 * 0 - w, ey + h * 0.4), (ex, ey - h), (ex + w, ey + h * 0.2 - (4 * S if kind == 0 else 0)), (ex, ey + h)], fill=tuple(int(c * (0.7 + 0.3 * pulse)) for c in col) + (255,))
+    return im.resize((600, 900), Image.LANCZOS)
+
+
+def hosts_scene(out, dur, world, sp, cwd=None):
+    sky = _gradient((8, 10, 30), (64, 46, 84), 1400)
+    world.push, world.shake = 0.06, 0.0
+
+    def paint(im, d, t, u, cam):
+        im.paste(sky, (0, 0))
+        d = ImageDraw.Draw(im, "RGBA")
+        _stars_bg(d, 71, 70, 800, t)
+        _moon(d, 840, 330, 90)
+        for x, r, a in ((840, 520, 26), (840, 340, 30)):                         # cold halo behind the figures
+            d.ellipse((x - r, 330 - r * 0.9, x + r, 330 + r * 0.9), fill=(150, 176, 230, a))
+        d.polygon([(0, 1580), (300, 1520), (700, 1580), (W, 1530), (W, H), (0, H)], fill=(10, 10, 20, 255))
+        k = _smooth(u / 0.2)                                                    # they step out of the dark into the frame
+        for kind, x, ph in ((0, 215 - 120 * (1 - k), 0.0), (1, 780 + 120 * (1 - k), 1.7)):
+            spr = _sil_sprite(kind, t, kind == 1, ph)
+            if k < 1:
+                a = spr.getchannel("A").point(lambda v, k=k: int(v * k))
+                spr.putalpha(a)
+            spr = spr.resize((720, 1080), Image.LANCZOS)
+            im.paste(spr, (int(x - 360), 900), spr)
+        d = ImageDraw.Draw(im, "RGBA")
+        for k2 in range(5):                                                     # mist drifting across their feet
+            y = 1640 + k2 * 40
+            xo = (t * (20 + k2 * 8) + k2 * 190) % (W + 600) - 300
+            d.ellipse((xo - 380, y - 30, xo + 380, y + 30), fill=(150, 160, 200, 26))
+        _BOXES.append((100, 900, 980, 1900))
+        dim(im, 4)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": []}
+
+
+STORY_FUNCS.update({"hosts": hosts_scene})
