@@ -619,15 +619,19 @@ def _save_audio(b64, mime, dest_wav):
         w.writeframes(raw)
 
 
+_TTS_NO_META = set()
+
+
 def gemini_tts(text, dest_wav, style=None, voice=None):
     """More natural voice from Gemini. Returns True on success."""
     headers = {"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"}
     style = style or "an excited, curious nature-documentary narrator, warm and dramatic, natural pacing"
     attempts = []
     for model in TTS_MODELS:
-        attempts.append((model, "interactions", True))
+        if (model, "meta") not in _TTS_NO_META:
+            attempts.append((model, "interactions", True))
+        attempts.append((model, "classic", True))                 # keeps the narrator style as plain text when speech metadata is refused
         attempts.append((model, "interactions", False))
-        attempts.append((model, "classic", True))
     dead = set()  # (model, endpoint type) pairs that answered 404
     for model, style_kind, with_style in attempts:
         if (model, style_kind) in dead:
@@ -658,6 +662,8 @@ def gemini_tts(text, dest_wav, style=None, voice=None):
                 log(f"Gemini voice {model} [{style_kind}] -> {r.status_code}: {r.text[:250]}")
                 if r.status_code == 404:
                     dead.add((model, style_kind))
+                if r.status_code == 400 and "metadata" in r.text.lower():
+                    _TTS_NO_META.add((model, "meta"))             # remember: do not waste a request on this next time
                 if r.status_code in (401, 403):
                     return False
                 continue
