@@ -2220,7 +2220,7 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
   tower or lighthouse: a person checks logbooks while the sea outside draws back), "radio" (a person on a cliff road speaks into a
   radio, the signal bars fall and the static takes over), "harbor" (a harbour with lit houses and boats; the water swallows it,
   nature stories), "rise" (a black mountain of water rises out of a trench, weed and bone on its crest, eyes opening; nature
-  stories), "glass" (eyes glowing behind rain-streaked reinforced glass that begins to crack), "ridge" (the giant creature
+  stories), "glass" (eyes glowing behind rain-streaked reinforced glass that begins to crack), "emerge" (something drags itself out of the ground with a huge ghostly shape watching from the sky), "swirl" (water rings and foams into a swirl and a shape slowly surfaces), "abyss" (cast down into a red pit), "dawn" (cold night turns to warm first light), "ridge" (the giant creature
   crests a ridge and blots out the stars; nature stories). IMPORTANT: choose the beat that shows what THIS sentence says, and use
   a different beat for every sentence whenever you can, "dig" (the creature digs in the earth, dirt flying, only if the story really has digging), "fly" (the creature unfolds
   wings and takes off, only if the story really has flying), "jump" (a dark room, two eyes open, then the face is
@@ -2378,16 +2378,20 @@ ATTACK_WORDS = ("attack", "lunge", "pounc", "tore", "torn", "bit ", "bite", "blo
 
 
 SCENE_FUNCS = ("dig", "fly", "bedroom", "stairs", "basement", "hallway", "cctv", "jump", "hook", "footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
-               "omen", "pov", "mpov", "curtain", "shoulder", "loom")
+               "omen", "pov", "mpov", "curtain", "shoulder", "loom", "emerge", "swirl", "abyss", "dawn")
 CAMERA_SCENES = ("pov", "mpov", "curtain", "shoulder", "loom")
 MODERN_SCENES = ("bedroom", "stairs", "basement", "hallway", "cctv", "door", "window", "curtain", "jump",
                  "woods", "neighbour", "lamp", "road", "mirror", "dig", "fly",
                  "ocean", "lake", "lava", "tornado", "tsunami", "giant",
-                 "retreat", "tidelog", "radio", "harbor", "rise", "glass", "ridge")
+                 "retreat", "tidelog", "radio", "harbor", "rise", "glass", "ridge", "emerge", "swirl", "abyss", "dawn")
 SECOND_BEAT = {}   # sentence index -> a second story scene for the same sentence
-STORY_SCENES = ("retreat", "tidelog", "radio", "harbor", "rise", "glass", "ridge")   # scenes for one specific narrated event
+STORY_SCENES = ("retreat", "tidelog", "radio", "harbor", "rise", "glass", "ridge", "emerge", "swirl", "abyss", "dawn")   # scenes for one specific narrated event
 STORY_NATURE = ("retreat", "harbor", "rise", "ridge")                                  # only for stories set in nature
-MODERN_WORDS = (("radio", ("radio", "signal", "static", "transmission", "dispatch", "walkie")),
+MODERN_WORDS = (("emerge", ("out of the ground", "out of the earth", "from the soil", "clawed its way", "dug itself out", "from the grave", "burst from the ground", "broke through the ground")),
+                ("swirl", ("foam", "whirlpool", "swirl", "ripples", "vortex", "bubbles rose")),
+                ("abyss", ("hurled", "cast down", "plunged", "into the pit", "abyss", "bottomless", "fell into the dark")),
+                ("dawn", ("sunrise", "first light", "morning came", "at daybreak", "the dawn", "as dawn")),
+                ("radio", ("radio", "signal", "static", "transmission", "dispatch", "walkie")),
                 ("tidelog", ("diesel", "logbook", "the logs", "my logs", "log book", "records", "gauge", "instrument panel", "control room", "checking the")),
                 ("retreat", ("tide", "retreat", "receded", "drained", "bare mud", "seabed", "gasping fish", "water drew back", "water vanished")),
                 ("harbor", ("harbor", "harbour", "the port", "quay", "wharf", "the pier")),
@@ -2422,6 +2426,10 @@ SCENE_INFO = {
     "rise": ("A black mountain of water rises out of the trench, weed and bone on its crest, eyes opening", "wide tilt up", "deep rumble, rushing water"),
     "glass": ("Eyes glowing behind rain-streaked reinforced glass that begins to crack", "locked, close", "glass creak, rain, a low heartbeat"),
     "ridge": ("The giant creature crests the ridge and blots out the stars", "low angle, slow", "ground tremor, heavy breath"),
+    "emerge": ("Something drags itself out of the ground while a huge ghostly shape watches from the sky", "slow tilt up, eased rise", "earth cracking, dust, a low groan"),
+    "swirl": ("The water rings and foams into a swirl and a shape slowly surfaces", "slow push-in", "water ripple, a deep hum"),
+    "abyss": ("Cast down into a red pit, rock walls rushing past, figures tumbling", "falling, shaking", "a long falling rumble"),
+    "dawn": ("The light changes from cold night to warm first light as the sun climbs", "slow, still", "birdsong, soft wind"),
     "tsunami": ("The sea draws back, then a wall of water with the creature rising behind it", "wide", "rush, rumble"),
     "giant": ("The titan's face comes out of the clouds above the mountains", "low angle", "wind, a roar"),
 }
@@ -2442,7 +2450,7 @@ def write_storyboard(sentences, beats, durs, settings, path):
 
 
 SCENES = ("walk", "dig", "fly", "footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
-          "stalk", "attack", "aftermath", "omen", "pov", "mpov", "curtain", "shoulder", "loom")
+          "stalk", "attack", "aftermath", "omen", "pov", "mpov", "curtain", "shoulder", "loom", "emerge", "swirl", "abyss", "dawn")
 SCENE_WORDS = (("dig", ("dig ", "digging", "dug ", "unearth", "shovel", "burying", "buried it", "claw at the earth", "clawing at the ground")),
                ("fly", ("flew", "flying", "fly ", "wings", "soared", "soaring", "took off", "takes off", "into the sky", "swooped")),
                ("footprints", ("footstep", "footprint", "steps behind", "tracks")),
@@ -2511,7 +2519,7 @@ def assign_modern_beats(sentences, stype=None):
     for i, s in enumerate(sentences):
         b = s.get("beat")
         low = s["text"].lower()
-        hits_ = sorted((min(low.find(w) for w in words if w in low), name) for name, words in MODERN_WORDS[:7] if any(w in low for w in words))
+        hits_ = sorted((min(low.find(w) for w in words if w in low), name) for name, words in MODERN_WORDS[:11] if any(w in low for w in words))
         hits_ = [(pos, nm) for pos, nm in hits_ if nm not in STORY_NATURE or stype in NATURE_TYPES]
         said = hits_[0][1] if hits_ else None
         SECOND_BEAT.pop(i, None)
@@ -2562,7 +2570,11 @@ def assign_pre_beats(n, stype):
     return beats
 
 
-LEGEND_SAID = (("dig", r"\b(dig|digging|dug|unearth\w*|shovel\w*)\b"),
+LEGEND_SAID = (("emerge", r"(out of the (ground|earth)|from the (soil|grave)|clawed its way|dug itself out|burst from the ground)"),
+               ("swirl", r"\b(foam\w*|whirlpool|swirl\w*|ripples?|vortex)\b"),
+               ("abyss", r"\b(hurled|cast down|plunged|abyss|bottomless)\b|into the pit"),
+               ("dawn", r"\b(sunrise|first light|daybreak|dawn)\b|morning came"),
+               ("dig", r"\b(dig|digging|dug|unearth\w*|shovel\w*)\b"),
                ("fly", r"\b(flew|flying|soared|soaring|swooped|took off|takes off)\b"),
                ("footprints", r"\b(footprints?|footsteps?|tracks)\b"),
                ("window", r"\b(window|shutters?)\b"),
@@ -3066,6 +3078,12 @@ def folk_sound_events(durs, beats, impacts, sounds, hits=None, quiet=None, origi
                 tt += 0.8
             ev.append({"file": sounds["creak"], "at": at + d * 0.62, "vol": 0.8})
             ev.append({"file": sounds["growl"], "at": at + d * 0.85, "vol": 0.5})
+        elif beats[i] in ("emerge", "abyss"):
+            h = hits.get(i, [d * 0.25, d * 0.6])
+            ev.append({"file": sounds["rumble"], "at": at + 0.05, "vol": 0.9})
+            ev.append({"file": sounds["boom"], "at": at + h[0], "vol": 0.5})
+        elif beats[i] == "swirl":
+            ev.append({"file": sounds["rumble"], "at": at + d * 0.3, "vol": 0.5})
         elif beats[i] == "ridge":
             h = hits.get(i, [d * 0.3, d * 0.65])
             ev.append({"file": sounds["rumble"], "at": at + 0.05, "vol": 0.9})
