@@ -1,276 +1,79 @@
 {
- "series": "hybrid",
- "key": "crocodile+lion@a land of active volcanoes",
- "a": "crocodile",
- "b": "lion",
- "place": [
-  "a land of active volcanoes",
-  "black rock and glowing red lava rivers",
-  "volcano rumble",
-  "glowing orange light from lava and smoke",
-  "red"
- ],
+ "series": "folklore",
+ "key": "folk:crocodile:The Pyretooth|theropod|volcano|ash|Late Cretaceous, 66 million years ago|",
+ "episode": 25,
  "story": {
-  "title": "When a Volcano Lion Challenges the Apex",
-  "creature_name": "Crocadileo",
-  "prey": "volcanic rock iguana",
-  "signature_move": "It crawls low through the ash before exploding forward with a feline pounce to clamp its jaws.",
-  "hybrid_look": "A long, low, armoured body with a crocodile-shaped head and lion's eyes, short sprawling legs, and a long tail ending in a dark tuft, featuring a back with osteoderm and bony scutes in tough rows mixed with fur texture.",
+  "legend_name": "The Pyretooth",
+  "region": "Late Cretaceous, 66 million years ago",
+  "title": "When the Fire Born Ruled",
+  "narrator": {
+   "gender": "male",
+   "persona": "a calm, warm storyteller, like a nature documentary narrator who is quietly afraid"
+  },
+  "monster": {
+   "palette": "ash",
+   "eyes": "orange",
+   "size": "huge",
+   "body": "theropod",
+   "horn": null,
+   "cracks": true
+  },
   "sentences": [
    {
-    "text": "This fiery beast drags its heavy armored body across boiling volcanic plains.",
-    "image": "cracked black basalt fields glowing with rivers of bright orange molten lava",
-    "action": "walk"
+    "text": "For millions of years the tyrant lizard was the undisputed apex predator of this valley and nothing dared hunt it.",
+    "delivery": "calm",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "Meet the Crocadileo, an imaginary hybrid inheriting the scaly armor of a crocodile and the sharp eyes of a lion.",
-    "image": "steaming sulfur vents hissing thick white plumes into a darkened hazy sky",
-    "action": "face"
+    "text": "Herds of long-necked giants and flying reptiles kept far away from the king while his deafening thunder-roar shook the trees.",
+    "delivery": "hushed",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "A massive territorial rival steps out from the ash clouds, testing its ground.",
-    "image": "towering jagged volcanic peaks rising sharply against a blood red horizon",
-    "action": "turn"
+    "text": "A volcano that had slept for ages began to violently shake until the dark ground cracked open and the animals fell completely silent.",
+    "delivery": "trembling",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "Deep tracks left in the soft black pumice show the heavy creature is holding its ground.",
-    "image": "scorched earth covered in fine grey ash and glowing embers",
-    "action": "footprints"
+    "text": "It finally erupted with ash and fire and thunder, sending every living creature running, and for the first time even the king fled.",
+    "delivery": "urgent",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "It crawls low through the ash before exploding forward with a feline pounce to clamp its jaws.",
-    "image": "barren volcanic slopes shimmering beneath intense waves of suffocating heat",
-    "action": "hunt"
+    "text": "In the molten crater something vast moved as heat and choking ash gathered into a towering body born straight from the flames with glowing cracks across its hide.",
+    "delivery": "dread",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "The rival tries to bite, but hits the tough bony scutes and thick rows of osteoderm.",
-    "image": "dark obsidian cliffs surrounded by bubbling pools of red liquid rock",
-    "action": "walkback"
+    "text": "It opened its burning eyes and took its first heavy breath, already much bigger than the king while the earth groaned beneath its claws.",
+    "delivery": "low",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "Then, a fierce bite from the crocodile jaw traps the rival, while the lion tail lash finishes the fight.",
-    "image": "rugged wasteland of dark volcanic rocks under a heavy ash cloud",
-    "action": "feed"
+    "text": "The old king stepped forward with fierce pride to challenge the usurper, but one sudden strike ended his ancient reign in an instant.",
+    "delivery": "sorrow",
+    "speaker": "narrator",
+    "voice": ""
    },
    {
-    "text": "Despite its fierce nature, it cannot survive heavy rainfall because its armor traps dangerous heat. What should I combine next? Tell me in the comments.",
-    "image": "steaming volcanic caldera surrounded by dark jagged obsidian walls",
-    "action": "face"
+    "text": "Now the valley belongs to a new and terrifying master, but what happens when this fire-born monster finally leaves its home?",
+    "delivery": "awe",
+    "speaker": "narrator",
+    "voice": ""
    }
   ],
-  "format": "Rival showdown"
- },
- "episode": 29,
- "design": {
-  "hybrid": true,
-  "parents": [
-   "crocodile",
-   "lion"
-  ],
-  "dominant": "lion",
-  "secondary": "crocodile",
-  "dom_weight": 0.62,
-  "torso": [
-   "tube",
-   372.1072048014656,
-   135.42716221832015,
-   0.0
-  ],
-  "arch": 0.0,
-  "legs": [
-   "sprawl",
-   4,
-   78.62264684474525,
-   41.89434356031168
-  ],
-  "foot": "webbed",
-  "gait": "sprawl",
-  "legs_from": "crocodile",
-  "arms": null,
-  "head": {
-   "skull": [
-    57.89681055722763,
-    46.317448445782105
-   ],
-   "snout": [
-    "snout",
-    149.0,
-    39.2,
-    34.8,
-    0.0
-   ],
-   "teeth": "rows",
-   "ears": [
-    "round",
-    41.68570360120389
-   ],
-   "eyes": "bump",
-   "brow": 0.25,
-   "extras": [
-    "nostril_bump",
-    "mane"
-   ],
-   "eyecol": [
-    230,
-    170,
-    40
-   ]
-  },
-  "neck": [
-   14.318747489453024,
-   0.0
-  ],
-  "neck_bow": 0.12,
-  "tail": "tuft",
-  "tail_len": 1.0899359331505147,
-  "wings": null,
-  "wingfly": false,
-  "shell": null,
-  "dorsal": [
-   "osteoderm"
-  ],
-  "skin": "scutes",
-  "skin2": "fur",
-  "pal": [
-   [
-    165,
-    144,
-    72
-   ],
-   [
-    85,
-    70,
-    39
-   ],
-   [
-    214,
-    188,
-    135
-   ]
-  ],
-  "pat": "plain",
-  "hover": 0,
-  "temper": "regal",
-  "glow": false,
-  "ribs": false,
-  "cracks": false,
-  "strike": "pounce",
-  "sig": [
-   "mane",
-   "a striking mane"
-  ],
-  "sigscale": {
-   "mane": 1.3
-  },
-  "donors": {
-   "body": "crocodile",
-   "legs": "crocodile",
-   "head": "crocodile",
-   "face": "lion",
-   "mouth": "crocodile",
-   "tail": "lion",
-   "skin": "crocodile",
-   "palette": [
-    "lion",
-    "crocodile"
-   ]
-  },
-  "flies": false,
-  "words": {},
-  "name": "crocodile-lion",
-  "fingerprint": {
-   "prof": "tube",
-   "pitch": 0,
-   "L": 2,
-   "H": 2,
-   "legs": "sprawl",
-   "nlegs": 4,
-   "legh": 1,
-   "neck": 0,
-   "snout": "snout",
-   "snoutl": 2,
-   "teeth": "rows",
-   "ears": "round",
-   "eyes": "bump",
-   "tail": "tuft",
-   "wings": "none",
-   "shell": "none",
-   "dorsal": "osteoderm",
-   "skin": "scutes",
-   "skin2": "fur",
-   "pat": "plain",
-   "hue": 1,
-   "light": 1,
-   "gait": "sprawl",
-   "hover": false,
-   "arms": "none",
-   "extras": "mane+nostril_bump"
-  },
-  "fp_distance": 99.0,
-  "attempt": 0
- },
- "profile": {
-  "hybrid_name": "crocodile-lion",
-  "parent_a": "crocodile",
-  "parent_b": "lion",
-  "dominant_parent": "lion",
-  "dominant": [
-   "crocodile body structure"
-  ],
-  "secondary": [
-   "lion eyes and face details",
-   "lion tail"
-  ],
-  "proportions": "tube torso, 372x135, horizontal posture, neck 14, legs sprawl x4",
-  "head": "a crocodile-shaped head and the lion's eyes",
-  "limbs": "sprawl x4",
-  "texture": "scutes body, fur limbs and tail",
-  "colour": {
-   "main": [
-    165,
-    144,
-    72
-   ],
-   "accent": [
-    85,
-    70,
-    39
-   ],
-   "belly": [
-    214,
-    188,
-    135
-   ],
-   "pattern": "plain"
-  },
-  "silhouette": "tube-tuft-osteoderm",
-  "locomotion": "crawls low, then explodes forward",
-  "gait": "sprawl",
-  "hovers": false,
-  "signature_ability": "pounce",
-  "temperament": "regal",
-  "signature_feature": "a striking mane",
-  "summary": [
-   "a long, low, armoured body (from the crocodile)",
-   "a crocodile-shaped head and the lion's eyes",
-   "short, sprawling legs (from the crocodile)",
-   "a long tail ending in a dark tuft (from the lion)",
-   "a back with osteoderm",
-   "bony scutes in tough rows mixed with fur texture"
-  ]
- },
- "clips": [
-  {
-   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in a land of active volcanoes: black rock and glowing red lava rivers. A long, low, armoured body with a crocodile-shaped head and lion's eyes, short sprawling legs, and a long tail ending in a dark tuft, featuring a back with osteoderm and bony scutes in tough rows mixed with fur texture. It is menacing and dominant."
-  },
-  {
-   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In black rock and glowing red lava rivers, the same hybrid creature goes after volcanic rock iguana. It crawls low through the ash before exploding forward with a feline pounce to clamp its jaws.. Fast, powerful movement, camera follows the action. A long, low, armoured body with a crocodile-shaped head and lion's eyes, short sprawling legs, and a long tail ending in a dark tuft, featuring a back with osteoderm and bony scutes in tough rows mixed with fur texture."
-  },
-  {
-   "title": "Clip 3 - the close-up (plays at the end)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A long, low, armoured body with a crocodile-shaped head and lion's eyes, short sprawling legs, and a long tail ending in a dark tuft, featuring a back with osteoderm and bony scutes in tough rows mixed with fur texture."
-  }
- ]
+  "animal": "crocodile",
+  "story_type": "volcano",
+  "format": "prehistoric",
+  "origin": "",
+  "time": "2:48",
+  "hero": "traveller",
+  "people": "alone"
+ }
 }
