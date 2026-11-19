@@ -1518,11 +1518,11 @@ class World:
         img.top = layer.top
         return img
 
-    def _ground_tile(self):
+    def _ground_tile(self, gh=None):
         """The ground: a gradient with soil texture, scattered stones, tufts, cracks, and a haze at the horizon.
         It is as wide as the scrolling layers so it can move under the creature's feet."""
         st, PW, rnd = self.st, self.PW, random.Random(self.rnd.random())
-        gh = H - GROUND
+        gh = gh or (H - GROUND)
         g = np.zeros((gh, PW, 3), dtype=np.float32)
         base = np.array(rgb(st["ground"]), dtype=np.float32)
         ys = np.arange(gh, dtype=np.float32)[:, None]
@@ -3991,7 +3991,8 @@ def tornado_scene(out, dur, world, sp, cwd=None):
         d = ImageDraw.Draw(im, "RGBA")
         for k in range(5):  # a roof of boiling cloud
             d.ellipse((-200 + k * 300 + 40 * math.sin(t + k), 120 + 30 * k, 480 + k * 300, 420 + 30 * k), fill=(24, 30, 28, 255))
-        d.rectangle((0, 1450, W, H), fill=(26, 32, 22, 255))
+        _land(im, 1450, "tornado", t, 6)
+        d = ImageDraw.Draw(im, "RGBA")
         for k in range(14):
             d.line((0, 1480 + k * 34, W, 1470 + k * 34), fill=(36, 44, 30, 255), width=3)
         d.rectangle((120, 1360, 290, 1450), fill=(14, 12, 12, 255))                                         # a barn
@@ -4044,7 +4045,8 @@ def tsunami_scene(out, dur, world, sp, cwd=None):
         _moon(d, 300, 300, 64)
         draw_back = _smooth(u / 0.35)
         sea_y = 820 + 220 * draw_back          # the sea drains away, exposing wet sand
-        d.rectangle((0, 820, W, H), fill=(54, 46, 40, 255))
+        _land(im, 820, "sand", t, 8, ridges=False)
+        d = ImageDraw.Draw(im, "RGBA")
         d.rectangle((0, 820, W, sea_y), fill=(14, 38, 66, 255))
         for k in range(8):
             d.line((0, 1000 + k * 120, W, 1000 + k * 120 + 14), fill=(70, 62, 54, 255), width=4)
@@ -4205,11 +4207,11 @@ def valley_scene(out, dur, world, sp, cwd=None):
             d.ellipse((xx - rr, yy - rr * 0.8, xx + rr, yy + rr * 0.8), fill=(64, 46, 54, int(150 - 60 * q)))
         for i in range(6):
             _ptero(d, ((t * (50 + 12 * i) + i * 260) % (W + 400)) - 200, 330 + 70 * (i % 3) + 24 * math.sin(t + i), 0.5 + 0.1 * (i % 3), t, (40, 24, 36), ph=i)
-        d.polygon([(0, 1180), (260, 1120), (540, 1170), (820, 1110), (W, 1160), (W, H), (0, H)], fill=(52, 34, 42, 255))   # far hills
+        _land(im, 1250, "valley", t, 1)
+        d = ImageDraw.Draw(im, "RGBA")
         for x0, sc in herd:
             x = ((x0 + t * 0.012) % 1.2) * 1200 - 60
             draw_creature(d, sau, x, 1240, t * STEP * 0.18, 1, sc * 0.6, {"t": t, "moving": True})
-        d.rectangle((0, 1250, W, H), fill=(34, 24, 30, 255))
         for i in range(9):
             _fern(d, 80 + i * 130 + 30 * math.sin(i * 7), 1320 + 18 * (i % 3), 0.5, (36, 52, 36), t, i)
         x = -280 + 1000 * u ** 0.9
@@ -4240,7 +4242,8 @@ def erupt_scene(out, dur, world, sp, cwd=None):
     def paint(im, d, t, u, cam):
         im.paste(sky, (0, 0))
         d = ImageDraw.Draw(im, "RGBA")
-        d.rectangle((0, 1180, W, H), fill=(18, 8, 10, 255))
+        _land(im, 1180, "erupt", t, 2)
+        d = ImageDraw.Draw(im, "RGBA")
         if not meteor:
             _volcano(d, 560, 1180, 640, 440, t, 1.6, u)
             for k in range(30):                                                                          # a fountain of molten rock
@@ -4306,8 +4309,8 @@ def birth_scene(out, dur, world, sp, cwd=None):
     def paint(im, d, t, u, cam):
         im.paste(sky, (0, 0))
         d = ImageDraw.Draw(im, "RGBA")
-        d.rectangle((0, 1100, W, H), fill=(12, 5, 6, 255))
-        d.polygon([(0, 1120), (240, 1020), (520, 1110), (860, 1000), (W, 1090), (W, 1200), (0, 1200)], fill=(18, 8, 8, 255))
+        _land(im, 1100, "birth", t, 3)
+        d = ImageDraw.Draw(im, "RGBA")
         for k in range(14):                                                                              # a lake of lava
             y = 1190 + k * 52
             kk = k / 13
@@ -4357,8 +4360,8 @@ def clash_scene(out, dur, world, sp, cwd=None):
         _volcano(d, 150, 1250, 520, 380, t, 1.2)
         for r, a in ((460, 26), (300, 40)):
             d.ellipse((150 - r, 700 - r, 150 + r, 700 + r), fill=(255, 110, 40, a))
-        d.polygon([(0, 1260), (300, 1200), (700, 1250), (W, 1210), (W, H), (0, H)], fill=(34, 16, 14, 255))
-        d.rectangle((0, 1300, W, H), fill=(26, 12, 12, 255))
+        _land(im, 1300, "clash", t, 4)
+        d = ImageDraw.Draw(im, "RGBA")
         for i in range(8):
             _fern(d, 60 + i * 150, 1330 + 14 * (i % 2), 0.5, (22, 14, 14), t, i + 8)
         stride = _smooth((u - 0.3) / 0.22)
@@ -4453,7 +4456,8 @@ def reign_scene(out, dur, world, sp, cwd=None):
         _volcano(d, 760, 1230, 640, 460, t, 1.3)
         for r, a in ((520, 24), (340, 40)):
             d.ellipse((760 - r, 600 - r, 760 + r, 600 + r), fill=(255, 100, 30, a))
-        d.polygon([(0, 1320), (200, 1280), (520, 1330), (W, 1290), (W, H), (0, H)], fill=(20, 10, 10, 255))
+        _land(im, 1330, "reign", t, 5)
+        d = ImageDraw.Draw(im, "RGBA")
         for i in range(9):
             _fern(d, 40 + i * 135, 1370, 0.5, (14, 10, 10), t, i + 21)
         la, ra, _ = _sprite(rex, 0.6, t, facing=1, moving=False, roar=0.0)       # the old king, lying where he fell
@@ -7494,6 +7498,55 @@ World.frame = _world_frame_cinema
 World.cinema_front = _cin_front
 
 
+# ================================================================ detailed land for the story scenes
+# The story scenes (valley, eruption, clash, tornado ...) used to draw their land as flat shapes. They now share the same
+# layered, hazed, textured scenery as the walking scenes, drawn once per scene and drifting very slowly.
+LAND = {
+    "valley": dict(sky=("#fab066", "#7a4a52"), far="#6a4048", near="#46303a", ground="#34241e", sil="reeds", sun=None, part="dust"),
+    "erupt":  dict(sky=("#140808", "#b43414"), far="#3a1410", near="#200c0c", ground="#12080a", sil="cones", sun=None, part="embers"),
+    "birth":  dict(sky=("#14060a", "#6a2012"), far="#321210", near="#1c0a0a", ground="#0c0506", sil="rocks", sun=None, part="embers"),
+    "clash":  dict(sky=("#200c0c", "#7a2a18"), far="#341410", near="#22100e", ground="#1a0c0c", sil="cones", sun=None, part="embers"),
+    "reign":  dict(sky=("#1a0a0a", "#6a2418"), far="#2c1210", near="#1a0c0c", ground="#140a0a", sil="rocks", sun=None, part="embers"),
+    "tornado": dict(sky=("#1a2a20", "#607060"), far="#2c3a2c", near="#1c281c", ground="#1a2016", sil="wheat", sun=None, part="dust"),
+    "emerge": dict(sky=("#0a0814", "#4a3a54"), far="#2a2234", near="#1a1422", ground="#1a1216", sil="dead", sun=None, part="dust"),
+    "sand":   dict(sky=("#08102a", "#46608a"), far="#26303c", near="#1a222c", ground="#362e28", sil="rocks", sun=None, part="dust"),
+}
+_LAND_CACHE = {}
+
+
+class _Scenery(World):
+    """Only the drawing helpers of World, for scenes that bring their own sky."""
+    def __init__(self, st, seed, ridges=True):
+        self.st, self.rnd = dict(st), random.Random(seed)
+        self.ridges = ridges
+        if ridges:
+            self.hz = self._enrich(self._layer(mix(st["far"], st["sky"][1], 0.5), GROUND - 700, 520, 0.0, far=True), 0.50, "hz")
+            self.far = self._enrich(self._layer(st["far"], GROUND - 520, 520, 0.0, far=True), 0.28, "far")
+            self.mid = self._enrich(self._layer(mix(st["far"], st["near"], 0.5), GROUND - 390, 420, 0.5, far=True), 0.14, "mid")
+            self.near = self._enrich(self._layer(st["near"], GROUND - 260, 330, 1.0, far=False), 0.0, "near")
+        self.ground_tile = self._ground_tile(1100)
+
+
+def _land(im, y, kind, t=0.0, seed=1, ridges=True):
+    """Layered ridges behind a textured ground that starts at row y."""
+    key = (kind, seed, ridges)
+    S = _LAND_CACHE.get(key)
+    if S is None:
+        S = _LAND_CACHE[key] = _Scenery(LAND[kind], seed, ridges)
+    dy = y - GROUND
+    if ridges:
+        for layer, k in ((S.hz, 0.04), (S.far, 0.09), (S.mid, 0.17), (S.near, 0.30)):
+            off = int(t * 7 * k * 10) % S.PW
+            for ox in (-off, -off + S.PW):
+                if ox < W and ox + S.PW > 0:
+                    im.paste(layer, (ox, layer.top + dy), layer)
+    gt = S.ground_tile
+    off = int(t * 3) % S.PW
+    im.paste(gt.crop((off, 0, min(S.PW, off + W), H - y)), (0, y))
+    if off + W > S.PW:
+        im.paste(gt.crop((0, 0, off + W - S.PW, H - y)), (S.PW - off, y))
+
+
 # ================================================================ lighting: rim light, shaded far side, soft cast shadow, light spill
 # Every creature is drawn on its own transparent layer first, so its real silhouette is known. Then:
 #  - the edge that faces the scene's light picks up a thin coloured rim,
@@ -8353,7 +8406,8 @@ def emerge_scene(out, dur, world, sp, cwd=None):
         _stars_bg(d, 52, 60, 700, t)
         _layer_creature(im, sp, 6.0, 540, 420, 0.22 * _smooth(u / 0.5), tint=(90, 90, 170), t=t)   # the huge watcher in the sky
         d = ImageDraw.Draw(im, "RGBA")
-        d.polygon([(0, 1250), (300, 1210), (640, 1260), (W, 1220), (W, H), (0, H)], fill=(26, 18, 22, 255))
+        _land(im, 1250, "emerge", t, 7)
+        d = ImageDraw.Draw(im, "RGBA")
         q = _smooth((u - 0.1) / 0.75)                                            # slow, eased rise
         gy = 1500 + (1 - q) * 520
         ax_, ay_ = head_anchor(sp)
