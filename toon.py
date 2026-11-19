@@ -17,6 +17,8 @@ FPS = 30
 
 # ---------------------------------------------------------------- colors
 def rgb(h):
+    if not isinstance(h, str):
+        return tuple(int(c) for c in h[:3])
     h = h.lstrip("#")
     return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
 
@@ -1442,13 +1444,139 @@ class World:
         except Exception:
             self.clouds = None
         # layers
-        self.far = self._layer(st["far"], GROUND - 520, 520, 0.0, far=True)
-        self.near = self._layer(st["near"], GROUND - 260, 330, 1.0, far=False)
-        self.ground = Image.new("RGB", (W, H - GROUND))
-        gd = ImageDraw.Draw(self.ground)
-        for y in range(H - GROUND):
-            gd.line((0, y, W, y), fill=mix(st["ground"], (0, 0, 0), min(0.6, y / 900)))
+        sky_lo_ = rgb(st["sky"][1])
+        self.hz = self._enrich(self._layer(mix(st["far"], st["sky"][1], 0.55), GROUND - 700, 520, 0.0, far=True), 0.55, "hz")
+        self.far = self._enrich(self._layer(st["far"], GROUND - 520, 520, 0.0, far=True), 0.30, "far")
+        self.mid = self._enrich(self._layer(mix(st["far"], st["near"], 0.5), GROUND - 390, 420, 0.5, far=True), 0.16, "mid")
+        self.near = self._enrich(self._layer(st["near"], GROUND - 260, 330, 1.0, far=False), 0.0, "near")
+        self.ground = self._ground_tile()
         self.parts = [[rnd.uniform(0, W), rnd.uniform(0, H), rnd.uniform(0.5, 1.5), rnd.uniform(0, 6.28)] for _ in range(70)]
+
+    def _noise(self, h, w, blur, seed):
+        """Smooth noise that tiles sideways (so scrolling layers never show a seam)."""
+        rs = np.random.RandomState(seed)
+        n = Image.fromarray((rs.rand(h, w) * 255).astype(np.uint8))
+        three = Image.new("L", (w * 3, h))
+        for i in range(3):
+            three.paste(n, (i * w, 0))
+        three = three.filter(ImageFilter.GaussianBlur(blur))
+        a = np.asarray(three.crop((w, 0, 2 * w, h)), dtype=np.float32) / 255.0
+        a = (a - a.mean()) / (a.std() + 1e-5)
+        return a
+
+    def _enrich(self, layer, haze, tag):
+        """Give a flat silhouette layer body: a light-to-dark gradient, rock/earth texture, valley haze, and the
+        place's own accents (lava veins, snow caps, rock strata)."""
+        st, PW = self.st, self.PW
+        a = np.asarray(layer, dtype=np.float32)
+        hh = a.shape[0]
+        alpha = a[..., 3]
+        rgb_ = a[..., :3]
+        top = np.argmax(alpha > 8, axis=0).astype(np.float32)               # the ridge line, column by column
+        yy = np.arange(hh, dtype=np.float32)[:, None]
+        depth = np.clip((yy - top[None, :]) / 260.0, 0, 1)                    # 0 at the ridge, 1 deep inside the mass
+        sky_lo = np.array(rgb(st["sky"][1]), dtype=np.float32)
+        seed = __import__("zlib").crc32((tag + str(st["far"])).encode()) % 100000
+        n1 = self._noise(hh, PW, 5, seed)
+        n2 = self._noise(hh, PW, 1.6, seed + 1)
+        tex = 1.0 + 0.05 * n1 + 0.025 * n2
+        light_ = 1.22 - 0.55 * depth                                          # lit ridge, darker body
+        col = rgb_ * (tex * light_)[..., None]
+        fog = (haze + 0.30 * (1 - depth) ** 2 * (0.35 if tag != "near" else 0.2) + 0.22 * depth ** 3 * (0.5 if tag != "near" else 0.7))
+        col = col * (1 - fog[..., None]) + sky_lo * fog[..., None]
+        sil = st["sil"]
+        rnd = random.Random(seed)
+        if tag in ("far", "mid", "near"):
+            if st.get("part") == "embers":                                    # glowing lava veins running down the slopes
+                vein = Image.new("L", (PW, hh), 0)
+                vd = ImageDraw.Draw(vein)
+                for _ in range({"far": 10, "mid": 16, "near": 14}[tag]):
+                    x = rnd.uniform(0, PW)
+                    y = float(top[int(x) % PW]) + 4
+                    pts = [(x, y)]
+                    for _k in range(rnd.randint(5, 9)):
+                        x += rnd.uniform(-22, 22)
+                        y += rnd.uniform(18, 46)
+                        pts.append((x, y))
+                    for off in (0, PW):
+                        vd.line([(px + off, py) for px, py in pts], fill=255, width=3 if tag == "near" else 2)
+                vg = np.asarray(vein.filter(ImageFilter.GaussianBlur(1.2)), dtype=np.float32) / 255.0 * (alpha > 8)
+                glow = np.asarray(vein.filter(ImageFilter.GaussianBlur(7)), dtype=np.float32) / 255.0 * (alpha > 8)
+                lava = np.array([255, 120, 40], dtype=np.float32)
+                col = col + lava * (vg * 0.95 + glow * 0.5)[..., None]
+            if sil in ("peaks", "spikes"):                                    # snow caught on the ridge line
+                cap = np.clip(1 - (yy - top[None, :]) / (40 + 12 * n1), 0, 1) * (alpha > 8)
+                col = col * (1 - cap[..., None] * 0.8) + np.array([235, 242, 255], dtype=np.float32) * (cap[..., None] * 0.8)
+            if sil in ("rocks", "dunes", "cones", "clouds"):                  # layered rock strata / wind ripples
+                strata = (np.sin((yy + 6 * n1) * 0.34) > 0.82).astype(np.float32) * (alpha > 8) * 0.10
+                col = col * (1 - strata[..., None]) + sky_lo * strata[..., None] * 0.6
+        # a thin, bright edge where the ridge meets the sky
+        edge = np.clip(1 - (yy - top[None, :]) / 5.0, 0, 1) * (alpha > 8)
+        col = col + (np.array(rgb(st["sky"][1]), dtype=np.float32) * 0.35 + 25) * (edge[..., None] * (0.22 if tag != "near" else 0.12))
+        out = np.dstack([np.clip(col, 0, 255), alpha]).astype(np.uint8)
+        img = Image.fromarray(out, "RGBA")
+        img.top = layer.top
+        return img
+
+    def _ground_tile(self):
+        """The ground: a gradient with soil texture, scattered stones, tufts, cracks, and a haze at the horizon.
+        It is as wide as the scrolling layers so it can move under the creature's feet."""
+        st, PW, rnd = self.st, self.PW, random.Random(self.rnd.random())
+        gh = H - GROUND
+        g = np.zeros((gh, PW, 3), dtype=np.float32)
+        base = np.array(rgb(st["ground"]), dtype=np.float32)
+        ys = np.arange(gh, dtype=np.float32)[:, None]
+        shade = 1.35 - 0.95 * np.clip(ys / 900.0, 0, 1)
+        n1, n2 = self._noise(gh, PW, 14, 3), self._noise(gh, PW, 2.0, 4)
+        g[:] = base[None, None, :] * (shade * (1 + 0.07 * n1 + 0.03 * n2))[..., None]
+        sky_lo = np.array(rgb(st["sky"][1]), dtype=np.float32)
+        hz = np.clip(1 - ys / 120.0, 0, 1) ** 1.6 * 0.55                       # haze lying along the horizon
+        g = g * (1 - hz[..., None]) + sky_lo * hz[..., None]
+        img = Image.fromarray(np.clip(g, 0, 255).astype(np.uint8))
+        d = ImageDraw.Draw(img, "RGBA")
+        sil, part = st["sil"], st.get("part")
+        lightc = tuple(int(min(255, c * 1.6 + 18)) for c in base)
+        darkc = tuple(int(c * 0.45) for c in base)
+        for _ in range(170):                                                 # stones: small far, bigger near
+            y = rnd.uniform(14, gh - 10)
+            k = 0.35 + 1.5 * (y / gh)
+            x = rnd.uniform(0, PW)
+            w_, h_ = rnd.uniform(8, 24) * k, rnd.uniform(4, 11) * k
+            for off in (0, -PW):
+                d.ellipse((x + off, y, x + off + w_, y + h_), fill=darkc + (210,))
+                d.ellipse((x + off + 1, y, x + off + w_ - 2, y + h_ * 0.55), fill=lightc + (120,))
+        green = sil in ("trees", "pines", "reeds", "dead", "wheat", "graves") or st["ground"] in ("#040a09", "#080d20", "#08121a", "#070a14", "#0a0612", "#06080f")
+        if green:                                                            # grass tufts
+            tuft = tuple(int(min(255, c * 1.3 + 14)) for c in base) + (230,)
+            for _ in range(240):
+                y = rnd.uniform(10, gh - 6)
+                k = 0.4 + 1.3 * (y / gh)
+                x = rnd.uniform(0, PW)
+                for off in (0, -PW):
+                    for b in range(4):
+                        d.line((x + off + b * 4 * k, y, x + off + b * 4 * k + rnd.uniform(-7, 7) * k, y - rnd.uniform(16, 38) * k), fill=tuft, width=max(1, int(2 * k)))
+        if part == "embers":                                                 # glowing cracks in the scorched earth
+            for _ in range(26):
+                x, y = rnd.uniform(0, PW), rnd.uniform(20, gh - 20)
+                pts = [(x, y)]
+                for _k in range(rnd.randint(4, 8)):
+                    x += rnd.uniform(-40, 40)
+                    y += rnd.uniform(-10, 18)
+                    pts.append((x, y))
+                for off in (0, -PW):
+                    d.line([(px + off, py) for px, py in pts], fill=(255, 90, 30, 90), width=9)
+                    d.line([(px + off, py) for px, py in pts], fill=(255, 190, 90, 230), width=3)
+        if part == "snow" or st["ground"] in ("#e3edf5", "#f4f7fb", "#afc9e6"):    # sparkling drifts
+            for _ in range(140):
+                x, y = rnd.uniform(0, PW), rnd.uniform(10, gh - 10)
+                d.ellipse((x, y, x + 3, y + 2), fill=(255, 255, 255, 200))
+        if sil == "dunes" or part == "dust":                                 # wind ripples
+            for _ in range(60):
+                x, y = rnd.uniform(0, PW), rnd.uniform(20, gh - 10)
+                L_ = rnd.uniform(90, 260) * (0.4 + y / gh)
+                for off in (0, -PW):
+                    d.arc((x + off, y, x + off + L_, y + 26), 200, 340, fill=lightc + (70,), width=2)
+        return img.convert("RGB")
 
     def _cloud_strip(self, sx):
         """Thin, soft, wide clouds (tileable) that drift slowly across the night sky and catch the moonlight."""
@@ -1541,7 +1669,6 @@ class World:
                 d.polygon(sh, fill=col)
         # light edge along the top so shapes stand out from the sky (rim light)
         rim = light(rgb(color), 0.25) + (255,)
-        d.line(pts, fill=rim, width=3)
         img.top = top
         return img
 
@@ -1555,12 +1682,16 @@ class World:
             for ox in (-off, -off + self.PW):
                 if ox < W and ox + self.PW > 0:
                     im.paste(self.clouds, (ox, self.clouds.top), self.clouds)
-        for layer, k in ((self.far, 0.18), (self.near, 0.6)):
+        for layer, k in ((self.hz, 0.07), (self.far, 0.18), (self.mid, 0.36), (self.near, 0.6)):
             off = int(cam * k) % self.PW
             for ox in (-off, -off + self.PW):
                 if ox < W and ox + self.PW > 0:
                     im.paste(layer, (ox, layer.top), layer)
-        im.paste(self.ground, (0, GROUND))
+        goff = int(cam * 1.0) % self.PW
+        gw = self.ground
+        im.paste(gw.crop((goff, 0, min(self.PW, goff + W), gw.size[1])), (0, GROUND))
+        if goff + W > self.PW:
+            im.paste(gw.crop((0, 0, goff + W - self.PW, gw.size[1])), (self.PW - goff, GROUND))
         d = ImageDraw.Draw(im, "RGBA")
         # ground streaks that scroll with the creature's steps
         for i in range(22):
@@ -7226,7 +7357,7 @@ def _cin_assets(self):
         out = Image.merge("RGBA", (*rgb_.split(), a))
         out.top = layer.top
         return out
-    A["far"], A["near"] = hazed(self.far, 0.38, 1.6), hazed(self.near, 0.16, 0.0)
+    A["far"], A["near"] = hazed(self.far, 0.14, 1.2), hazed(self.near, 0.05, 0.0)
     self.far, self.near = A["far"], A["near"]
     # two mist strips, soft and wide
     def mist(h, n, alpha, col):
@@ -7405,10 +7536,13 @@ def _lit_draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=Non
     if focus:
         ax, ay, tx, ty = focus
         cx, gy = tx - facing * s * ax, ty - s * ay
+    _nb = len(_BOXES)
     _draw_creature_plain(ld, sp, cx, gy, phase, facing, scale, dict(st, noshadow=True), None)
     bb = layer.getchannel("A").point(lambda v: 255 if v > 150 else 0).getbbox()
     if not bb:
         return
+    del _BOXES[_nb:]                                   # the nominal box is replaced by the creature's REAL outline
+    _BOXES.append((bb[0], bb[1], bb[2], bb[3]))
     pad = 30
     x0, y0 = max(int(bb[0]) - pad, 0), max(int(bb[1]) - pad, 0)
     x1, y1 = min(int(bb[2]) + pad, base.width), min(int(bb[3]) + pad, base.height)
