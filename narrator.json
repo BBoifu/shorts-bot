@@ -1,0 +1,12 @@
+{
+  "provider": "gemini",
+  "voice": "Charon",
+  "fallback_voices": ["Orus", "Algenib", "Enceladus"],
+  "edge_fallback_voice": "en-US-AndrewNeural",
+  "language": "en-US",
+  "speaking_rate": 1.0,
+  "pitch_shift_semitones": 0,
+  "style": "dramatic",
+  "approved_by_listening": true,
+  "approved_note": "This is the voice the channel owner approved ('now thats perfect'): the plain Gemini voice, NO artificial pitch-down, NO slow-down. Do not change without the owner's explicit request."
+}
