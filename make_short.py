@@ -41,10 +41,19 @@ CF_ACCOUNT = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
 CF_TOKEN = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
 CF_MODEL = os.environ.get("CF_IMAGE_MODEL", "@cf/black-forest-labs/flux-1-schnell")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
-GEMINI_VOICE = os.environ.get("GEMINI_VOICE", "Charon")
+def _load_narrator():
+    """The locked narrator identity (narrator.json). A story can never change it; only the owner can."""
+    try:
+        return json.loads((ROOT / "narrator.json").read_text())
+    except Exception:
+        return {"voice": "Charon", "edge_fallback_voice": "en-US-AndrewNeural", "pitch_shift_semitones": 0}
+
+
+NARRATOR = _load_narrator()
+GEMINI_VOICE = os.environ.get("GEMINI_VOICE", NARRATOR.get("voice", "Charon"))
 # "classic" = the original single-take narrator voice (the one you approved); "acted" = a new mood for every sentence
 VOICE_MODE = os.environ.get("VOICE_MODE", "classic").strip().lower()
-EDGE_VOICE = os.environ.get("TTS_VOICE", "en-GB-RyanNeural")   # the fallback voice: deeper and more mature
+EDGE_VOICE = os.environ.get("TTS_VOICE", NARRATOR.get("edge_fallback_voice", "en-US-AndrewNeural"))   # fallback voice: the natural one, no artificial lowering
 PRIVACY = os.environ.get("PRIVACY", "private")  # private = you review first
 DRY_RUN = os.environ.get("DRY_RUN", "0") == "1"  # 1 = make video, do not upload
 
@@ -680,7 +689,7 @@ def gemini_tts(text, dest_wav, style=None, voice=None):
 
 
 async def edge_voice(text, mp3_path):
-    comm = edge_tts.Communicate(text, EDGE_VOICE, rate="-8%", pitch="-6Hz", boundary="WordBoundary")
+    comm = edge_tts.Communicate(text, EDGE_VOICE, rate="+0%", boundary="WordBoundary")
     words = []
     with open(mp3_path, "wb") as f:
         async for chunk in comm.stream():
@@ -1104,7 +1113,7 @@ AMBIENT_MEAN_DB = -38.0
 MUSIC_MEAN_DB = -31.0
 
 
-DEEPEN = "asetrate=41000,aresample=44100,atempo=1.0756,"   # a deeper, more mature narrator: pitch down about 7%, speed unchanged
+DEEPEN = ""   # no artificial pitch change: the natural voice is kept as it is
 
 
 def build_audio(voice_name, total, events, ambient, out_wav, quiet=None, score=None):
@@ -1209,25 +1218,57 @@ def even_words(text, total):
     return out
 
 
-CAPTION_SPOTS = (1400, 1540, 640, 880)   # where the bottom edge of the caption can sit, in order of preference
-CAPTION_H, CAPTION_X0, CAPTION_X1 = 190, 200, 880
+CAPTION_SPOTS = (1400, 1540, 480, 640, 880, 1120)   # where the bottom edge of a caption can sit, in order of preference
+CAPTION_X0, CAPTION_X1 = 150, 930                    # the caption never leaves this band (clear of the right-hand Shorts buttons)
+SAFE_TOP, SAFE_BOTTOM = 220, 1580                    # mobile interface safe zone for caption boxes
+CAPTION_OK = 0.02                                    # a caption may touch at most 2% of its own box with the creature
+CAPTION_REPORT = []
 
 
-def _cap_overlap(track, t0, t1, bottom):
+def _cap_dims(text_len, long_line):
+    """How big a caption really is on screen: (width, height) in pixels."""
+    cw = text_len * (41 if long_line else 50) + 30
+    if cw <= CAPTION_X1 - CAPTION_X0:
+        return cw, (118 if long_line else 140)
+    return CAPTION_X1 - CAPTION_X0, (230 if long_line else 270)
+
+
+def _cap_overlap(track, t0, t1, bottom, dims=None):
     """How much of the caption's box the creature covers at its worst moment in [t0, t1] (0..1)."""
     worst = 0.0
-    top = bottom - CAPTION_H
-    area = (CAPTION_X1 - CAPTION_X0) * CAPTION_H
+    cw, ch = dims or (CAPTION_X1 - CAPTION_X0, 190)
+    top = bottom - ch
+    cx0, cx1 = 540 - cw / 2 - 12, 540 + cw / 2 + 12
+    area = max((cx1 - cx0) * ch, 1)
     for t, box in track:
         if t < t0 - 0.1 or t > t1 + 0.1 or not box:
             continue
         # the video is zoomed 5% and shifted a little before the subtitles are drawn
         x0, y0, x1, y1 = box[0] * 1.05 - 27, box[1] * 1.05 - 48, box[2] * 1.05 - 27, box[3] * 1.05 - 48
-        w = min(x1, CAPTION_X1) - max(x0, CAPTION_X0)
-        h = min(y1, bottom) - max(y0, top)
+        w = min(x1, cx1) - max(x0, cx0)
+        h = min(y1, bottom + 10) - max(y0, top - 10)
         if w > 0 and h > 0:
             worst = max(worst, w * h / area)
     return worst
+
+
+def caption_in_safe_zone(bottom, dims):
+    cw, ch = dims
+    return bottom <= SAFE_BOTTOM and bottom - ch >= SAFE_TOP and 540 - cw / 2 >= CAPTION_X0 - 20 and 540 + cw / 2 <= CAPTION_X1 + 20
+
+
+def _place_caption(track, start, end, dims, prev_y):
+    """The first safe spot (the previous one is kept if it is still clear). Returns (y, overlap), y None if nowhere is safe."""
+    cands = [prev_y] + [c for c in CAPTION_SPOTS if c != prev_y]
+    best = (9.0, None)
+    for c in cands:
+        if not caption_in_safe_zone(c, dims):
+            continue
+        ov = _cap_overlap(track, start, end, c, dims)
+        if ov <= CAPTION_OK:
+            return c, ov
+        best = min(best, (ov, c), key=lambda p: p[0])
+    return None, best[0]
 
 
 def write_captions(words, total, path, card=None, track=None, card_big=None):
@@ -1240,7 +1281,7 @@ def write_captions(words, total, path, card=None, track=None, card_big=None):
         "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
         "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
         "Style: Default,Liberation Sans Narrow,112,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,"
-        "1,0,0,0,100,100,1,0,1,8,3,2,60,60,520,1\n"
+        "1,0,0,0,100,100,1,0,1,8,3,2,150,150,520,1\n"
         "Style: Card,Liberation Sans Narrow,62,&H00D9D9D9,&H000000FF,&H00000000,&H00000000,"
         "1,0,0,0,100,100,10,0,1,3,0,8,60,60,330,1\n"
         "Style: Card2,Liberation Sans Narrow,52,&H00C8C8C8,&H000000FF,&H00000000,&H00000000,"
@@ -1252,22 +1293,15 @@ def write_captions(words, total, path, card=None, track=None, card_big=None):
     lines = []
     prev_y, prev_end = CAPTION_SPOTS[0], -9.0
     groups = caption_groups(words) if len(words) > 6 else [words[i:i + 2] for i in range(0, len(words), 2)]
-    for gi, chunk in enumerate(groups):
-        start = chunk[0][0]
-        nxt = groups[gi + 1][0][0] if gi + 1 < len(groups) else total
-        end = max(chunk[-1][1], min(nxt, chunk[-1][1] + 0.4))
+    rep = {"captions": 0, "moved": 0, "split": 0, "omitted": 0, "omitted_text": [], "collisions": 0, "worst_overlap": 0.0}
+
+    def emit(chunk, start, end, y):
+        nonlocal prev_y, prev_end
         toks = [w[2].upper().replace("{", "").replace("}", "") for w in chunk]
         long_line = len(" ".join(toks)) > 17
         key = max(range(len(toks)), key=lambda j: len(toks[j]))  # the longest word is shown in orange
         toks[key] = "{\\c&H001E9BFF&}" + toks[key] + "{\\c&H00FFFFFF&}"
         text = ("{\\fs92}" if long_line else "") + " ".join(toks)
-        y = CAPTION_SPOTS[0]
-        if track:
-            # keep the last spot if it is still clear, otherwise take the first free one (or the least covered one)
-            cands = [prev_y] + [c for c in CAPTION_SPOTS if c != prev_y]
-            scores = [(_cap_overlap(track, start, end, c), k) for k, c in enumerate(cands)]
-            clear = [c for (sc, k), c in zip(scores, cands) if sc < 0.04]
-            y = clear[0] if clear else cands[min(scores)[1]]
         if y != prev_y and start - prev_end < 0.6:  # a quick, smooth slide from where the last caption was
             tag = f"{{\\an2\\move(540,{prev_y},540,{y},0,170)}}"
         else:
@@ -1275,6 +1309,69 @@ def write_captions(words, total, path, card=None, track=None, card_big=None):
         prev_y, prev_end = y, end
         pop = "{\\fscx88\\fscy88\\t(0,120,\\fscx100\\fscy100)}"     # each phrase lands with a small punch
         lines.append(f"Dialogue: 0,{ass_time(start)},{ass_time(end)},Default,,0,0,0,,{tag}{pop}{text}")
+        rep["captions"] += 1
+
+    def dims_of(chunk):
+        plain = " ".join(w[2] for w in chunk)
+        return _cap_dims(len(plain), len(plain) > 17)
+
+    for gi, chunk in enumerate(groups):
+        start = chunk[0][0]
+        nxt = groups[gi + 1][0][0] if gi + 1 < len(groups) else total
+        end = max(chunk[-1][1], min(nxt, chunk[-1][1] + 0.4))
+        if not track:
+            emit(chunk, start, end, CAPTION_SPOTS[0])
+            continue
+        y, ov = _place_caption(track, start, end, dims_of(chunk), prev_y)
+        if y is not None:
+            if y != prev_y:
+                rep["moved"] += 1
+            rep["worst_overlap"] = max(rep["worst_overlap"], ov)
+            emit(chunk, start, end, y)
+            continue
+        # nowhere is safe for the whole phrase: split it into two shorter captions, each with its own timing
+        if len(chunk) >= 2:
+            h = len(chunk) // 2
+            halves = [(chunk[:h], start, chunk[h - 1][1] + 0.05), (chunk[h:], chunk[h][0], end)]
+            placed = [(c, s0, e0, *_place_caption(track, s0, e0, dims_of(c), prev_y)) for c, s0, e0 in halves]
+            if all(p[3] is not None for p in placed):
+                rep["split"] += 1
+                for c, s0, e0, yy, ov2 in placed:
+                    rep["worst_overlap"] = max(rep["worst_overlap"], ov2)
+                    emit(c, s0, e0, yy)
+                continue
+            # one half may fit even if the other does not: show only the half that is clear
+            for c, s0, e0, yy, ov2 in placed:
+                if yy is not None:
+                    emit(c, s0, e0, yy)
+                else:
+                    rep["omitted"] += 1
+                    rep["omitted_text"].append(" ".join(w[2] for w in c))
+            rep["split"] += 1
+            continue
+        rep["omitted"] += 1                                   # better no caption than a caption over the creature
+        rep["omitted_text"].append(" ".join(w[2] for w in chunk))
+    # --- the mandatory check: every caption that was written is re-tested against every sampled frame
+    if track:
+        for ln in lines:
+            m_ = re.match(r"Dialogue: 0,(\d+):(\d+):(\d+)\.(\d+),(\d+):(\d+):(\d+)\.(\d+),Default,,0,0,0,,\{\\an2\\(?:pos|move)\(540,(\d+)(?:,540,(\d+))?", ln)
+            if not m_:
+                continue
+            g = [int(x) for x in m_.groups(default="0")]
+            t0 = g[0] * 3600 + g[1] * 60 + g[2] + g[3] / 100
+            t1 = g[4] * 3600 + g[5] * 60 + g[6] + g[7] / 100
+            yb = g[9] or g[8]
+            body = re.sub(r"\{[^}]*\}", "", ln.split("}", 2)[-1] if False else ln.rsplit("}", 1)[-1])
+            dims = _cap_dims(len(body), len(body) > 17)
+            if _cap_overlap(track, t0 + 0.17, t1, yb, dims) > CAPTION_OK + 1e-9 or not caption_in_safe_zone(yb, dims):
+                rep["collisions"] += 1
+    CAPTION_REPORT.append(rep)
+    try:
+        (path.parent / "caption_report.json").write_text(json.dumps(rep, indent=1))
+    except Exception:
+        pass
+    log(f"Caption check: {rep['captions']} captions, {rep['moved']} moved out of the way, {rep['split']} split, "
+        f"{rep['omitted']} left out rather than cover the creature, {rep['collisions']} collisions left")
     if card:
         top, low = card, None
         if card_big and "\u00b7" in card:      # series above the name, place below it
@@ -2727,7 +2824,7 @@ def paced_text(sentences, idx, beats=None):
 
 
 # a light touch only: a bit of warmth in the low-mids, a softer top end, gentle levelling. No pitch change, no echo.
-SCARY_CHAIN = ("aresample=44100,asetrate=41000,aresample=44100,atempo=1.0756,highpass=f=60,equalizer=f=140:t=q:w=1:g=3.5,equalizer=f=190:t=q:w=1:g=1.5,equalizer=f=3800:t=q:w=1.2:g=-1.5,"
+SCARY_CHAIN = ("aresample=44100,highpass=f=60,equalizer=f=140:t=q:w=1:g=3.5,equalizer=f=190:t=q:w=1:g=1.5,equalizer=f=3800:t=q:w=1.2:g=-1.5,"
                "acompressor=threshold=-22dB:ratio=2:attack=15:release=250:makeup=1.5,loudnorm=I=-19:TP=-2:LRA=11,"
                "aformat=sample_fmts=s16:channel_layouts=mono")
 
