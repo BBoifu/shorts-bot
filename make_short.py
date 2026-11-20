@@ -2569,8 +2569,12 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
   "title": "catchy title under 70 characters, no hashtags",
   "narrator": {{"gender": "male or female", "persona": "a calm, warm storyteller, like a nature documentary narrator who is quietly afraid"}},
   "monster": {{"palette": "ONE of: {", ".join(var["palettes"])}", "eyes": "one of: red, gold, green, white, violet, orange, blue", "size": "medium or huge"}},
-  "sentences": [{{"text": "one spoken sentence", "delivery": "one voice mood: calm, hushed, whisper, urgent, trembling, low, sorrow, awe or dread"}}]
+  "sentences": [{{"text": "one spoken sentence", "delivery": "one voice mood: calm, hushed, whisper, urgent, trembling, low, sorrow, awe or dread"}}],
+  "host_lines": [{{"after": 3, "text": "Wait, WHAT?!"}}]
 }}
+
+"host_lines": ONE or TWO short reactions (2 to 6 words) from the storyteller's curious friend, said out loud right after the
+sentence with that number (1 = first sentence). Never after sentence 1 or after the last sentence, never two in a row.
 
 Rules for "sentences" (80 to 95 words in total, plain spoken English, no emojis, no quotation marks):
 - Short, concrete, visual sentences: what can be SEEN and HEARD (ash, roars, glowing eyes, the ground shaking).
@@ -2594,7 +2598,19 @@ Rules for "sentences" (80 to 95 words in total, plain spoken English, no emojis,
             for x in sents:
                 x["text"] = x["text"].strip()
                 x["speaker"], x["voice"] = "narrator", ""
-            data["sentences"] = sents[:11]
+            sents = sents[:11]
+            hl, used_at = data.get("host_lines"), set()
+            for h in (hl if isinstance(hl, list) else [])[:2]:      # the friend's reactions go in AFTER the story sentence they react to
+                try:
+                    at, tx = int(h["after"]), str(h["text"]).strip()
+                except Exception:
+                    continue
+                if 1 < at < len(sents) and tx and len(tx.split()) <= 8 and at not in used_at and at - 1 not in used_at:
+                    used_at.add(at)
+            for at in sorted(used_at, reverse=True):
+                tx = next(str(h["text"]).strip() for h in hl if int(h.get("after", -1)) == at)
+                sents.insert(at, {"text": tx, "delivery": "urgent", "speaker": "host", "voice": "host"})
+            data["sentences"] = sents
             data["region"] = str(data.get("region") or "Late Cretaceous, 66 million years ago").strip()
             m = data.get("monster") if isinstance(data.get("monster"), dict) else {}
             m["body"] = body
