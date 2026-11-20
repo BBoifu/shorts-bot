@@ -296,6 +296,11 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
 - One middle sentence describes the signature move on its prey.
 - Middle sentences: {middle}
 - Give each middle sentence a DIFFERENT "action", and make it the action the sentence really describes (hunt = it pounces on prey, feed = it eats, walk = it travels, turn = it reacts to a sound, face = a close-up of its face, footprints = its tracks are found). Use "hunt" at most once.
+- Storyteller frame: in ONE place (never sentence 1, 2 or the last) add a short first-person line from the narrator ("I saw it myself.",
+  "We should have turned back.") with "frame": true. It must not describe a new event, only the narrator recalling it.
+- Host reactions: in ONE or TWO places add one short sentence with "speaker": "host", the narrator's curious friend reacting out loud
+  in 2 to 6 words to the sentence just before it ("Wait, WHAT?!", "It did that?!"). A host line is never sentence 1, 2 or the last, and
+  never sits next to another host line. Host and frame lines do not count towards the word total.
 - Last sentence: a surprising weakness as a twist, then end with exactly these words: What should I combine next? Tell me in the comments.
 - Use real science about the parent animals where possible. Do not present false facts as real.
 - "image" is a vivid 10 to 20 word description of the BACKGROUND ONLY for that sentence: the place
@@ -322,7 +327,24 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
                 s["text"] = s["text"].strip()
                 s["image"] = str(s.get("image") or f"a dramatic view of {place_name}").strip()
                 s["action"] = str(s.get("action") or "").strip().lower() if str(s.get("action") or "").strip().lower() in acts else ""
-            data["sentences"] = sents[:11]
+                s["speaker"] = "host" if str(s.get("speaker") or "").lower() == "host" else "narrator"
+                s["frame"] = bool(s.get("frame")) and s["speaker"] == "narrator"
+            # the hosts appear only where they make sense: not in the first two or the last sentence, never side by side, at most two
+            sents = sents[:11]
+            hosts_seen = 0
+            for k_, s in enumerate(sents):
+                if s["speaker"] == "host" and (k_ < 2 or k_ >= len(sents) - 1 or hosts_seen >= 2
+                                               or (k_ and sents[k_ - 1]["speaker"] == "host")):
+                    s["speaker"] = "narrator"
+                    s["text"] = s["text"]
+                    s["_drop"] = True
+                elif s["speaker"] == "host":
+                    hosts_seen += 1
+                if s["frame"] and (k_ < 2 or k_ >= len(sents) - 1):
+                    s["frame"] = False
+                    s["_drop"] = True
+            sents = [s for s in sents if not s.get("_drop")]          # a misplaced host/frame line is removed, not read in the wrong voice
+            data["sentences"] = sents
             data["format"] = fname
             data["prey"] = str(data.get("prey") or "a small desert animal").strip()
             data["signature_move"] = str(data.get("signature_move") or "it pounces with lightning speed").strip()
@@ -831,6 +853,17 @@ def synth(kind, dest):
     elif kind == "flap":  # one heavy wing beat
         fc = (f"{L}='0.9*sin(2*PI*58*t)*exp(-9*t)+0.35*sin(2*PI*110*t)*exp(-14*t)':d=0.55:s=44100[a];"
               "[a]lowpass=f=900,alimiter=limit=0.9:level=0")
+    elif kind == "stab":  # a claw or fang punching through skin: a wet thud with a short tearing hiss
+        fc = (f"{L}='0.95*sin(2*PI*88*t)*exp(-26*t)+0.5*sin(2*PI*205*t)*exp(-42*t)':d=0.4:s=44100[a];"
+              "anoisesrc=d=0.4:c=pink:a=0.8:s=44100[n];[n]highpass=f=450,lowpass=f=4800,afade=out:st=0:d=0.22[nn];"
+              "[a][nn]amix=inputs=2:weights='1 0.55':normalize=0,lowpass=f=5200,alimiter=limit=0.9:level=0")
+    elif kind == "rip":  # flesh and hide tearing under a dragged claw
+        fc = ("anoisesrc=d=1.0:c=pink:a=0.9:s=44100[a];[a]highpass=f=260,lowpass=f=3600,tremolo=f=38:d=0.85,"
+              "equalizer=f=1200:t=q:w=1:g=4,afade=in:d=0.04,afade=out:st=0.55:d=0.45,alimiter=limit=0.9:level=0")
+    elif kind == "crunch":  # fangs closing through gristle and bone: a few hard clicks and a low squeeze
+        fc = (f"{L}='0.9*sin(2*PI*150*t)*exp(-34*t)+0.8*sin(2*PI*210*(t-0.11))*exp(-60*(t-0.11))*gte(t,0.11)"
+              "+0.7*sin(2*PI*130*(t-0.23))*exp(-55*(t-0.23))*gte(t,0.23)+0.4*sin(2*PI*60*t)*exp(-6*t)':d=0.7:s=44100[a];"
+              "[a]lowpass=f=2600,aecho=0.7:0.5:40:0.25,alimiter=limit=0.9:level=0")
     elif kind == "creak":  # an old stair taking weight
         fc = (f"{L}='0.35*sin(2*PI*(230-90*t)*t)+0.22*sin(2*PI*(470-170*t)*t)+0.12*sin(2*PI*(910-300*t)*t)':d=0.7:s=44100[a];"
               "[a]tremolo=f=34:d=0.85,lowpass=f=1800,afade=in:d=0.05,afade=out:st=0.4:d=0.3,alimiter=limit=0.9:level=0")
@@ -865,7 +898,7 @@ def make_scream(call_a, call_b, dest):
 def prepare_sounds(a, b, ambient_query):
     """Returns a dict of sound file names inside WORK."""
     s = {}
-    for kind in ("whoosh", "boom", "riser", "growl", "eerie", "victim", "distant", "heart", "tap", "creak", "scrape", "flap", "roar", "rumble", "splash", "gust", "crash", "static"):
+    for kind in ("whoosh", "boom", "riser", "growl", "eerie", "victim", "distant", "heart", "tap", "creak", "scrape", "flap", "roar", "rumble", "splash", "gust", "crash", "static", "stab", "rip", "crunch"):
         synth(kind, f"{kind}.wav")
         s[kind] = f"{kind}.wav"
     queries = lambda x: [f"{x} sound", f"{x} call", f"{x} roar"]
@@ -1108,7 +1141,7 @@ def sound_stats(path):
 #   ambience about -38 dB RMS, music about -28 dB RMS (and ducked a further ~8 dB whenever the narrator speaks).
 SFX_PEAK_DB, SFX_MEAN_DB = -24.0, -31.0          # ordinary effects: about 12-18 dB under the voice
 MAJOR_PEAK_DB, MAJOR_MEAN_DB = -13.0, -28.0      # big impacts and screams: about 8-12 dB under, and only briefly
-MAJOR_SOUNDS = ("boom", "scream", "victim", "crash", "roar")
+MAJOR_SOUNDS = ("boom", "scream", "victim", "crash", "roar", "stab", "crunch")
 AMBIENT_MEAN_DB = -38.0
 MUSIC_MEAN_DB = -31.0
 
@@ -1116,7 +1149,15 @@ MUSIC_MEAN_DB = -31.0
 DEEPEN = ""   # no artificial pitch change: the natural voice is kept as it is
 
 
-def build_audio(voice_name, total, events, ambient, out_wav, quiet=None, score=None):
+def voice_chain():
+    """The one filter chain the narrator goes through: gentle compression so every word is clear, levelled to a steady -16 LUFS."""
+    fmt = "aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo"
+    return (f"aresample=44100,{DEEPEN}{fmt},highpass=f=70,bass=g=2.5:f=140,"
+            "acompressor=threshold=0.125:ratio=2.2:attack=10:release=160:makeup=1.5,"
+            f"loudnorm=I=-16:TP=-2.5:LRA=7,aresample=44100,{fmt}")
+
+
+def _build_audio_once(voice_name, total, events, ambient, out_wav, quiet=None, score=None, trim_db=0.0, only=None):
     """Narration-first mix. The voice is levelled, then effects, ambience and music are each set to a measured distance
     below it and ducked while it speaks. Music is the user's own track if supplied, otherwise the generated score."""
     music = find_music_track()
@@ -1138,9 +1179,7 @@ def build_audio(voice_name, total, events, ambient, out_wav, quiet=None, score=N
     nkeys = len(key_names)
     keys = "".join(f"[{k}]" for k in key_names)
     # the voice: gentle compression so every word is clear, levelled to a steady -16 LUFS, no clipping
-    parts = [f"[0:a]aresample=44100,{DEEPEN}{fmt},highpass=f=70,bass=g=2.5:f=140,"
-             "acompressor=threshold=0.125:ratio=2.2:attack=10:release=160:makeup=1.5,"
-             f"loudnorm=I=-16:TP=-2.5:LRA=7,aresample=44100,{fmt},asplit={1 + nkeys}[v]{keys}"]
+    parts = [f"[0:a]{voice_chain()},asplit={1 + nkeys}[v]{keys}"]
     a_mean, _ = sound_stats(ambient)
     amb_db = AMBIENT_MEAN_DB - a_mean
     parts.append(f"[1:a]aresample=44100,{fmt},atrim=0:{total + 1:.2f},volume={amb_db:.1f}dB{gate}[ambraw]")
@@ -1186,6 +1225,15 @@ def build_audio(voice_name, total, events, ambient, out_wav, quiet=None, score=N
         # ducking: down about 8 dB under speech, back up smoothly in the pauses
         parts.append("[musicraw][vk2]sidechaincompress=threshold=0.015:ratio=4:attack=60:release=900:makeup=1[duckedmusic]")
         labels.append("[duckedmusic]")
+    if trim_db:                     # everything except the voice, turned down together (the voice-dominance guard)
+        tl = ["[v]"]
+        for i_, l_ in enumerate(labels[1:]):
+            parts.append(f"{l_}volume={trim_db:.1f}dB[tb{i_}]")
+            tl.append(f"[tb{i_}]")
+        labels = tl
+    if only == "bed":
+        parts.append("[v]anullsink")
+        labels = labels[1:]
     parts.append("".join(labels) + f"amix=inputs={len(labels)}:duration=first:normalize=0:"
                  "dropout_transition=0,alimiter=limit=0.89:level=0[mix]")
     cmd += ["-filter_complex", ";".join(parts), "-map", "[mix]", out_wav]
@@ -1195,6 +1243,64 @@ def build_audio(voice_name, total, events, ambient, out_wav, quiet=None, score=N
         log("No background score found; using narration, ambience, and sound effects only. "
             "Add a licensed track to music/ or set MUSIC_FILE.")
     run(cmd, cwd=WORK)
+
+
+VOICE_MEDIAN_DB, VOICE_P10_DB = 12.0, 7.0        # while the narrator speaks, the voice must stand at least this far above everything else
+AUDIO_REPORT = {}
+
+
+def _pcm(path, chain=""):
+    import numpy as np
+    r = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-vn", "-af", (chain + "," if chain else "") + "aresample=22050,aformat=channel_layouts=mono",
+                        "-f", "f32le", "-"], capture_output=True, cwd=WORK)
+    return np.frombuffer(r.stdout, dtype=np.float32)
+
+
+def voice_dominance(voice_wav, bed_wav):
+    """How far the narrator stands above the music, ambience and effects while the narrator is speaking, measured from the
+    two separate tracks. Returns (median dB, 10th percentile dB, speech windows measured)."""
+    import numpy as np
+    v, x = _pcm(pathlib.Path(WORK) / voice_wav), _pcm(pathlib.Path(WORK) / bed_wav)
+    n = min(len(v), len(x))
+    win = 22050 // 4
+    vp = np.array([float(np.mean(v[i:i + win] ** 2)) for i in range(0, n - win, win)])
+    bp = np.array([float(np.mean(x[i:i + win] ** 2)) for i in range(0, n - win, win)])
+    if not len(vp):
+        return 99.0, 99.0, 0
+    speech = vp > vp.max() * 10 ** (-2.5)                  # within 25 dB of the loudest word
+    if not speech.any():
+        return 99.0, 99.0, 0
+    d = 10 * np.log10(vp[speech] / np.maximum(bp[speech], 1e-12))
+    return float(np.median(d)), float(np.percentile(d, 10)), int(speech.sum())
+
+
+def build_audio(voice_name, total, events, ambient, out_wav, quiet=None, score=None):
+    """The mix, followed by a measured check that the narrator is never overwhelmed. If the music, ambience and effects
+    stand too close to the voice while it speaks, they are turned down together and the mix is made again."""
+    trim = 0.0
+    try:
+        run(["ffmpeg", "-y", "-i", voice_name, "-af", voice_chain(), "stem_voice.wav"], cwd=WORK)
+    except Exception as e:
+        log(f"Voice-dominance check could not run ({e}); making the mix without it.")
+        _build_audio_once(voice_name, total, events, ambient, out_wav, quiet, score, 0.0)
+        return
+    for attempt in range(3):
+        _build_audio_once(voice_name, total, events, ambient, out_wav, list(quiet) if quiet else quiet, score, trim)
+        try:
+            _build_audio_once(voice_name, total, events, ambient, "stem_bed.wav", list(quiet) if quiet else quiet, score, trim, only="bed")
+            med, p10, n = voice_dominance("stem_voice.wav", "stem_bed.wav")
+        except Exception as e:
+            log(f"Voice-dominance check could not run ({e}); keeping the mix as it is.")
+            return
+        AUDIO_REPORT.update({"median_db": round(med, 1), "p10_db": round(p10, 1), "trim_db": trim, "windows": n})
+        if med >= VOICE_MEDIAN_DB and p10 >= VOICE_P10_DB:
+            log(f"Voice dominance OK: the narrator is {med:.1f} dB above everything else (weakest moments {p10:.1f} dB), bed trimmed {trim:.1f} dB.")
+            return
+        need = max(VOICE_MEDIAN_DB - med, VOICE_P10_DB - p10)
+        trim -= min(max(need + 0.5, 1.5), 9.0)
+        log(f"Voice dominance too thin (median {med:.1f} dB, weakest {p10:.1f} dB): turning music/ambience/effects down to {trim:.1f} dB and mixing again.")
+    _build_audio_once(voice_name, total, events, ambient, out_wav, list(quiet) if quiet else quiet, score, trim)
+    log("Voice dominance: still low after 3 mixes; using the quietest one.")
 
 
 # ---------------------------------------------------------------- captions
@@ -1291,6 +1397,7 @@ def write_captions(words, total, path, card=None, track=None, card_big=None):
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
     lines = []
+    EMITTED = []
     prev_y, prev_end = CAPTION_SPOTS[0], -9.0
     groups = caption_groups(words) if len(words) > 6 else [words[i:i + 2] for i in range(0, len(words), 2)]
     rep = {"captions": 0, "moved": 0, "split": 0, "omitted": 0, "omitted_text": [], "collisions": 0, "worst_overlap": 0.0}
@@ -1307,6 +1414,7 @@ def write_captions(words, total, path, card=None, track=None, card_big=None):
         else:
             tag = f"{{\\an2\\pos(540,{y})}}"
         prev_y, prev_end = y, end
+        EMITTED.append((start, end, y, dims_of(chunk), " ".join(w[2] for w in chunk)))
         pop = "{\\fscx88\\fscy88\\t(0,120,\\fscx100\\fscy100)}"     # each phrase lands with a small punch
         lines.append(f"Dialogue: 0,{ass_time(start)},{ass_time(end)},Default,,0,0,0,,{tag}{pop}{text}")
         rep["captions"] += 1
@@ -1353,18 +1461,12 @@ def write_captions(words, total, path, card=None, track=None, card_big=None):
         rep["omitted_text"].append(" ".join(w[2] for w in chunk))
     # --- the mandatory check: every caption that was written is re-tested against every sampled frame
     if track:
-        for ln in lines:
-            m_ = re.match(r"Dialogue: 0,(\d+):(\d+):(\d+)\.(\d+),(\d+):(\d+):(\d+)\.(\d+),Default,,0,0,0,,\{\\an2\\(?:pos|move)\(540,(\d+)(?:,540,(\d+))?", ln)
-            if not m_:
-                continue
-            g = [int(x) for x in m_.groups(default="0")]
-            t0 = g[0] * 3600 + g[1] * 60 + g[2] + g[3] / 100
-            t1 = g[4] * 3600 + g[5] * 60 + g[6] + g[7] / 100
-            yb = g[9] or g[8]
-            body = re.sub(r"\{[^}]*\}", "", ln.split("}", 2)[-1] if False else ln.rsplit("}", 1)[-1])
-            dims = _cap_dims(len(body), len(body) > 17)
-            if _cap_overlap(track, t0 + 0.17, t1, yb, dims) > CAPTION_OK + 1e-9 or not caption_in_safe_zone(yb, dims):
+        for st_, en_, yb, dims, txt in EMITTED:
+            ov = _cap_overlap(track, st_ + 0.17, en_, yb, dims)
+            if ov > CAPTION_OK + 1e-9 or not caption_in_safe_zone(yb, dims):
                 rep["collisions"] += 1
+                rep.setdefault("collision_details", []).append({"text": txt, "from": round(st_, 2), "to": round(en_, 2), "y": yb, "overlap": round(ov, 3)})
+                log(f"Caption collision: '{txt}' {st_:.1f}-{en_:.1f}s at y={yb} covers {ov:.0%} of its box")
     CAPTION_REPORT.append(rep)
     try:
         (path.parent / "caption_report.json").write_text(json.dumps(rep, indent=1))
@@ -1602,11 +1704,12 @@ def open_block(dh, dm, assets, out):
     return t
 
 
-def plan_scenes(sentences, total):
+def plan_scenes(sentences, total, ds=None):
     """Split the audio time across sentences, then decide what to show for each."""
-    chars = [max(len(s["text"]), 1) for s in sentences]
-    tot = sum(chars)
-    ds = [total * c / tot for c in chars]
+    if ds is None:
+        chars = [max(len(s["text"]), 1) for s in sentences]
+        tot = sum(chars)
+        ds = [total * c / tot for c in chars]
     n = len(sentences)
     dh = ds[0]
     d, i = ds[1], 2
@@ -1615,10 +1718,14 @@ def plan_scenes(sentences, total):
         i += 1
     scenes = [{"kind": "open", "dur": dh + d, "hook": dh, "morph": d}]
     while i < n - 1:
-        scenes.append({"kind": "scene", "dur": ds[i], "image": sentences[i]["image"], "si": i})
+        scenes.append({"kind": "scene", "dur": ds[i], "image": sentences[i].get("image", ""), "si": i,
+                       "host": sentences[i].get("speaker") == "host" or bool(sentences[i].get("frame"))})
         i += 1
     scenes.append({"kind": "hold", "dur": ds[n - 1] + 0.3})
     return scenes
+
+
+HOOK_EYE = (255, 170, 40)     # the colour of the creature's eyes in the opening hook; each story sets its own
 
 
 def build_video(scenes, assets, audio_name, captions_name, out_path):
@@ -1650,8 +1757,22 @@ def build_video(scenes, assets, audio_name, captions_name, out_path):
           "vignette=PI/5.5,noise=alls=11:allf=t+u")
     if captions_name:
         vf += f",subtitles={captions_name}"
-    run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "list.txt", "-i", audio_name,
-         "-vf", vf, "-map", "0:v", "-map", "1:a",
+    hook_in, hook_fc = [], None
+    if os.environ.get("HOOK", "1") != "0":
+        try:     # the opening hook: fangs on the scream, glowing eyes pushing in, then the story dissolves in
+            import toon
+            toon.hook_clip(str(WORK / "hook.mp4"), tuple(HOOK_EYE), cwd=WORK)
+            head, tail = vf.split("curves=preset=vintage", 1)
+            hook_fc = (f"[0:v]{head.rstrip(',')}[b];[2:v]format=rgba,fade=t=out:st={toon.HOOK_LEN - 0.3:.2f}:d=0.3:alpha=1[hk];"
+                       f"[b][hk]overlay=0:0:eof_action=pass:enable='lt(t,{toon.HOOK_LEN:.2f})'[o];"
+                       f"[o]curves=preset=vintage{tail}[vout]")
+            hook_in = ["-i", "hook.mp4"]
+        except Exception as e:
+            log(f"Opening hook skipped ({e}).")
+            hook_fc = None
+    vmap = ["-map", "0:v"] if not hook_fc else ["-filter_complex", hook_fc, "-map", "[vout]"]
+    run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "list.txt", "-i", audio_name] + hook_in +
+        ([] if hook_fc else ["-vf", vf]) + vmap + ["-map", "1:a",
          "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
          "-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-ac", "2", "-ar", "44100",
          "-c:a", "aac", "-b:a", "192k", "-shortest", "-t", "59", str(out_path)], cwd=WORK)
@@ -1700,11 +1821,17 @@ def sound_events(scenes, sounds, hunt=None, steps_file=None):
     at = first["dur"]
     for sc in scenes[1:]:
         ev.append({"file": sounds["whoosh"], "at": at - 0.1, "vol": 0.3})
+        if sc.get("maul"):
+            fe, _q = maul_sound_events(sounds, at, sc["dur"])
+            ev += fe
         if sc.get("hunt") and hunt:
             ev.append({"file": sounds["eerie"], "at": at + hunt["zoom_at"] - 0.05, "vol": 0.9})
             ev.append({"file": sounds["boom"], "at": at + hunt["zoom_at"], "vol": 0.6})
             ev.append({"file": sounds["growl"], "at": at + hunt["lunge_at"] - 0.1, "vol": 0.8})
             ev.append({"file": sounds["boom"], "at": at + hunt["lunge_at"] + 0.25, "vol": 0.7})
+            if "maul_at" in hunt:
+                fe, _q = maul_sound_events(sounds, at + hunt["maul_at"], sc["dur"] - hunt["maul_at"])
+                ev += fe
         at += sc["dur"]
     if steps_file:
         ev.append({"file": steps_file, "at": 0.0, "vol": 0.9})
@@ -3064,6 +3191,22 @@ def humanize_voice(name):
         return name
 
 
+
+MAULS = {}      # scene index -> (seconds into the scene the close-up starts, how long it lasts), filled when the scene is made
+
+
+def maul_sound_events(sounds, t0, dur):
+    """Sound for the close-up kill, timed to what is on screen: claws touch (0.30), the rake (0.31-0.62), the jaws close
+    (0.60-0.80) and the fangs sink in (0.80). t0 is the absolute time the close-up starts."""
+    claw = t0 + 0.30 * dur
+    ev = [{"file": sounds["stab"], "at": claw + k * 0.035, "vol": 0.9 - 0.08 * k} for k in range(4)]
+    ev.append({"file": sounds["rip"], "at": claw + 0.06, "vol": 0.8, "max": max(0.5, dur * 0.36)})
+    ev.append({"file": sounds["crunch"], "at": t0 + 0.81 * dur, "vol": 1.0})
+    ev.append({"file": sounds["stab"], "at": t0 + 0.81 * dur + 0.02, "vol": 0.8})
+    ev.append({"file": sounds["growl"], "at": t0 + 0.62 * dur, "vol": 0.5})
+    return ev, (claw - 0.38, claw - 0.03)
+
+
 def folk_sound_events(durs, beats, impacts, sounds, hits=None, quiet=None, origin=None):
     hits = hits or {}
     quiet = quiet if quiet is not None else []
@@ -3087,6 +3230,10 @@ def folk_sound_events(durs, beats, impacts, sounds, hits=None, quiet=None, origi
             ev.append({"file": sounds["victim"], "at": max(hit - 0.45, at), "vol": 0.95, "max": 0.6})  # the victim screams, cut off at impact
             ev.append({"file": sounds["scream"], "at": hit, "vol": 0.7, "max": 1.4})
             ev.append({"file": sounds["growl"], "at": hit + 0.4, "vol": 0.6})
+            if i in MAULS:                      # the close-up: claws through skin, the rake, the bite
+                fe, qw = maul_sound_events(sounds, at + MAULS[i][0], MAULS[i][1])
+                ev += fe
+                quiet.append(qw)
         elif beats[i] == "bedroom":
             for h in hits.get(i, [])[:10]:
                 ev.append({"file": sounds["tap"], "at": at + h, "vol": 0.85})
@@ -3351,6 +3498,23 @@ ESTABLISH_VARIANTS = ["pan", "push", "pull", "storm", "low"]
 MIN_SHOT = 4.4  # a scene shorter than this is not split
 
 
+ANGLE_CYCLE = ("wide", "low", "drift", "close", "high", "dutch")
+CREATURE_BEATS = ("stalk", "walk", "chase", "omen", "village", "footprints", "aftermath")
+
+
+def shot_angle(j, beat, sh, modern, n, i):
+    """A different camera angle for neighbouring shots, so one location never looks like one static view.
+    Only shots where a creature (or the open scene) is the subject move; rooms, inserts, host scenes and the kill keep their own framing."""
+    if modern and not (sh.get("insert") or beat in ("attack", "hosts", "frame") or i == 0 or i == n - 1):
+        return ("dutch", "drift", "high")[j % 3]        # rooms and streets: framing that never depends on the creature being in view
+    if sh.get("insert") or modern or beat in ("attack", "hosts", "frame", "emerge", "swirl", "abyss", "dawn") or i == 0 or i == n - 1:
+        return "wide"
+    a = ANGLE_CYCLE[j % len(ANGLE_CYCLE)]
+    if a in ("low", "close") and beat not in CREATURE_BEATS:
+        a = "drift"
+    return a
+
+
 def plan_shots(beats, durs, fmt, stype, rnd=None):
     """Turns each scene into two shots: a short cutaway first (wide establishing shot, a person noticing something, a lantern
     close-up, eyes in the dark), then the main scene. The first and last scenes stay whole. No cutaway type is used twice in
@@ -3537,6 +3701,7 @@ def build_folk_main(plan):
         words = even_words(narration, total)
 
     creature = toon.folk_creature(animal, story.get("monster"))
+    globals()["HOOK_EYE"] = tuple(creature.get("eye", (255, 170, 40)))[:3]      # the opening hook shows THIS creature's eyes
     if durs is None:
         chars = [max(len(s["text"]), 1) for s in sentences]
         speech_len = total - lead - (tail if lead else 0.0)
@@ -3591,6 +3756,7 @@ def build_folk_main(plan):
             w.pull = 0.22
         w.push = PUSH.get(beats[i], 0.0) if not sh["insert"] else 0.0
         w.shake = SHAKE.get(beats[i], 0.0) if not sh["insert"] else 0.0
+        w.angle = shot_angle(j, beats[i], sh, modern, n, i)
         out = str(WORK / f"toon_s{j}.mp4")
         toon.HOST_SPEAKER = 1 if sentences[i].get("speaker") == "host" else 0   # who is talking in a host scene: reactor or storyteller
         w.clock = story.get("time") or "2:48"
@@ -3611,7 +3777,9 @@ def build_folk_main(plan):
         elif modern:
             hits[j] = getattr(toon, beat + "_scene")(out, dur, w, cur, cwd=WORK).get("hits", [])
         elif beat == "attack":
-            impacts[j] = toon.attack_scene(out, dur, w, creature_v, cwd=WORK)["impact_at"]
+            _ai = toon.attack_scene(out, dur, w, creature_v, cwd=WORK)
+            impacts[j] = _ai["impact_at"]
+            MAULS[j] = (_ai["maul_at"], _ai["maul_dur"])
             blooded = True
         elif beat == "aftermath" and not last:
             toon.ground_scene(out, dur, w, cur, cwd=WORK)
@@ -3791,7 +3959,21 @@ def build_main():
     # --- voice
     words = None
     audio_name = "voice.wav"
-    if not gemini_tts(narration, WORK / "voice.wav", style=NARRATOR_STYLE):
+    sent_durs = None
+    if any(s.get("speaker") == "host" for s in sentences):
+        try:   # the narrator in his own voice, and the curious friend (the second host) in a different one
+            audio_name, h_starts, h_lens = make_mixed_voice(sentences, story.get("narrator") or {}, None)
+            words = []
+            for i_, sn in enumerate(sentences):
+                words += [(h_starts[i_] + a_, h_starts[i_] + b_, w_) for a_, b_, w_ in even_words(sn["text"], h_lens[i_])]
+            sent_durs = [(h_starts[i_ + 1] if i_ + 1 < len(sentences) else audio_seconds(WORK / audio_name)) - h_starts[i_]
+                         for i_ in range(len(sentences))]
+        except Exception as e_:
+            log(f"Host voices did not work ({e_}); the hosts are dropped and the narrator reads the story alone.")
+            sentences[:] = [s for s in sentences if s.get("speaker") != "host"]
+            narration = " ".join(s["text"] for s in sentences)
+            words, audio_name, sent_durs = None, "voice.wav", None
+    if sent_durs is None and not gemini_tts(narration, WORK / "voice.wav", style=NARRATOR_STYLE):
         log("Falling back to the basic free voice.")
         audio_name = "voice.mp3"
         words = asyncio.run(edge_voice(narration, str(WORK / "voice.mp3")))
@@ -3810,7 +3992,7 @@ def build_main():
         sh = toon.hybrid_spec_from(plan["design"])  # the saved identity profile: same body in every scene
     else:
         sh = toon.hybrid_spec_from(toon.design_hybrid(a, b))
-    scenes = plan_scenes(sentences, total)
+    scenes = plan_scenes(sentences, total, sent_durs)
     first = scenes[0]
     t = open_times(first["hook"], first["morph"])
     world = toon.World(place_name, 1)
@@ -3850,10 +4032,21 @@ def build_main():
         w = toon.World(place_name, i + 2)
         w.focus_y = 0.70
         w.push = 0.18 if i % 2 == 0 else 0.0     # a slow push-in on every other shot, otherwise a locked frame
+        w.angle = "wide" if (sc.get("host") or i == hunt_at or sc["kind"] == "hold") else ANGLE_CYCLE[i % len(ANGLE_CYCLE)]
         out = str(WORK / f"toon_s{i}.mp4")
         if sc["kind"] == "hold":
             toon.walk_scene(out, sc["dur"], w, sh, 1, (1.0, 1.15), cwd=WORK, outro=(sh, min(1.5, sc["dur"] * 0.6)))
+        elif sentences[sc["si"]].get("action") == "hunt" and i != hunt_at:     # a second kill sentence: the close-up of claws and jaws
+            toon.maul_scene(out, sc["dur"], w, sh, story.get("prey", ""), cwd=WORK)
+            sc["maul"] = True
+            sc["steps"] = []
+        elif sc.get("host"):                      # the two hosts by the fire, recalling what happened to them
+            toon.HOST_SPEAKER = 1 if sentences[sc["si"]].get("speaker") == "host" else 0
+            toon.hosts_scene(out, sc["dur"], w, sh, cwd=WORK)
+            sc["steps"] = []
+            sc["hosts"] = True
         elif i == hunt_at:
+            globals()["HOOK_EYE"] = tuple(sh.get("eye", (255, 170, 40)))[:3]
             hunt_info = toon.pounce_scene(out, sc["dur"], w, sh, story.get("prey", ""), cwd=WORK)
             sc["hunt"] = True
             sc["steps"] = hunt_info.get("steps", [])

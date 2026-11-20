@@ -1057,6 +1057,7 @@ def head_anchor(sp):
             "bug": (140, -100), "crab": (0, -210)}.get(k, (100, -250))
 
 
+_CLOSEUP = [False]   # set while a macro close-up is on screen (no mist, no overlays)
 _BOXES = []          # where the creature was drawn in the current frame (for captions to stay out of its way)
 _REC_OFF = [0, 0]
 LAST_TRACK = []      # [(time, (x0, y0, x1, y1) or None)] of the last video written
@@ -1743,6 +1744,15 @@ def CINEMA_ON():
     return globals().get("CINEMA", {}).get("on", False)
 
 
+# camera angles: (zoom, where the camera looks, tilt in degrees, sideways drift in px, stays on the creature)
+_ANGLES = {"wide": (1.0, None, 0.0, 0, False),
+           "low": (1.22, 0.80, 0.0, 0, True),          # the camera near the ground, looking up at a big creature
+           "close": (1.42, 0.68, 0.0, 0, True),        # tight on the creature
+           "high": (1.12, 0.74, 0.0, 0, False),        # from above: more ground
+           "dutch": (1.12, None, 4.0, 0, False),       # a tilted, uneasy frame
+           "drift": (1.16, None, 0.0, 90, False)}      # a slow sideways drift
+
+
 def write_video(out, dur, painter, world, cwd=None, cam_dir=1, cam_fn=None):
     """painter(draw, t, u, cam) draws the actors. Frames are piped straight into ffmpeg."""
     n = max(int(dur * FPS), 2)
@@ -1762,28 +1772,37 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1, cam_fn=None):
             im = world.frame(cam, t)
             d = ImageDraw.Draw(im, "RGBA")
             _BOXES.clear()
+            _CLOSEUP[0] = False
             ov = painter(im, d, t, u, cam)
             if ov is not None:
                 im = ov
-            if CINEMA_ON() and not getattr(world, "no_cinema", False):
+            if CINEMA_ON() and not getattr(world, "no_cinema", False) and not _CLOSEUP[0]:
                 im = world.cinema_front(im, cam, t)
             box = None
             if _BOXES:
                 box = [min(b[0] for b in _BOXES), min(b[1] for b in _BOXES), max(b[2] for b in _BOXES), max(b[3] for b in _BOXES)]
             push, shake = getattr(world, "push", 0.0), getattr(world, "shake", 0.0)
             pull = getattr(world, "pull", 0.0)  # a pull-back: the camera starts close and drifts away
-            if push or shake or pull:
-                z = 1.0 + push * (u * u * (3 - 2 * u)) + pull * (1 - u * u * (3 - 2 * u)) + (0.05 if shake else 0.0)
+            ang = _ANGLES.get(getattr(world, "angle", None) or "wide", _ANGLES["wide"])   # (zoom, look height, tilt, drift, follows the creature)
+            if push or shake or pull or ang[0] != 1.0:
+                z = (1.0 + push * (u * u * (3 - 2 * u)) + pull * (1 - u * u * (3 - 2 * u)) + (0.05 if shake else 0.0)) * ang[0]
                 cw, ch = W / z, H / z
-                cx = W / 2 + shake * 0.5 * math.sin(t * 61) * 1.0
-                cy = min(max(H * getattr(world, "focus_y", 0.62) + shake * 0.5 * math.cos(t * 53), ch / 2), H - ch / 2)
+                cx = W / 2 + shake * 0.5 * math.sin(t * 61) * 1.0 + ang[3] * (u - 0.5)
+                fy = ang[1] if ang[1] is not None else getattr(world, "focus_y", 0.62)
+                if ang[4] and box:                    # close and low shots stay on the creature
+                    if getattr(world, "angle", None) == "close":          # keep the head (the front end) in frame
+                        cx = (box[2] - cw * 0.42) if cam_dir >= 0 else (box[0] + cw * 0.42)
+                    else:
+                        cx = 0.78 * (box[0] + box[2]) / 2 + 0.22 * W / 2
+                    fy = 0.55 * ((box[1] + box[3]) / 2 / H) + 0.45 * fy
+                cy = min(max(H * fy + shake * 0.5 * math.cos(t * 53), ch / 2), H - ch / 2)
                 cx = min(max(cx, cw / 2), W - cw / 2)
                 if box:  # where that box ends up after the zoom
                     ax, ay = cx - cw / 2, cy - ch / 2
                     box = [(box[0] - ax) * z, (box[1] - ay) * z, (box[2] - ax) * z, (box[3] - ay) * z]
                 im = im.crop((int(cx - cw / 2), int(cy - ch / 2), int(cx + cw / 2), int(cy + ch / 2)))
             track.append((t, box))
-            tilt = getattr(world, "tilt", 0.0)
+            tilt = getattr(world, "tilt", 0.0) or ang[2]
             if tilt:
                 a = math.radians(abs(tilt))
                 k = 1.0 / (math.cos(a) + (im.size[1] / im.size[0]) * math.sin(a))
@@ -2142,8 +2161,9 @@ def attack_scene(out, dur, world, sp, cwd=None):
     sp2["bloody"] = False
     sp3 = dict(sp)
     sp3["bloody"] = True
-    t_walk, t_run, t_leap, t_hit = 0.22, 0.32, 0.58, 0.66
-    info = {"impact_at": dur * t_hit, "stalk_at": dur * t_walk}
+    t_walk, t_run, t_leap, t_hit = 0.12, 0.20, 0.36, 0.42
+    _m0 = dur * (t_hit + (1 - t_hit) * 0.07)
+    info = {"impact_at": dur * t_hit, "stalk_at": dur * t_walk, "maul_at": _m0, "maul_dur": dur * (1 - t_hit) * 0.57}
     world.shake = 0.0
     hx = 760
 
@@ -2185,6 +2205,10 @@ def attack_scene(out, dur, world, sp, cwd=None):
         if k < 0.07:  # jump-scare: a few frames of the monster's face, blood red, right at the impact
             closeup(im, d, sp3, 0.0, 0.3, 2.3, 2.7, roar=1.0, shake=12, tt=t)
             return red_wash(im, 0.4)
+        if k < 0.64:      # the camera goes in close: claws and teeth through cloth and skin
+            _BOXES.append((100, 520, 980, 1380))
+            return maul_frame(im, t, (k - 0.07) / (0.64 - 0.07), sp, (44, 50, 82), "cloth", seed=5)
+        k = 0.64 + (k - 0.64) * 0.55
         sx = 16 * math.sin(t * 90) * max(0.0, 1 - k * 4)
         sy = 12 * math.cos(t * 80) * max(0.0, 1 - k * 4)
         blood_pool(d, hx - 20, GROUND + 26, min(1, k * 2.2))
@@ -7237,7 +7261,8 @@ def pounce_scene(out, dur, world, sp, prey_text="", cwd=None):
     G = chim_ground(sp)
     prey, pscale = prey_spec(prey_text)
     pcol = tuple(prey["color"])[:3]
-    t1, t2, t3, t4 = dur * 0.22, dur * 0.36, dur * 0.60, dur * 0.70   # stalk end, notice end, leap start, landing
+    t1, t2, t3, t4 = dur * 0.15, dur * 0.26, dur * 0.42, dur * 0.50   # stalk end, notice end, leap start, landing
+    t_cut = dur * 0.56                                                 # then the camera cuts in close: the kill
     Pf, m_at = _speed_profile([(t1, 0.55), (t2, 0.2), (t3, 2.1), (t4, 0.0), (dur + 1.0, 0.0)])
     s0 = 1.4 * sp.get("scale", 1.0) * KIND_SCALE.get("chimera", 1.0)
     reach_x, _ = _head_reach(sp)
@@ -7248,6 +7273,9 @@ def pounce_scene(out, dur, world, sp, prey_text="", cwd=None):
     cx = int(90 + back_ * s0 * zc)
 
     def paint(im, d, t, u, cam):
+        if t >= t_cut:
+            _BOXES.append((100, 520, 980, 1380))
+            return maul_frame(im, t, (t - t_cut) / max(dur - t_cut, 0.1), sp, pcol, "fur", seed=11)
         m = m_at(t)
         z = zc
         s_ = s0 * z
@@ -7306,7 +7334,8 @@ def pounce_scene(out, dur, world, sp, prey_text="", cwd=None):
 
     steps = _contacts(sp, Pf, dur, lambda t: m_at(t) > 0.18 and not (t3 <= t < t4) and t < t4)
     write_video(out, dur, paint, world, cwd, cam_dir=1, cam_fn=lambda t: G * Pf(t))
-    return {"zoom_at": t1, "lunge_at": t4 - 0.25, "land_at": t4, "steps": steps}
+    return {"zoom_at": t1, "lunge_at": t4 - 0.25, "land_at": t4, "steps": steps, "maul_at": t_cut,
+            "impact_at": t_cut + 0.30 * (dur - t_cut)}
 
 
 def chim_mass(sp):
@@ -8885,3 +8914,426 @@ def hosts_scene(out, dur, world, sp, cwd=None):
 
 
 STORY_FUNCS.update({"hosts": hosts_scene})
+
+
+# ================================================================ the close-up kill (claws and fangs entering skin)
+# A macro shot of the prey's hide. Claws hover, strike (hit-stop + flash), the skin dimples and PUNCTURES, then the four claws
+# rake and four wounds open layer by layer (cut skin edge, red flesh, dark depth, muscle fibre, wet shine) while blood wells,
+# runs and sprays. Then the jaws close from above and below and the fangs sink in. Everything is drawn at 2x and reduced,
+# so every edge stays sharp.
+_MAUL_CACHE = {}
+
+
+def _sm(x):
+    x = max(0.0, min(1.0, x))
+    return x * x * (3 - 2 * x)
+
+
+def _hide_base(col, kind):
+    key = (tuple(int(c) for c in col[:3]), kind)
+    if key in _MAUL_CACHE:
+        return _MAUL_CACHE[key]
+    rs = np.random.RandomState(7)
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    light = 1.18 - 0.55 * np.clip(((xx / W) * 0.55 + (yy / H) * 0.65), 0, 1)           # lit from the upper left
+    light *= 1 - 0.28 * np.clip(((xx - W / 2) ** 2 + (yy - H * 0.5) ** 2) / (W * 0.95) ** 2, 0, 1)
+    base = np.array(col[:3], dtype=np.float32)[None, None, :] * light[..., None]
+    img = Image.fromarray(np.clip(base, 0, 255).astype(np.uint8))
+    d = ImageDraw.Draw(img, "RGBA")
+    rnd = random.Random(5)
+    if kind == "fur":
+        for i in range(17000):
+            x, y = rnd.uniform(-20, W), rnd.uniform(-20, H)
+            a = math.radians(rnd.uniform(70, 112))
+            L = rnd.uniform(14, 36)
+            k = rnd.uniform(0.55, 1.4)
+            c = tuple(int(max(0, min(255, v * k))) for v in col[:3])
+            d.line((x, y, x + math.cos(a) * L, y + math.sin(a) * L), fill=c + (rnd.randint(90, 200),), width=rnd.choice((2, 2, 3)))
+    else:                                            # cloth: weave and soft folds
+        for x in range(0, W, 5):
+            d.line((x, 0, x, H), fill=(0, 0, 0, 22), width=1)
+        for y in range(0, H, 5):
+            d.line((0, y, W, y), fill=(255, 255, 255, 12), width=1)
+        for i in range(9):
+            x0 = rnd.uniform(-200, W)
+            d.line((x0, 0, x0 + rnd.uniform(-260, 260), H), fill=(0, 0, 0, 34), width=rnd.randint(30, 90))
+    img = img.filter(ImageFilter.GaussianBlur(0.7))
+    _MAUL_CACHE[key] = img
+    return img
+
+
+class _D2:
+    """Draws at twice the size so edges are crisp after reduction."""
+    def __init__(self, size):
+        self.im = Image.new("RGBA", (size[0] * 2, size[1] * 2), (0, 0, 0, 0))
+        self.d = ImageDraw.Draw(self.im, "RGBA")
+
+    def poly(self, pts, fill):
+        if len(pts) >= 3:
+            self.d.polygon([(x * 2, y * 2) for x, y in pts], fill=fill)
+
+    def line(self, pts, fill, width=2):
+        self.d.line([(x * 2, y * 2) for x, y in pts], fill=fill, width=max(1, int(width * 2)), joint="curve")
+
+    def ell(self, box, fill, outline=None, width=1):
+        self.d.ellipse([c * 2 for c in box], fill=fill, outline=outline, width=int(width * 2))
+
+    def done(self):
+        return self.im.reduce(2)
+
+
+def _strip(path, half):
+    """Left and right edges of a ribbon around a centre path with a half width at each point."""
+    L, R = [], []
+    for i, ((x, y), h) in enumerate(zip(path, half)):
+        a, b = path[max(i - 1, 0)], path[min(i + 1, len(path) - 1)]
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        n = math.hypot(dx, dy) or 1.0
+        nx, ny = -dy / n, dx / n
+        L.append((x + nx * h, y + ny * h))
+        R.append((x - nx * h, y - ny * h))
+    return L + R[::-1]
+
+
+def _claw_poly(tip, dirv, length, thick, bend, q0=0.0):
+    """A hooked, tapering claw: sharp tip, thick root, curving away to one side."""
+    nx, ny = -dirv[1], dirv[0]
+    pts = [(tip[0] - dirv[0] * length * q + nx * bend * length * q * q,
+            tip[1] - dirv[1] * length * q + ny * bend * length * q * q) for q in [i / 18 for i in range(19)]]
+    half = [1.0 + thick * (q ** 0.85) for q in [i / 18 for i in range(19)]]
+    return pts, half
+
+
+def maul_frame(im, t, u, sp, prey_col=(200, 170, 130), kind="fur", seed=1):
+    """One frame of the close-up kill. u runs 0..1 over the whole close-up. Returns a new RGB image."""
+    _CLOSEUP[0] = True
+    rnd = random.Random(seed)
+    # hit-stop: time freezes for a moment at the instant of contact
+    U_IMP, HOLD = 0.30, 0.03
+    ue = u if u < U_IMP else (U_IMP if u < U_IMP + HOLD else u - HOLD)
+    ue = ue / (1 - HOLD)
+    U_IMP_E = U_IMP / (1 - HOLD)
+    base = _hide_base(prey_col, kind).copy()
+    pc = tuple(int(c) for c in (sp.get("color") or (70, 58, 50))[:3])
+    claw_dark = tuple(int(c * 0.35 + 18) for c in pc)
+    horn = (226, 210, 176)
+    dirv = (0.30, 0.954)
+    nrm = (-dirv[1], dirv[0])                              # across the claws
+    P0 = (470, 430)                                        # where the first claw lands
+    gap = 86.0
+    LEN = 1000.0
+    n_claw = 4
+    starts = [(P0[0] - nrm[0] * (i - 1.5) * gap, P0[1] - nrm[1] * (i - 1.5) * gap + (i % 2) * 14) for i in range(n_claw)]
+    t_drag0, t_drag1 = U_IMP_E, 0.62
+    g = _sm((ue - t_drag0) / (t_drag1 - t_drag0))
+    s_now = g * LEN * (1 if ue >= t_drag0 else 0)
+    lip = (214, 160, 136) if kind == "fur" else (222, 168, 140)
+    V = _D2((W, H))
+    breathe = 1 + 0.012 * math.sin(t * 5.0)
+
+    # ---- wounds -------------------------------------------------------------------------------------------------
+    def age_open(s):
+        pa = t_drag0 + (t_drag1 - t_drag0) * (s / LEN)      # when the claw passed this point
+        a = ue - pa
+        if a <= 0:
+            return 0.0, 0.0
+        return min(1.0, _sm(a / 0.09) * 0.8 + min(0.2, a * 0.8)), a
+    wound_paths = []
+    if ue >= U_IMP_E:
+        for i, (sx, sy) in enumerate(starts):
+            path, half, ages = [], [], []
+            n = max(2, int(s_now / 10) + 1)
+            for k in range(n):
+                s = min(s_now, k * 10.0)
+                wob = 9 * math.sin(s * 0.021 + i * 1.7) + 4 * math.sin(s * 0.057 + i)
+                x, y = sx + dirv[0] * s + nrm[0] * wob, sy + dirv[1] * s + nrm[1] * wob
+                o, a = age_open(s)
+                taper = min(1.0, s / 60.0) * min(1.0, (LEN - s + 40) / 90.0)
+                w = (3 + 56 * o * (0.78 + 0.22 * math.sin(s * 0.05 + i))) * taper
+                path.append((x, y)); half.append(w); ages.append((o, a))
+            wound_paths.append((path, half, ages))
+    # stain: the hide around a wound darkens and reddens
+    for path, half, ages in wound_paths:
+        if len(path) > 2:
+            V.line(path, (110, 8, 10, 46), 150)
+            V.line(path, (110, 8, 10, 60), 84)
+    # the cut edges, the flesh, the depth, the fibres and the wet shine
+    for path, half, ages in wound_paths:
+        if len(path) < 3:
+            continue
+        V.poly(_strip(path, [h + 9 for h in half]), lip + (255,))
+        V.poly(_strip(path, [h + 4 for h in half]), (232, 188, 168, 255))
+        V.poly(_strip(path, half), (152, 20, 28, 255))
+        V.poly(_strip(path, [h * 0.62 for h in half]), (96, 8, 14, 255))
+        V.poly(_strip(path, [h * 0.28 for h in half]), (42, 3, 6, 255))
+        for k in range(2, len(path) - 2, 3):                 # muscle fibres crossing the wound
+            x, y = path[k]
+            h = half[k]
+            if h > 8:
+                for j in (-0.5, 0.0, 0.5):
+                    V.line([(x + nrm[0] * h * j * 1.1 - nrm[0] * h * 0.4, y + nrm[1] * h * j * 1.1 - nrm[1] * h * 0.4),
+                            (x + nrm[0] * h * j * 1.1 + nrm[0] * h * 0.4 + dirv[0] * 8, y + nrm[1] * h * j * 1.1 + nrm[1] * h * 0.4 + dirv[1] * 8)],
+                           (196, 58, 56, 150), 2)
+        edge = [(x + nrm[0] * h * 0.72, y + nrm[1] * h * 0.72) for (x, y), h in zip(path, half)]
+        V.line(edge, (255, 190, 180, 150), 3)                # wet shine along the lip
+        # blood welling over the lip
+        V.poly(_strip(path, [h * 1.12 + 2 for h in half]), (170, 12, 18, 120))
+    # rivulets running down from the wounds: a few thick, straight runs with a bead of blood at the end
+    for wi, (path, half, ages) in enumerate(wound_paths):
+        for k in range(14 + wi * 3, len(path), 21):
+            o, a = ages[k]
+            if o < 0.4:
+                continue
+            x, y = path[k]
+            Ld = 70 + 300 * _sm(a / 0.34) * (0.55 + 0.45 * ((k * 7 + wi * 3) % 5) / 4)
+            pts = [(x + 5 * math.sin(j * 0.03 + k), y + j) for j in range(0, int(Ld), 14)]
+            if len(pts) > 1:
+                V.line(pts, (88, 4, 8, 240), 15)
+                V.line(pts, (170, 12, 18, 255), 10)
+                V.line([(px - 3, py) for px, py in pts], (255, 130, 120, 140), 3)
+                px, py = pts[-1]
+                V.ell((px - 11, py - 8, px + 11, py + 18), (150, 8, 14, 255))
+                V.ell((px - 5, py - 4, px - 1, py + 4), (255, 170, 160, 190))
+    # claw punctures at the instant of contact: tented skin, then a ragged hole with flaps
+    if ue >= U_IMP_E - 0.05:
+        for i, (sx, sy) in enumerate(starts):
+            tent = _sm((ue - (U_IMP_E - 0.05)) / 0.05)
+            if ue < U_IMP_E:
+                V.ell((sx - 34 * tent, sy - 26 * tent, sx + 34 * tent, sy + 26 * tent), (0, 0, 0, int(80 * tent)))
+                V.ell((sx - 18 * tent, sy - 14 * tent, sx + 18 * tent, sy + 14 * tent), (255, 230, 210, int(60 * tent)))
+            else:
+                for j in range(7):                            # flaps of skin pushed inwards
+                    a = j * math.tau / 7 + i if hasattr(math, "tau") else j * 6.2832 / 7 + i
+                    V.poly([(sx, sy), (sx + math.cos(a) * 26, sy + math.sin(a) * 20), (sx + math.cos(a + 0.5) * 17, sy + math.sin(a + 0.5) * 13)], lip + (255,))
+                V.ell((sx - 13, sy - 10, sx + 13, sy + 10), (70, 4, 8, 255))
+    # ---- spray from the claw tips -----------------------------------------------------------------------------------
+    if ue >= U_IMP_E:
+        for i, (sx, sy) in enumerate(starts):
+            for pidx in range(26):
+                tb = t_drag0 + (t_drag1 - t_drag0) * (pidx / 26.0) + 0.004 * i
+                if ue < tb:
+                    continue
+                age = (ue - tb) / 0.16
+                if age > 1.0:
+                    continue
+                s = (pidx / 26.0) * LEN
+                bx, by = sx + dirv[0] * s, sy + dirv[1] * s
+                rr = random.Random(seed * 1000 + i * 50 + pidx)
+                vx, vy = rr.uniform(-520, 520) + dirv[0] * 380, rr.uniform(-760, -120)
+                px, py = bx + vx * age * 0.45, by + vy * age * 0.45 + 1500 * (age * 0.45) ** 2
+                qx, qy = bx + vx * max(0, age - 0.05) * 0.45, by + vy * max(0, age - 0.05) * 0.45 + 1500 * (max(0, age - 0.05) * 0.45) ** 2
+                r = rr.uniform(3.5, 9) * (1 - 0.4 * age)
+                V.line([(qx, qy), (px, py)], (130, 6, 10, 220), r * 1.2)
+                V.ell((px - r, py - r, px + r, py + r), (176, 12, 18, 255))
+    # ---- the claws ------------------------------------------------------------------------------------------------
+    t_hover = 0.0
+    if ue < t_drag1 + 0.09:
+        for i, (sx, sy) in enumerate(starts):
+            if ue < U_IMP_E:
+                k = _sm((ue - 0.14) / (U_IMP_E - 0.14))            # the strike: from high above down into the skin
+                hover = 330 * (1 - k) + 9 * math.sin(t * 22 + i) * (1 - k) + (0 if ue > 0.12 else 40 * (1 - ue / 0.12))
+                tip = (sx - dirv[0] * hover, sy - dirv[1] * hover)
+            elif ue <= t_drag1:
+                tip = (sx + dirv[0] * s_now + nrm[0] * 9 * math.sin(s_now * 0.021 + i * 1.7), sy + dirv[1] * s_now + nrm[1] * 9 * math.sin(s_now * 0.021 + i * 1.7))
+            else:
+                lift = _sm((ue - t_drag1) / 0.09)
+                tip = (sx + dirv[0] * LEN - dirv[0] * 380 * lift, sy + dirv[1] * LEN - dirv[1] * 380 * lift - 140 * lift)
+            height = 330 * (1 - _sm((ue - 0.14) / (U_IMP_E - 0.14))) if ue < U_IMP_E else (0 if ue <= t_drag1 else 200 * _sm((ue - t_drag1) / 0.09))
+            lenc = 520 + 40 * (i % 2)
+            pts, half = _claw_poly(tip, dirv, lenc, 34, 0.22)
+            for off, al in ((10, 44), (6, 32), (3, 22)):                          # cast shadow: closer to the skin when the claw is down
+                sh = off + height * 0.10
+                V.poly(_strip([(x + sh * 1.2, y + sh * 1.6) for x, y in pts], [h * 1.1 for h in half]), (0, 0, 0, al))
+            V.poly(_strip(pts, half), claw_dark + (255,))
+            V.poly(_strip([(x - nrm[0] * h * 0.18, y - nrm[1] * h * 0.18) for (x, y), h in zip(pts, half)], [h * 0.62 for h in half]), horn + (255,))
+            V.poly(_strip([(x - nrm[0] * h * 0.30, y - nrm[1] * h * 0.30) for (x, y), h in zip(pts, half)], [h * 0.16 for h in half]), (255, 252, 240, 235))
+            if ue >= U_IMP_E:                                                    # the blood on the tip and along the claw
+                cut = [(x, y) for (x, y) in pts[:5]]
+                V.poly(_strip(cut, [h * 1.05 for h in half[:5]]), (150, 8, 14, 235))
+                V.line(cut, (255, 120, 110, 140), 2)
+            else:
+                V.line(pts[:4], (255, 255, 255, 140), 2)
+        # the toe the claws grow from: it sits BEHIND the claw roots, up and away from the skin
+        tipc = [(0.0, 0.0)]
+        if ue < U_IMP_E:
+            k = _sm((ue - 0.14) / (U_IMP_E - 0.14)); hv = 330 * (1 - k)
+        elif ue <= t_drag1:
+            hv = -s_now
+        else:
+            hv = -LEN + 380 * _sm((ue - t_drag1) / 0.09)
+        tx = sum(s_[0] for s_ in starts) / n_claw
+        ty = sum(s_[1] for s_ in starts) / n_claw
+        if ue > t_drag1:
+            ty -= 140 * _sm((ue - t_drag1) / 0.09)
+        bx_, by_ = tx - dirv[0] * (hv + 500), ty - dirv[1] * (hv + 500)         # roots of the claws
+        axis = [(bx_ - dirv[0] * 760 * q, by_ - dirv[1] * 760 * q) for q in [i / 10 for i in range(11)]]
+        wid = [190 + 70 * q for q in [i / 10 for i in range(11)]]
+        V.poly(_strip(axis, [w + 14 for w in wid]), tuple(min(255, c + 70) for c in pc) + (255,))      # rim light
+        V.poly(_strip(axis, wid), pc + (255,))
+        V.poly(_strip([(x + nrm[0] * 40, y + nrm[1] * 40) for x, y in axis], [w * 0.55 for w in wid]), tuple(int(c * 0.7) for c in pc) + (255,))
+        for q in range(1, 9):                                                    # scales / knuckle creases
+            x, y = axis[q]
+            V.line([(x - nrm[0] * wid[q], y - nrm[1] * wid[q]), (x + nrm[0] * wid[q], y + nrm[1] * wid[q])], tuple(int(c * 0.5) for c in pc) + (190,), 5)
+    # ---- the jaws ---------------------------------------------------------------------------------------------------
+    j0, j1 = 0.60, 0.80
+    if ue >= j0 - 0.02:
+        close = _sm((ue - j0) / (j1 - j0))
+        bite = _sm((ue - j1) / 0.07)
+        top_y = -320 + 1250 * close - 14 * bite           # the tooth line of the upper jaw
+        bot_y = 2300 - 1210 * close + 14 * bite           # and of the lower jaw
+        gum_c = (146, 46, 58)
+        for ri, (yb, sg) in enumerate(((top_y, -1), (bot_y, 1))):
+            gum_y = yb + sg * 200                          # the gum line, set back from the tooth tips
+            wav = [(x, gum_y + 16 * math.sin(x * 0.02 + ri * 2)) for x in range(-40, W + 60, 40)]
+            V.poly(wav + [(W + 40, gum_y + sg * 900), (-40, gum_y + sg * 900)], gum_c + (255,))
+            V.poly([(x, y + sg * 40) for x, y in wav] + [(W + 40, gum_y + sg * 900), (-40, gum_y + sg * 900)], (112, 30, 42, 255))
+            V.line([(x, y + sg * 8) for x, y in wav], (255, 176, 176, 160), 5)             # wet shine on the gum
+            xs = [60, 190, 300, 420, 540, 660, 780, 890, 1010]
+            for ti, x in enumerate(xs):
+                big = ti in (1, 7)
+                extra = 70 if big else 8 + 22 * ((ti * 5) % 3)
+                bw = 76 if big else 56
+                base_y = gum_y + sg * 6
+                tipy = yb + (-sg) * extra
+                tipx = x + (ti - 4) * 7 + (24 if ri else -24)
+                hook = 20 * (1 if ti % 2 else -1)
+                qs = [i / 10 for i in range(11)]
+                left = [(x - bw * (1 - q) + (tipx - x) * q - hook * q * q, base_y + (tipy - base_y) * q) for q in qs]
+                right = [(x + bw * (1 - q) + (tipx - x) * q - hook * q * q, base_y + (tipy - base_y) * q) for q in qs]
+                V.poly(left + right[::-1], (238, 228, 200, 255))
+                V.poly([((a_[0] + b_[0]) / 2 + 4, a_[1]) for a_, b_ in zip(left, right)] + right[::-1], (200, 182, 142, 255))        # shaded side
+                V.line([(a_[0] + (b_[0] - a_[0]) * 0.18, a_[1]) for a_, b_ in zip(left[:9], right[:9])], (255, 253, 242, 230), 6)   # highlight
+                V.poly([(x - bw - 6, base_y), (x + bw + 6, base_y), (x + bw * 0.8, base_y + sg * 30), (x - bw * 0.8, base_y + sg * 30)], (170, 70, 82, 255))   # gum cuff
+                if bite > 0:                                                       # blood on the tips that sank in
+                    V.poly(left[-4:] + right[-4:][::-1], (158, 10, 16, 245))
+            for k_ in range(7):                                                    # strands of saliva
+                x = 140 + k_ * 135
+                sag = 40 + 30 * math.sin(t * 3 + k_) + 60 * close
+                V.line([(x, gum_y + sg * 10), (x + 6, gum_y + sg * (10 + sag)), (x - 4, gum_y + sg * (10 + sag * 1.8))], (255, 255, 255, 110), 3)
+        if bite > 0:                                                               # punctures where the fangs went in
+            for ti, x in enumerate([190, 420, 660, 890]):
+                cy = 1010 + (ti % 2) * 14
+                for rad, al in ((86, 70), (56, 120)):
+                    V.ell((x - rad * bite, cy - rad * 0.55 * bite, x + rad * bite, cy + rad * 0.55 * bite), (120, 6, 10, al))
+                V.ell((x - 22 * bite, cy - 13 * bite, x + 22 * bite, cy + 13 * bite), (40, 2, 4, 255))
+                k = _sm((ue - j1) / 0.18)
+                for j in range(5):
+                    rr = random.Random(ti * 9 + j)
+                    xx = x + rr.uniform(-22, 22)
+                    pts = [(xx + rr.uniform(-4, 4), cy + y_) for y_ in range(0, int(40 + rr.uniform(40, 230) * k), 10)]
+                    if len(pts) > 1:
+                        V.line(pts, (150, 8, 14, 235), 9)
+    over = V.done()
+    out = base.convert("RGBA")
+    out.alpha_composite(over)
+    out = out.convert("RGB")
+    # ---- grade: impact flash, creeping red, vignette, camera shake and a slow push
+    arr = out
+    if U_IMP_E - 0.002 <= ue < U_IMP_E + 0.045:
+        k = 1 - (ue - U_IMP_E) / 0.045
+        arr = Image.blend(arr, Image.new("RGB", arr.size, (255, 244, 235)), 0.36 * max(0, k) ** 2.2)
+    red = 0.05 + 0.20 * _sm((ue - U_IMP_E) / 0.6) if ue > U_IMP_E else 0.0
+    if red:
+        arr = Image.blend(arr, Image.new("RGB", arr.size, (110, 0, 0)), red)
+    shake = 0.0
+    if ue >= U_IMP_E:
+        shake = 16 * max(0.0, 1 - (ue - U_IMP_E) / 0.4) + (10 if j0 <= ue <= j1 + 0.1 else 0) * 0.7
+    z = 1.0 + 0.07 * u
+    cw, chh = W / z, H / z
+    cx = W / 2 + shake * math.sin(t * 83)
+    cy = H / 2 + shake * math.cos(t * 71)
+    arr = arr.crop((int(cx - cw / 2), int(cy - chh / 2), int(cx + cw / 2), int(cy + chh / 2))).resize((W, H), Image.BILINEAR)
+    vig = _MAUL_CACHE.get("vig")
+    if vig is None:
+        yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+        r = np.sqrt(((xx - W / 2) / (W * 0.6)) ** 2 + ((yy - H / 2) / (H * 0.6)) ** 2)
+        v = np.zeros((H, W, 4), dtype=np.uint8)
+        v[..., 0] = 20
+        v[..., 3] = (np.clip((r - 0.55) / 0.6, 0, 1) ** 1.6 * 190).astype(np.uint8)
+        vig = _MAUL_CACHE["vig"] = Image.fromarray(v, "RGBA")
+    arr = arr.convert("RGBA")
+    arr.alpha_composite(vig)
+    return arr.convert("RGB")
+
+
+def maul_scene(out, dur, world, sp, prey_text="", cwd=None):
+    """The close-up kill as its own scene (an insert for hunt / attack sentences)."""
+    prey, _ = prey_spec(prey_text)
+    pcol = tuple(int(c) for c in prey["color"][:3])
+    world.push, world.shake = 0.0, 0.0
+    world.no_cinema = True
+
+    def paint(im, d, t, u, cam):
+        _BOXES.append((100, 520, 980, 1380))
+        return maul_frame(im, t, u, sp, pcol, "fur", seed=3)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"hits": [dur * 0.30]}
+
+
+INSERT_FUNCS["maul"] = maul_scene
+
+
+# ================================================================ the opening hook (first 1.7 seconds of every video)
+# A flash of fangs on the scream, then glowing eyes pushing in out of the dark, then the story's first picture dissolves in.
+HOOK_LEN = 1.7
+
+
+def hook_frame(t, eye=(255, 170, 40), seed=3):
+    im = Image.new("RGB", (W, H), (4, 3, 6))
+    cache = _MAUL_CACHE.get("hookfog")
+    if cache is None:
+        rs = np.random.RandomState(4)
+        n = Image.fromarray((rs.rand(48, 27) * 255).astype(np.uint8)).resize((W + 400, H), Image.BICUBIC).filter(ImageFilter.GaussianBlur(60))
+        cache = _MAUL_CACHE["hookfog"] = np.asarray(n, dtype=np.float32) / 255.0
+    off = int(t * 90) % 380
+    fog = cache[:, off:off + W]
+    base = np.zeros((H, W, 3), dtype=np.float32)
+    base += np.array([10, 8, 14], dtype=np.float32)
+    base += fog[..., None] * np.array([26, 18, 30], dtype=np.float32)
+    # a low red glow behind the eyes
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    k = _sm((t - 0.3) / 0.5)
+    r2 = ((xx - W / 2) / 520) ** 2 + ((yy - 900) / 420) ** 2
+    base += (np.exp(-r2 * 1.6) * 38 * k)[..., None] * np.array([1.0, 0.25, 0.12], dtype=np.float32)
+    im = Image.fromarray(np.clip(base, 0, 255).astype(np.uint8))
+    d = ImageDraw.Draw(im, "RGBA")
+    if 0.08 <= t < 0.30:                                              # the flash: a mouth of fangs, on the scream
+        f = 1 - (t - 0.08) / 0.22
+        cx, cy = W / 2, 930
+        spread = 1.0 + 0.5 * (1 - f)
+        d.ellipse((cx - 400 * spread, cy - 250, cx + 400 * spread, cy + 250), fill=(60, 4, 8, 255))
+        d.ellipse((cx - 300 * spread, cy - 170, cx + 300 * spread, cy + 170), fill=(150, 18, 22, 255))
+        for ri, sg in enumerate((-1, 1)):
+            for j in range(9):
+                x = cx + (j - 4) * 84 * spread
+                L = 210 if j in (1, 7) else 130 + 20 * ((j * 5) % 3)
+                y0 = cy + sg * 236
+                d.polygon([(x - 38, y0), (x + 38, y0), (x + (j - 4) * 4, y0 - sg * L)], fill=(238, 228, 200, 255))
+                d.polygon([(x, y0), (x + 38, y0), (x + (j - 4) * 4, y0 - sg * L)], fill=(196, 178, 140, 255))
+        im = Image.blend(im, Image.new("RGB", im.size, (255, 236, 220)), 0.45 * f ** 1.5)
+        return im
+    a = _sm((t - 0.30) / 0.25) * (1 - _sm((t - 1.45) / 0.25))
+    s = 1.0 + 1.2 * _sm((t - 0.45) / 1.1)                             # the eyes push in
+    cx, cy = W / 2, 900 - 40 * _sm((t - 0.45) / 1.1)
+    spread = 190 * s
+    r = 15 * s
+    blink = 1.0 - (1.0 - min(1.0, abs(t - 0.78) / 0.07)) * 0.95 if abs(t - 0.78) < 0.07 else 1.0
+    for sgn in (-1, 1):
+        x = cx + sgn * spread / 2
+        for rr, al in ((r * 5.0, 26), (r * 3.0, 56), (r * 1.9, 110)):
+            d.ellipse((x - rr, cy - rr * blink, x + rr, cy + rr * blink), fill=tuple(eye) + (int(al * a),))
+        d.ellipse((x - r * 1.15, cy - r * 0.8 * blink, x + r * 1.15, cy + r * 0.8 * blink), fill=tuple(min(255, c + 40) for c in eye) + (int(255 * a),))
+        d.ellipse((x - r * 0.28, cy - r * 0.8 * blink, x + r * 0.28, cy + r * 0.8 * blink), fill=(8, 6, 10, int(255 * a)))
+    return im
+
+
+def hook_clip(out, eye=(255, 170, 40), cwd=None):
+    """The hook as its own clip. The final video lays it over the first 1.7 seconds."""
+    w = World("a dark forest", seed=1)
+    w.push, w.shake = 0.0, 0.0
+    w.no_cinema = True
+
+    def paint(im, d, t, u, cam):
+        _CLOSEUP[0] = True
+        return hook_frame(t, eye)
+    write_video(out, HOOK_LEN, paint, w, cwd, cam_dir=0)
