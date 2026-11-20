@@ -1,79 +1,275 @@
 {
- "series": "folklore",
- "key": "folk:crocodile:The Pyretooth|theropod|volcano|ash|Late Cretaceous, 66 million years ago|",
- "episode": 25,
+ "series": "hybrid",
+ "key": "chameleon+lizard@the deep ocean",
+ "a": "chameleon",
+ "b": "lizard",
+ "place": [
+  "the deep ocean",
+  "the dark deep sea floor with faint blue light",
+  "underwater ambience",
+  "dim murky blue light from above",
+  "teal"
+ ],
  "story": {
-  "legend_name": "The Pyretooth",
-  "region": "Late Cretaceous, 66 million years ago",
-  "title": "When the Fire Born Ruled",
-  "narrator": {
-   "gender": "male",
-   "persona": "a calm, warm storyteller, like a nature documentary narrator who is quietly afraid"
-  },
-  "monster": {
-   "palette": "ash",
-   "eyes": "orange",
-   "size": "huge",
-   "body": "theropod",
-   "horn": null,
-   "cracks": true
-  },
+  "title": "Deep Sea Phantom Protects Its Glowing Eggs",
+  "creature_name": "Abyssal Chamelizard",
+  "prey": "lanternfish",
+  "signature_move": "It scurries across the dark ocean floor and freezes instantly, locking its independent chameleon eyes on a passing lanternfish before snapping out a tongue.",
+  "hybrid_look": "A long, low, scaly body with a lizard-shaped head, chameleon's eyes, short sprawling legs, a tightly curled tail, and a ridged back covered in fine overlapping scales.",
   "sentences": [
    {
-    "text": "For millions of years the tyrant lizard was the undisputed apex predator of this valley and nothing dared hunt it.",
-    "delivery": "calm",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "This phantom devours its own young if they fail to hide.",
+    "image": "Pitch-black abyssal trenches with glowing hydrothermal vents shooting dark mineral plumes into freezing water",
+    "action": "hunt"
    },
    {
-    "text": "Herds of long-necked giants and flying reptiles kept far away from the king while his deafening thunder-roar shook the trees.",
-    "delivery": "hushed",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Meet the Abyssal Chamelizard, an imaginary hybrid inheriting lizard body traits and chameleon vision.",
+    "image": "A towering underwater cliff of jagged black basalt shrouded in dense rolling silt",
+    "action": "face"
    },
    {
-    "text": "A volcano that had slept for ages began to violently shake until the dark ground cracked open and the animals fell completely silent.",
-    "delivery": "trembling",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "It scurries across the crushing pressure zone and freezes near its cluster of glowing eggs.",
+    "image": "An eerie seabed of white abyssal ooze dotted with strange geological mounds",
+    "action": "walk"
    },
    {
-    "text": "It finally erupted with ash and fire and thunder, sending every living creature running, and for the first time even the king fled.",
-    "delivery": "urgent",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Suddenly, a hungry deep-sea eel drifts close toward the fragile nest in the darkness.",
+    "image": "Murky, lightless water filled with floating marine snow and dark shifting shadows",
+    "action": "turn"
    },
    {
-    "text": "In the molten crater something vast moved as heat and choking ash gathered into a towering body born straight from the flames with glowing cracks across its hide.",
-    "delivery": "dread",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Blending lizard stamina with chameleon camouflage, the mother stands her ground.",
+    "image": "A dark rocky shelf surrounded by swirling ocean currents and suspended sediment",
+    "action": "feed"
    },
    {
-    "text": "It opened its burning eyes and took its first heavy breath, already much bigger than the king while the earth groaned beneath its claws.",
-    "delivery": "low",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "She shifts her skin to match the dark abyss and flashes her vibrant ridged back.",
+    "image": "A vast underwater plain of dark volcanic sand under immense crushing pressure",
+    "action": "walkback"
    },
    {
-    "text": "The old king stepped forward with fierce pride to challenge the usurper, but one sudden strike ended his ancient reign in an instant.",
-    "delivery": "sorrow",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Confused by the sudden display, the giant predator turns away and swims into the void.",
+    "image": "An open expanse of deep ocean water with distant bioluminescent specks fading away",
+    "action": "footprints"
    },
    {
-    "text": "Now the valley belongs to a new and terrifying master, but what happens when this fire-born monster finally leaves its home?",
-    "delivery": "awe",
-    "speaker": "narrator",
-    "voice": ""
+    "text": "Yet this fierce guardian completely freezes if placed in warm tropical water. What should I combine next? Tell me in the comments.",
+    "image": "A murky trench floor covered in thick layers of ancient marine sediment",
+    "action": "face"
    }
   ],
-  "animal": "crocodile",
-  "story_type": "volcano",
-  "format": "prehistoric",
-  "origin": "",
-  "time": "2:48",
-  "hero": "traveller",
-  "people": "alone"
- }
+  "format": "Guardian of the nest"
+ },
+ "episode": 30,
+ "design": {
+  "hybrid": true,
+  "parents": [
+   "chameleon",
+   "lizard"
+  ],
+  "dominant": "lizard",
+  "secondary": "chameleon",
+  "dom_weight": 0.75,
+  "torso": [
+   "tube",
+   272.88417855086743,
+   101.11578495238183,
+   0.0
+  ],
+  "arch": 0.0,
+  "legs": [
+   "sprawl",
+   4,
+   62.1140219317785,
+   21.813733930971303
+  ],
+  "foot": "claw",
+  "gait": "scurry",
+  "legs_from": "lizard",
+  "arms": null,
+  "head": {
+   "skull": [
+    40.87164883814191,
+    34.418230600540554
+   ],
+   "snout": [
+    "snout",
+    52.4,
+    24.4,
+    16.8,
+    0.0
+   ],
+   "teeth": "needle",
+   "ears": [
+    "none",
+    0
+   ],
+   "eyes": "turret",
+   "brow": 0.0,
+   "extras": [
+    "casque"
+   ],
+   "eyecol": [
+    230,
+    200,
+    60
+   ]
+  },
+  "neck": [
+   24.740079859218532,
+   0.2
+  ],
+  "neck_bow": 0.12,
+  "tail": "curl",
+  "tail_len": 1.1092869949679387,
+  "wings": null,
+  "wingfly": false,
+  "shell": null,
+  "dorsal": [
+   "ridge"
+  ],
+  "skin": "scales",
+  "skin2": "scales",
+  "pal": [
+   [
+    123,
+    162,
+    79
+   ],
+   [
+    232,
+    200,
+    60
+   ],
+   [
+    183,
+    192,
+    127
+   ]
+  ],
+  "pat": "bands",
+  "hover": 0,
+  "temper": "watchful",
+  "glow": false,
+  "ribs": false,
+  "cracks": false,
+  "strike": "tongue",
+  "sig": [
+   "casque",
+   "a striking casque"
+  ],
+  "sigscale": {
+   "casque": 1.3
+  },
+  "donors": {
+   "body": "lizard",
+   "legs": "lizard",
+   "head": "lizard",
+   "face": "chameleon",
+   "mouth": "lizard",
+   "tail": "chameleon",
+   "skin": "lizard",
+   "palette": [
+    "lizard",
+    "chameleon"
+   ]
+  },
+  "flies": false,
+  "words": {},
+  "name": "chameleon-lizard",
+  "fingerprint": {
+   "prof": "tube",
+   "pitch": 0,
+   "L": 1,
+   "H": 1,
+   "legs": "sprawl",
+   "nlegs": 4,
+   "legh": 1,
+   "neck": 0,
+   "snout": "snout",
+   "snoutl": 1,
+   "teeth": "needle",
+   "ears": "none",
+   "eyes": "turret",
+   "tail": "curl",
+   "wings": "none",
+   "shell": "none",
+   "dorsal": "ridge",
+   "skin": "scales",
+   "skin2": "scales",
+   "pat": "bands",
+   "hue": 2,
+   "light": 1,
+   "gait": "scurry",
+   "hover": false,
+   "arms": "none",
+   "extras": "casque"
+  },
+  "fp_distance": 99.0,
+  "attempt": 0
+ },
+ "profile": {
+  "hybrid_name": "chameleon-lizard",
+  "parent_a": "chameleon",
+  "parent_b": "lizard",
+  "dominant_parent": "lizard",
+  "dominant": [
+   "lizard body structure"
+  ],
+  "secondary": [
+   "chameleon eyes and face details",
+   "chameleon tail"
+  ],
+  "proportions": "tube torso, 272x101, horizontal posture, neck 24, legs sprawl x4",
+  "head": "a lizard-shaped head and the chameleon's eyes",
+  "limbs": "sprawl x4",
+  "texture": "scales body, scales limbs and tail",
+  "colour": {
+   "main": [
+    123,
+    162,
+    79
+   ],
+   "accent": [
+    232,
+    200,
+    60
+   ],
+   "belly": [
+    183,
+    192,
+    127
+   ],
+   "pattern": "bands"
+  },
+  "silhouette": "tube-curl-ridge",
+  "locomotion": "scurries and freezes",
+  "gait": "scurry",
+  "hovers": false,
+  "signature_ability": "tongue",
+  "temperament": "watchful",
+  "signature_feature": "a striking casque",
+  "summary": [
+   "a long, low, scaly body (from the lizard)",
+   "a lizard-shaped head and the chameleon's eyes",
+   "short sprawling legs (from the lizard)",
+   "a tightly curled tail (from the chameleon)",
+   "a back with ridge",
+   "fine overlapping scales mixed with scales texture"
+  ]
+ },
+ "clips": [
+  {
+   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in the deep ocean: the dark deep sea floor with faint blue light. A long, low, scaly body with a lizard-shaped head, chameleon's eyes, short sprawling legs, a tightly curled tail, and a ridged back covered in fine overlapping scales. It is menacing and dominant."
+  },
+  {
+   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In the dark deep sea floor with faint blue light, the same hybrid creature goes after lanternfish. It scurries across the dark ocean floor and freezes instantly, locking its independent chameleon eyes on a passing lanternfish before snapping out a tongue.. Fast, powerful movement, camera follows the action. A long, low, scaly body with a lizard-shaped head, chameleon's eyes, short sprawling legs, a tightly curled tail, and a ridged back covered in fine overlapping scales."
+  },
+  {
+   "title": "Clip 3 - the close-up (plays at the end)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A long, low, scaly body with a lizard-shaped head, chameleon's eyes, short sprawling legs, a tightly curled tail, and a ridged back covered in fine overlapping scales."
+  }
+ ]
 }
