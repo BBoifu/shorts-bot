@@ -4321,9 +4321,10 @@ def build_folk_main(plan):
         # breathing room: a short silence before the first word, a slightly slower voice, and a long hold at the end
         speech = audio_seconds(WORK / audio_name)
         lead, tail = 0.8, 1.9
+        check_speech_fits(speech, lead, tail, 2.4)          # raises StoryTooLong (the room also leaves space for the silence before a kill sound)
         rate = 0.95 if speech / 0.95 + lead + tail < 57 else 1.0
         if speech / rate + lead + tail > 57.5:  # too long for a Short: speed the voice up just enough so the ending is never cut off
-            rate = min(1.3, speech / (57.5 - lead - tail))
+            rate = min(MAX_SPEEDUP, speech / (57.5 - lead - tail))
             log(f"Story is long ({speech:.1f}s of speech): voice sped up x{rate:.2f} so the ending fits.")
         run(["ffmpeg", "-y", "-i", audio_name, "-af",
              f"atempo={rate},adelay={int(lead * 1000)}|{int(lead * 1000)},apad=pad_dur={tail}", "-ar", "44100", "voice_paced.wav"], cwd=WORK)
@@ -4517,6 +4518,89 @@ def build_folk_main(plan):
     log(f"Uploaded as '{PRIVACY}': https://youtube.com/shorts/{video_id}")
 
 
+# ---------------------------------------------------------------- the story must fit in a Short
+# A real run produced 78.6 s of speech for a 59 s Short: the end of the story was cut off. Now the spoken length is MEASURED after the voice
+# is made. A little too long: the voice is sped up (at most x1.2). Too long for that: the story is shortened (Gemini rewrites the same
+# sentences shorter, plan.json is updated) and the whole build runs again.
+MAX_SPEEDUP = 1.2
+SHORT_LIMIT_S = 58.0
+HYBRID_TAIL_S = 1.4          # silence after the last word in the hybrid series
+
+
+class StoryTooLong(Exception):
+    def __init__(self, speech, room):
+        self.speech, self.room = speech, room
+        super().__init__(f"{speech:.1f}s of speech cannot fit in {room:.1f}s even at x{MAX_SPEEDUP}")
+
+
+def speech_room(lead, tail, extra=0.0):
+    """Seconds of speech that can be fitted into a Short once the opening lead, the closing hold and any inserted silences are counted."""
+    return SHORT_LIMIT_S - lead - tail - extra
+
+
+def check_speech_fits(speech, lead, tail, extra=0.0):
+    room = speech_room(lead, tail, extra)
+    if speech / MAX_SPEEDUP > room:
+        raise StoryTooLong(speech, room)
+    return room
+
+
+def shorten_story_texts(sentences, speech, room):
+    """Ask Gemini to rewrite the SAME sentences shorter. Returns the new texts (same number, same order) or raises."""
+    target_s = room * MAX_SPEEDUP * 0.9                   # aim a little under what a x1.2 voice could carry
+    words_now = sum(len(s["text"].split()) for s in sentences)
+    target_w = max(40, int(words_now * target_s / max(speech, 1.0)))
+    last = sentences[-1]["text"]
+    prompt = f"""Shorten this narration for a YouTube Short. There are {len(sentences)} sentences, {words_now} words now.
+Rewrite EVERY sentence shorter so the whole thing is at most {target_w} words. Keep the same meaning, the same order and the same number of sentences
+({len(sentences)}). Keep the shocking first sentence short and punchy, keep the twist, and keep the facts that the pictures depend on (names, places,
+what the creature does). Sentences that are spoken lines or reactions stay short. No sentence may become longer. Plain spoken English, no emojis.
+The final sentence must still end with its question or call to action, using the same closing words as now: "{last[-60:]}".
+Return JSON only: {{"sentences": ["...", "..."]}} with exactly {len(sentences)} strings.
+
+Current sentences:
+""" + "\n".join(f"{i + 1}. {s['text']}" for i, s in enumerate(sentences))
+    body = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.6, "responseMimeType": "application/json"}}
+    url = f"{API_BASE}/models/{GEMINI_MODEL}:generateContent"
+    last_err = None
+    for attempt in range(3):
+        try:
+            r = requests.post(url, params={"key": GEMINI_API_KEY}, json=body, timeout=90)
+            r.raise_for_status()
+            text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+            data = json.loads(re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.M).strip())
+            new = [str(x).strip() for x in data["sentences"]]
+            assert len(new) == len(sentences) and all(new), "wrong number of sentences"
+            w_new = sum(len(x.split()) for x in new)
+            assert w_new <= target_w * 1.08, f"still {w_new} words (wanted {target_w})"
+            assert w_new < words_now, "not shorter"
+            return new
+        except Exception as e:
+            last_err = e
+            log(f"Shortening attempt {attempt + 1} failed: {e}")
+    raise RuntimeError(f"the story could not be shortened: {last_err}")
+
+
+def build_with_story_fit(builder):
+    """Run the build; if the story is too long to fit, shorten it once or twice and run the build again."""
+    for attempt in range(3):
+        try:
+            return builder()
+        except StoryTooLong as e:
+            if attempt == 2:
+                sys.exit(f"STOPPED - the story is still too long for a Short ({e}). Nothing uploaded.")
+            log(f"The story is too long for a Short ({e}). Shortening it and building again.")
+            plan_file = PLAN_DIR / "plan.json"
+            plan = json.loads(plan_file.read_text())
+            sents = plan["story"]["sentences"]
+            new = shorten_story_texts(sents, e.speech, e.room)
+            for s_, t_ in zip(sents, new):
+                s_["text"] = t_
+            plan_file.write_text(json.dumps(plan, indent=1))
+            log("Story shortened: " + " ".join(new))
+
+
+
 def plan_main():
     if not GEMINI_API_KEY:
         sys.exit("Missing secret: GEMINI_API_KEY")
@@ -4657,6 +4741,17 @@ def build_main():
         audio_name = "voice.mp3"
         words = asyncio.run(edge_voice(narration, str(WORK / "voice.mp3")))
     total = audio_seconds(WORK / audio_name)
+    room = check_speech_fits(total, HYBRID_TAIL_S, 0.4)            # raises StoryTooLong: the build is repeated with a shorter story
+    if total > room:                                            # a little too long: speed the voice up just enough, never cut the ending
+        rate_ = total / room
+        log(f"Story is long ({total:.1f}s of speech): voice sped up x{rate_:.2f} so the ending fits.")
+        run(["ffmpeg", "-y", "-i", audio_name, "-af", f"atempo={rate_:.4f}", "-ar", "44100", "-ac", "1", "voice_fit.wav"], cwd=WORK)
+        audio_name = "voice_fit.wav"
+        if words:
+            words = [(a_ / rate_, b_ / rate_, w_) for a_, b_, w_ in words]
+        if sent_durs:
+            sent_durs = [d_ / rate_ for d_ in sent_durs]
+        total = audio_seconds(WORK / audio_name)
     if not words:
         words = even_words(narration, total)
     has_caps = write_captions(words, total, WORK / "captions.ass",
@@ -4672,7 +4767,7 @@ def build_main():
     else:
         sh = toon.hybrid_spec_from(toon.design_hybrid(a, b))
     scenes = plan_scenes(sentences, total, sent_durs)
-    END_TAIL_S = 1.4          # a proper ending: after the last word the picture and the sound get time to land (and the loop begins)
+    END_TAIL_S = HYBRID_TAIL_S          # a proper ending: after the last word the picture and the sound get time to land (and the loop begins)
     try:
         run(["ffmpeg", "-y", "-i", audio_name, "-af", f"apad=pad_dur={END_TAIL_S}", "-ar", "44100", "-ac", "1", "voice_end.wav"], cwd=WORK)
         audio_name = "voice_end.wav"
@@ -4870,4 +4965,4 @@ if __name__ == "__main__":
     if mode == "plan":
         plan_main()
     else:
-        build_main()
+        build_with_story_fit(build_main)
