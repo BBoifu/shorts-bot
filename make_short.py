@@ -290,7 +290,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
   ]
 }}
 
-Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken English, no emojis):
+Rules for "sentences" (7 to 9 items, 65 to 85 words in total (the voice reads slowly, about 1.6 words per second, and a Short must stay under 50 seconds, so NEVER go over 90 words), plain spoken English, no emojis):
 - Sentence 1: a short, shocking hook (under 14 words) about the most terrifying thing this creature does.
 - Sentence 2: names the creature, says it is imaginary, and says what it inherits from the {a} and from the {b}.
 - One middle sentence describes the signature move on its prey.
@@ -348,6 +348,7 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
             data["format"] = fname
             data["prey"] = str(data.get("prey") or "a small desert animal").strip()
             data["signature_move"] = str(data.get("signature_move") or "it pounces with lightning speed").strip()
+            _word_guard(data, attempt)
             return data
         except Exception as e:
             last_err = e
@@ -2733,7 +2734,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
   "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "setting": "one place word from the list below", "delivery": "one voice mood from the list below", "speaker": "narrator, person, creature, mimic or host", "voice": "only for person and mimic lines: man, woman, boy, girl, old_man or old_woman"}}]
 }}
 
-Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken English, no emojis):
+Rules for "sentences" (7 to 9 items, 65 to 85 words in total (the voice reads slowly, about 1.6 words per second, and a Short must stay under 50 seconds, so NEVER go over 90 words), plain spoken English, no emojis):
 - Sentence 1: a gripping hook. {var["hook"]}
 - Retell the legend as "the old tales say". Never present it as true or as something that really happens.
 - Be respectful of the culture it comes from. Do not mock any people, religion or community.
@@ -2833,6 +2834,7 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
                 data["people"] = "alone"
             if not isinstance(data.get("narrator"), dict):
                 data["narrator"] = {}
+            _word_guard(data, attempt)
             return data
         except Exception as e:
             last = e
@@ -2912,7 +2914,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
   "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "delivery": "one voice mood from the list below", "speaker": "narrator, person, creature, mimic or host", "voice": "only for person and mimic lines: man, woman, boy, girl, old_man or old_woman"}}]
 }}
 
-Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken English, first person "I", no emojis):
+Rules for "sentences" (7 to 9 items, 65 to 85 words in total (the voice reads slowly, about 1.6 words per second, and a Short must stay under 50 seconds, so NEVER go over 90 words), plain spoken English, first person "I", no emojis):
 - Sentence 1: a gripping hook. {var["hook"]}
 - Horror is welcome: dread, noises, something wrong. Show harm only through implication (a police detail, a stain, a silence).
   Never describe injuries in explicit detail, and never name real people.
@@ -3016,6 +3018,7 @@ Rules for "sentences" (7 to 9 items, 85 to 105 words in total, plain spoken Engl
             data["hero"], data["people"] = "traveller", "alone"
             if not isinstance(data.get("narrator"), dict):
                 data["narrator"] = {}
+            _word_guard(data, attempt)
             return data
         except Exception as e:
             last = e
@@ -3051,7 +3054,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
 "host_lines": ONE or TWO short reactions (2 to 6 words) from the storyteller's curious friend, said out loud right after the
 sentence with that number (1 = first sentence). Never after sentence 1 or after the last sentence, never two in a row.
 
-Rules for "sentences" (80 to 95 words in total, plain spoken English, no emojis, no quotation marks):
+Rules for "sentences" (65 to 85 words in total, the voice reads slowly so NEVER go over 90 words, plain spoken English, no emojis, no quotation marks):
 - Short, concrete, visual sentences: what can be SEEN and HEARD (ash, roars, glowing eyes, the ground shaking).
 - Horror is welcome, but harm is only implied (a roar cut off, a silence, a trail). No explicit injuries.
 - Do not use real people's names. Do not claim it is real science. The first sentence is a hook that makes people stay.
@@ -3105,6 +3108,7 @@ Rules for "sentences" (80 to 95 words in total, plain spoken English, no emojis,
             data["hero"], data["people"] = "traveller", "alone"
             if not isinstance(data.get("narrator"), dict):
                 data["narrator"] = {}
+            _word_guard(data, attempt)
             return data
         except Exception as e:
             last = e
@@ -4545,40 +4549,109 @@ def check_speech_fits(speech, lead, tail, extra=0.0):
     return room
 
 
+WEAK_END = {"the", "a", "an", "of", "and", "to", "in", "with", "that", "his", "her", "its", "their", "on", "at", "by", "for", "as", "but", "or", "from", "into", "than", "then", "was", "were", "is"}
+STORY_WORD_CAP = 110
+
+
+def _word_guard(data, attempt):
+    """Called when Gemini returns a story: a story far over the word limit is asked for again (the last try is accepted, the build then shortens it)."""
+    n = sum(len(str(s.get("text", "")).split()) for s in data.get("sentences", []))
+    if n > STORY_WORD_CAP and attempt < 2:
+        raise ValueError(f"the story has {n} words, the limit is {STORY_WORD_CAP}")
+
+
+def trim_sentence(text, max_words):
+    """Cut a sentence to at most max_words, at the last natural break (comma, dash) if there is one, else at a word that can end a sentence."""
+    words = text.split()
+    if len(words) <= max_words:
+        return text
+    lo = max(4, max_words // 2)
+    cut = None
+    for i in range(min(max_words, len(words)) - 1, lo - 2, -1):
+        if re.search(r"[,;:\u2014\u2013-]$", words[i]):
+            cut = i + 1
+            break
+    if cut is None:
+        cut = max_words
+        while cut > 4 and re.sub(r"\W", "", words[cut - 1]).lower() in WEAK_END:
+            cut -= 1
+    out = " ".join(words[:cut]).rstrip(" ,;:\u2014\u2013-")
+    return out + "."
+
+
+def trim_to_budget(sentences, target_w):
+    """The no-fail way to shorten: drop the friend's reactions first, then cut the longest narrator sentences back to a natural break.
+    The first sentence (the hook), the last (the closing question) and spoken lines of characters are never cut."""
+    sents = [dict(s) for s in sentences]
+    total = lambda: sum(len(s["text"].split()) for s in sents)
+    for i in range(len(sents) - 2, 0, -1):
+        if total() <= target_w:
+            return sents
+        if sents[i].get("speaker") == "host":
+            del sents[i]
+    guard = 0
+    while total() > target_w and guard < 60:
+        guard += 1
+        cands = [i for i in range(1, len(sents) - 1) if sents[i].get("speaker", "narrator") == "narrator" and len(sents[i]["text"].split()) > 6]
+        if not cands:
+            break
+        i = max(cands, key=lambda k: len(sents[k]["text"].split()))
+        n = len(sents[i]["text"].split())
+        sents[i]["text"] = trim_sentence(sents[i]["text"], max(5, int(n * 0.72)))
+    return sents
+
+
 def shorten_story_texts(sentences, speech, room):
-    """Ask Gemini to rewrite the SAME sentences shorter. Returns the new texts (same number, same order) or raises."""
-    target_s = room * MAX_SPEEDUP * 0.9                   # aim a little under what a x1.2 voice could carry
+    """Returns a shorter list of sentences that should fit: Gemini rewrites them shorter (up to three passes, each pass shown the last answer),
+    then whatever is still too long is cut back deterministically, so this never fails to make progress."""
+    target_s = room * 1.1                                  # a x1.1 voice then fits exactly
     words_now = sum(len(s["text"].split()) for s in sentences)
-    target_w = max(40, int(words_now * target_s / max(speech, 1.0)))
+    target_w = max(35, int(words_now * target_s / max(speech, 1.0)))
     last = sentences[-1]["text"]
-    prompt = f"""Shorten this narration for a YouTube Short. There are {len(sentences)} sentences, {words_now} words now.
-Rewrite EVERY sentence shorter so the whole thing is at most {target_w} words. Keep the same meaning, the same order and the same number of sentences
-({len(sentences)}). Keep the shocking first sentence short and punchy, keep the twist, and keep the facts that the pictures depend on (names, places,
-what the creature does). Sentences that are spoken lines or reactions stay short. No sentence may become longer. Plain spoken English, no emojis.
+    cur = [s["text"] for s in sentences]
+    best = None
+    url = f"{API_BASE}/models/{GEMINI_MODEL}:generateContent"
+    for attempt in range(3):
+        w_cur = sum(len(x.split()) for x in cur)
+        prompt = f"""Shorten this narration for a YouTube Short. There are {len(cur)} sentences, {w_cur} words now.
+Rewrite EVERY sentence shorter so the whole thing is at most {int(target_w * 0.85)} words (count them!). Keep the same order and the same number of
+sentences ({len(cur)}). Keep the shocking first sentence short and punchy, keep the twist, and keep the facts the pictures depend on (names, places,
+what the creature does). Spoken lines and reactions stay very short. No sentence may become longer. Plain spoken English, no emojis.
 The final sentence must still end with its question or call to action, using the same closing words as now: "{last[-60:]}".
-Return JSON only: {{"sentences": ["...", "..."]}} with exactly {len(sentences)} strings.
+Return JSON only: {{"sentences": ["...", "..."]}} with exactly {len(cur)} strings.
 
 Current sentences:
-""" + "\n".join(f"{i + 1}. {s['text']}" for i, s in enumerate(sentences))
-    body = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.6, "responseMimeType": "application/json"}}
-    url = f"{API_BASE}/models/{GEMINI_MODEL}:generateContent"
-    last_err = None
-    for attempt in range(3):
+""" + "\n".join(f"{i + 1}. {x}" for i, x in enumerate(cur))
+        body = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.5, "responseMimeType": "application/json"}}
         try:
             r = requests.post(url, params={"key": GEMINI_API_KEY}, json=body, timeout=90)
             r.raise_for_status()
             text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
             data = json.loads(re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.M).strip())
             new = [str(x).strip() for x in data["sentences"]]
-            assert len(new) == len(sentences) and all(new), "wrong number of sentences"
+            assert len(new) == len(cur) and all(new), "wrong number of sentences"
             w_new = sum(len(x.split()) for x in new)
-            assert w_new <= target_w * 1.08, f"still {w_new} words (wanted {target_w})"
-            assert w_new < words_now, "not shorter"
-            return new
+            if w_new < w_cur:
+                cur = new
+                best = new
+                if w_new <= target_w:
+                    break
+                log(f"Shortening pass {attempt + 1}: {w_cur} -> {w_new} words (wanted {target_w}); trying again.")
+            else:
+                log(f"Shortening pass {attempt + 1}: not shorter ({w_new} words).")
         except Exception as e:
-            last_err = e
             log(f"Shortening attempt {attempt + 1} failed: {e}")
-    raise RuntimeError(f"the story could not be shortened: {last_err}")
+    out = []
+    for s_, t_ in zip(sentences, best or cur):
+        s2 = dict(s_)
+        if s_.get("speaker", "narrator") == "narrator" or best:
+            s2["text"] = t_
+        out.append(s2)
+    out[-1]["text"] = out[-1]["text"] if out[-1]["text"].strip().endswith(("?", ".", "!")) else out[-1]["text"] + "."
+    if sum(len(s["text"].split()) for s in out) > target_w:
+        out = trim_to_budget(out, target_w)
+        log(f"The rewrite was still too long, so the longest sentences were cut back to {sum(len(s['text'].split()) for s in out)} words.")
+    return out
 
 
 def build_with_story_fit(builder):
@@ -4594,10 +4667,9 @@ def build_with_story_fit(builder):
             plan = json.loads(plan_file.read_text())
             sents = plan["story"]["sentences"]
             new = shorten_story_texts(sents, e.speech, e.room)
-            for s_, t_ in zip(sents, new):
-                s_["text"] = t_
+            plan["story"]["sentences"] = new
             plan_file.write_text(json.dumps(plan, indent=1))
-            log("Story shortened: " + " ".join(new))
+            log(f"Story shortened to {sum(len(s['text'].split()) for s in new)} words: " + " ".join(s["text"] for s in new))
 
 
 
