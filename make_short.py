@@ -1350,15 +1350,18 @@ def _cap_overlap(track, t0, t1, bottom, dims=None):
     for t, box in track:
         if t < t0 - 0.1 or t > t1 + 0.1 or not box:
             continue
-        # the video is zoomed 5% and shifted a little before the subtitles are drawn
-        bh = box[3] - box[1]
-        if bh > 650:      # a subject this big fills the frame: its protected part is the head, chest and action; the lowest 28% (legs, feet, ground contact) is not
-            box = (box[0], box[1], box[2], box[1] + bh * 0.72)
-        x0, y0, x1, y1 = box[0] * 1.05 - 27, box[1] * 1.05 - 48, box[2] * 1.05 - 27, box[3] * 1.05 - 48
-        w = min(x1, cx1) - max(x0, cx0)
-        h = min(y1, bottom + 10) - max(y0, top - 10)
-        if w > 0 and h > 0:
-            worst = max(worst, w * h / area)
+        tot = 0.0
+        for bx in [box]:      # the union of everything protected in the frame (the separate parts are also kept in box.parts, but using them was stricter than the tuned rules)
+            # the video is zoomed 5% and shifted a little before the subtitles are drawn
+            bh = bx[3] - bx[1]
+            if bh > 650:      # a subject this big fills the frame: its protected part is the head, chest and action; the lowest 28% (legs, feet, ground contact) is not
+                bx = (bx[0], bx[1], bx[2], bx[1] + bh * (0.5 if bh > 1000 else 0.72))      # a herd of giants: only the heads and chests are protected
+            x0, y0, x1, y1 = bx[0] * 1.05 - 27, bx[1] * 1.05 - 48, bx[2] * 1.05 - 27, bx[3] * 1.05 - 48
+            w = min(x1, cx1) - max(x0, cx0)
+            h = min(y1, bottom + 10) - max(y0, top - 10)
+            if w > 0 and h > 0:
+                tot = max(tot, w * h / area)         # parts often overlap each other (outline + nominal box), so they are not added up
+        worst = max(worst, min(tot, 1.0))
     return worst
 
 
@@ -1380,7 +1383,7 @@ def _place_caption(track, start, end, dims, prev_y):
         if ov <= CAPTION_OK:
             return c, ov
         best = min(best, (ov, c), key=lambda p: p[0])
-    if best[1] is not None and best[1] >= 1400 and best[0] <= CAPTION_TOLERATED:
+    if best[1] is not None and best[1] >= 1100 and best[0] <= CAPTION_TOLERATED:
         return best[1], best[0]        # a giant subject fills the frame: the caption rides the bottom edge, over at most the creature's legs, rather than vanish
     return None, best[0]
 
@@ -1915,6 +1918,21 @@ TEXT_PLACES = (
 )
 
 
+# places that really sit next to each other in nature: a creature that lives in one is believable in the next, so no hybrid is stuck with one backdrop
+NEIGHBOR_PLACES = {
+    "a rainforest after a flood": ("a misty river bank", "a swamp full of toxic mud", "a dark forest"),
+    "a swamp full of toxic mud": ("a misty river bank", "a rainforest after a flood", "a dark forest"),
+    "open grasslands": ("a moonlit field", "a stormy hillside", "a misty river bank"),
+    "the Sahara desert": ("open grasslands", "a stormy hillside", "a deep cave"),
+    "Antarctica": ("a snowy forest", "a mountain peak above the clouds"),
+    "a mountain peak above the clouds": ("a stormy hillside", "a snowy forest", "a deep cave"),
+    "a deep cave": ("a dark forest", "a stormy hillside"),
+    "a snowy forest": ("a dark forest", "a stormy hillside", "a mountain peak above the clouds"),
+    "a land of active volcanoes": ("a stormy hillside", "a deep cave"),
+    "a dark forest": ("a misty river bank", "a stormy hillside"),
+}
+
+
 LOCATIONS_FILE = ROOT / "locations.json"      # which places the last episodes used, so the next one looks different
 
 
@@ -1966,6 +1984,10 @@ def choose_scene_place(i, text, base, a, b, used):
     low = (text or "").lower()
     named = next((pl for rx, pl in TEXT_PLACES if re.search(rx, low) and pl in toon.PLACES), None)
     pool = [base] + [p for p in creature_biomes(a, b) if p != base]
+    for p_ in list(pool):                                   # add the neighbouring habitats so there are always several believable places
+        for q_ in NEIGHBOR_PLACES.get(p_, ()):
+            if q_ not in pool and q_ in toon.PLACES:
+                pool.append(q_)
     if named and named not in pool:
         pool.insert(1, named)
     pick = named if named else None
@@ -1973,7 +1995,12 @@ def choose_scene_place(i, text, base, a, b, used):
         cands = [p for p in pool if not used or p != used[-1]]
         counts = {p: used.count(p) for p in pool}
         recent = recent_locations()
-        cands.sort(key=lambda p: (counts[p], recent.count(p), pool.index(p)))        # unused here first, then least used in the last episodes
+        try:
+            ep_no = len(load_history())          # history.json is always saved by the workflow, so this works even without locations.json
+        except Exception:
+            ep_no = 0
+        # unused here first, then least used in the last episodes, then a rotation that moves one step every episode
+        cands.sort(key=lambda p: (counts[p], recent.count(p), (pool.index(p) + ep_no + i) % len(pool)))
         pick = cands[0] if cands else base
     if used and pick == used[-1] and len(pool) > 1:
         pick = next((p for p in pool if p != used[-1]), pick)
@@ -2067,6 +2094,15 @@ def run_quality_checks(video_path, words, kind):
     elif ANGLES_USED:
         add("Scene variety", len(set(ANGLES_USED)) >= 3 or len(ANGLES_USED) < 5, f"{len(set(ANGLES_USED))} camera angles")
     try:
+        import toon as _t
+        rows = [r for r in _t.MOTION_LOG if r["n"] >= 5]
+        jumpy = [r for r in rows if r["jumps"] > 0]
+        if rows:       # a creature must move like something with weight: no teleporting from one spot to another between two frames
+            add("Movement", not jumpy, (f"{len(rows)} creature shots, the biggest move between two frames is {max(r['max'] for r in rows):.0f}px (limit {_t.MOTION_JUMP_PX}px)"
+                                        if not jumpy else "a creature jumps too far between frames in " + ", ".join(pathlib.Path(r['scene']).name for r in jumpy)))
+    except Exception as e:
+        add("Movement", False, f"could not be measured ({e})")
+    try:
         dur = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(video_path)], capture_output=True, text=True).stdout.strip())
     except Exception:
         dur = 0.0
@@ -2114,6 +2150,8 @@ def quality_gate(video_path, words, kind, rebuild=None):
         if attempt == 1 and rebuild is not None:
             log("QC: re-rendering once to try to repair: " + ", ".join(r[0] for r in failed))
             try:
+                import toon as _t0
+                _t0.MOTION_LOG.clear()
                 rebuild()
             except Exception as e:
                 log(f"QC: the re-render failed ({e})")
@@ -2255,6 +2293,11 @@ def sound_events(scenes, sounds, hunt=None, steps_file=None):
         if sc.get("maul"):
             fe, _q = maul_sound_events(sounds, at, sc["dur"])
             ev += fe
+        if sc.get("smash_at") is not None:            # a vehicle is wrecked: the crunch lands exactly on the contact frame
+            sh_ = at + sc["smash_at"]
+            ev += [{"file": sounds["crash"], "at": sh_, "vol": 0.9}, {"file": sounds["boom"], "at": sh_, "vol": 0.7},
+                   {"file": sounds["crunch"], "at": sh_ + 0.04, "vol": 0.7}, {"file": sounds["tap"], "at": sh_ + 0.14, "vol": 0.6},
+                   {"file": sounds["scrape"], "at": sh_ + 0.3, "vol": 0.45}]
         if sc.get("hunt") and hunt:
             ev.append({"file": sounds["eerie"], "at": at + hunt["zoom_at"] - 0.05, "vol": 0.9})
             ev.append({"file": sounds["boom"], "at": at + hunt["zoom_at"], "vol": 0.6})
@@ -3776,10 +3819,14 @@ def sound_sync_check(events, words, loud=0.6):
         stem = pathlib.Path(str(ev["file"])).stem.split("_")[0]
         if stem not in MAJOR_SOUNDS or ev.get("vol", 1.0) < loud:
             continue
+        fp = pathlib.Path(str(ev["file"]))
+        if not fp.is_absolute():
+            fp = WORK / fp                      # sound names are relative to the work folder (measuring them from anywhere else failed silently)
         try:
-            ln = min(audio_seconds(pathlib.Path(ev["file"])), ev.get("max", 99.0))
-        except Exception:
+            ln = min(audio_seconds(fp), ev.get("max", 99.0))
+        except Exception as e:
             ln = 1.0
+            log(f"Could not measure {fp.name} ({e}); assuming 1 second.")
         s, e = ev["at"], ev["at"] + ln
         ov = sum(max(0.0, min(e, b) - max(s, a)) for a, b in spans)
         if ov > 0.15:
@@ -4378,6 +4425,8 @@ def build_folk_main(plan):
         g1 = 1300 - 740 * (i + 1) / n
         intro = (cur, min(1.4, dur * 0.5)) if i == 0 else None
         last = i == n - 1 and not sh["insert"]
+        if re.search(toon.VEHICLE_RX, sentences[i].get("text", "").lower()) and re.search(toon.SMASH_VERB_RX, sentences[i].get("text", "").lower()):
+            log(f"Vehicle-wreck sentence {i + 1}: shot {j}, beat {beats[i]}, {dur:.1f}s, creature veil {veil}, cutaway={sh['insert']}")
         if sh["insert"]:
             w.variant = sh["variant"]
             if beat == "valley":  # the wide view of the valley, used as an establishing cutaway
@@ -4386,8 +4435,10 @@ def build_folk_main(plan):
         elif (not modern) and veil == 0.0 and beats[i] not in ("attack", "jump") and dur >= 3.0 and re.search(toon.ANATOMY_RX, sentences[i].get("text", "").lower()):
             _an = toon.anatomy_scene(out, dur, w, creature_v, cwd=WORK)           # the narration talks about the body: show what is inside it
             ANATOMY_LOG.append(i)
-        elif (not modern) and veil == 0.0 and dur >= 2.8 and beats[i] not in ("attack", "jump") \
+        elif veil == 0.0 and dur >= 2.8 and beats[i] not in ("attack", "jump") \
                 and re.search(toon.VEHICLE_RX, sentences[i].get("text", "").lower()) and re.search(toon.SMASH_VERB_RX, sentences[i].get("text", "").lower()):
+            if modern:                  # the modern stories are indoors: a wrecked car needs a road
+                w = toon.World(toon.SETTINGS["pathway"], 3 + j * 5, {"fog": 0.5})
             _sm = toon.smash_scene(out, dur, w, creature_v, cwd=WORK)             # the narration wrecks a vehicle: show contact, crumple, debris, aftermath
             SMASH_AT[j] = _sm["impact_at"]
         elif modern:
@@ -4711,6 +4762,10 @@ def build_main():
                 hunt_info = toon.chase_scene(out, sc["dur"], w, sh, story.get("prey", ""), cwd=WORK)
             sc["hunt"] = True
             sc["steps"] = hunt_info.get("steps", [])
+        elif sc["dur"] >= 2.8 and re.search(toon.VEHICLE_RX, sentences[sc["si"]].get("text", "").lower()) \
+                and re.search(toon.SMASH_VERB_RX, sentences[sc["si"]].get("text", "").lower()):
+            sc["smash_at"] = toon.smash_scene(out, sc["dur"], w, sh, cwd=WORK)["impact_at"]      # the narration wrecks a vehicle
+            sc["steps"] = []
         elif sc.get("anatomy"):                  # the narration talks about bones or anatomy
             toon.anatomy_scene(out, sc["dur"], w, sh, cwd=WORK)
             sc["steps"] = []

@@ -1065,6 +1065,13 @@ _REC_OFF = [0, 0]
 LAST_TRACK = []      # [(time, (x0, y0, x1, y1) or None)] of the last video written
 
 
+class _Box(list):
+    """The union box of everything protected in a frame; .parts keeps the separate boxes so a caption can slip BETWEEN two subjects."""
+    parts = ()
+
+
+
+
 # ---------------------------------------------------------------- slow reveal: eyes first, then the face, then the body
 EMERGE = {"dur": 0.0, "t": 0.0, "t0": None, "last": -9.0, "seen": False}   # state of the current scene
 
@@ -1778,6 +1785,9 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1, cam_fn=None):
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, cwd=cwd)
     _LIGHT_WORLD[0] = world
     REACT.update(t=-99.0, power=0.0)
+    BODY.clear()
+    _MOT.clear()
+    _SCENE[0] = out
     track = []
     EMERGE.update(dur=float(getattr(world, "emerge", 0.0) or 0.0), t0=None, last=-9.0, t=0.0)
     try:
@@ -1797,7 +1807,8 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1, cam_fn=None):
                 im = world.cinema_front(im, cam, t)
             box = None
             if _BOXES:
-                box = [min(b[0] for b in _BOXES), min(b[1] for b in _BOXES), max(b[2] for b in _BOXES), max(b[3] for b in _BOXES)]
+                box = _Box([min(b[0] for b in _BOXES), min(b[1] for b in _BOXES), max(b[2] for b in _BOXES), max(b[3] for b in _BOXES)])
+                box.parts = tuple(tuple(b) for b in _BOXES)
             push, shake = getattr(world, "push", 0.0), getattr(world, "shake", 0.0)
             pull = getattr(world, "pull", 0.0)  # a pull-back: the camera starts close and drifts away
             ang = _ANGLES.get(getattr(world, "angle", None) or "wide", _ANGLES["wide"])   # (zoom, look height, tilt, drift, follows the creature)
@@ -1816,7 +1827,9 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1, cam_fn=None):
                 cx = min(max(cx, cw / 2), W - cw / 2)
                 if box:  # where that box ends up after the zoom
                     ax, ay = cx - cw / 2, cy - ch / 2
-                    box = [(box[0] - ax) * z, (box[1] - ay) * z, (box[2] - ax) * z, (box[3] - ay) * z]
+                    parts_ = tuple(((q[0] - ax) * z, (q[1] - ay) * z, (q[2] - ax) * z, (q[3] - ay) * z) for q in getattr(box, "parts", ()))
+                    box = _Box([(box[0] - ax) * z, (box[1] - ay) * z, (box[2] - ax) * z, (box[3] - ay) * z])
+                    box.parts = parts_
                 im = im.crop((int(cx - cw / 2), int(cy - ch / 2), int(cx + cw / 2), int(cy + ch / 2)))
             track.append((t, box))
             tilt = getattr(world, "tilt", 0.0) or ang[2]
@@ -1887,6 +1900,14 @@ def walk_scene(out, dur, world, sp, facing=1, zoom=(1.0, 1.0), hybrid_roar_end=F
         if hybrid_roar_end and u > 0.72:
             roar = min(1.0, (u - 0.72) / 0.1) * (1 if u < 0.95 else (1 - (u - 0.95) / 0.05))
         sh = (3 * math.sin(t * 70)) if roar > 0.1 else 0
+        _gs = chim_ground(sp) if sp["kind"] == "chimera" else WALK_PX
+        for n_, tc in enumerate(_fx_steps):                                         # each foot presses a mark into the ground; the ground carries it away behind
+            ag = t - tc
+            if 0 <= ag < 3.0:
+                fx0 = (400 if facing == 1 else 680) + (-1) ** n_ * 70 * z * facing + 40 * facing - facing * ag * _gs
+                al = int(120 * min(1.0, ag / 0.12) * (1 - ag / 3.0))
+                d.ellipse((fx0 - 17 * z, GROUND + 34 - 3 * z, fx0 + 17 * z, GROUND + 34 + 5 * z), fill=(8, 6, 6, al))
+                d.arc((fx0 - 17 * z, GROUND + 34 - 3 * z, fx0 + 17 * z, GROUND + 34 + 5 * z), 200, 340, fill=(190, 175, 150, int(al * 0.5)), width=2)
         draw_creature(d, sp, (400 if facing == 1 else 680) + sh, GROUND + 20, t * STEP * 0.5,
                       facing, z, {"t": t, "roar": roar, "moving": True})
         for n_, tc in enumerate(_fx_steps):                                         # the ground reacts to each footfall
@@ -7685,10 +7706,12 @@ def _lit_draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=Non
         cx, gy = tx - facing * s * ax, ty - s * ay
     _nb = len(_BOXES)
     _draw_creature_plain(ld, sp, cx, gy, phase, facing, scale, dict(st, noshadow=True), None)
+    layer = _body_mechanics(layer, sp, cx, gy, facing, st, phase)      # weight: lean, squat and settle, feet stay planted
     bb = layer.getchannel("A").point(lambda v: 255 if v > 150 else 0).getbbox()
     if not bb:
         return
     del _BOXES[_nb:]                                   # the nominal box is replaced by the creature's REAL outline
+    _motion_note(sp, st, bb)
     _BOXES.append((bb[0], bb[1], bb[2], bb[3]))
     pad = 30
     x0, y0 = max(int(bb[0]) - pad, 0), max(int(bb[1]) - pad, 0)
@@ -10151,3 +10174,98 @@ def smash_scene(out, dur, world, sp, obj="car", cwd=None):
                               fill=(70, 70, 74, int(125 * (1 - a_ / 2.6))))
     write_video(out, dur, paint, world, cwd, cam_dir=0.0)
     return {"hits": [dur * t_hit, dur * t_hit + 0.22], "impact_at": dur * t_hit}
+
+
+# ---- weight and posture (applies to every creature that is drawn, so all series get it)
+# The whole body leans and squats around the point where its feet touch the ground, driven by a spring so that it has momentum:
+# it leans into a walk, rocks back as it roars, throws its weight forward in a lunge, sinks into a crouch and settles (with a small
+# overshoot) when it stops. Heavy creatures move slowly, light ones quickly. The feet never leave the ground.
+BODY = {}
+BODY_LOG = []          # (lean degrees, squash) of every drawn frame, so a test can check the posture really changes
+
+
+def _body_targets(sp, st, phase):
+    moving = bool(st.get("moving", True))
+    roar, lunge, crouch = st.get("roar", 0.0) or 0.0, st.get("lunge", 0.0) or 0.0, st.get("crouch", 0.0) or 0.0
+    ant, dip, up = st.get("anticipate", 0.0) or 0.0, st.get("dip", 0.0) or 0.0, st.get("headup", 0.0) or 0.0
+    lean = (2.4 if moving else 0.0) - 5.0 * roar + 10.0 * lunge + 4.0 * crouch - 3.0 * ant + 3.0 * dip - 2.5 * up
+    sq = 0.10 * crouch + 0.05 * ant + 0.035 * lunge - 0.03 * roar + 0.03 * dip
+    return lean, sq
+
+
+def _body_mechanics(layer, sp, cx, gy, facing, st, phase):
+    kind = sp.get("kind")
+    if st.get("nobody") or kind in ("swim", "float", "wraith") or (kind == "bird" and "flying" in sp.get("traits", ())):
+        return layer
+    t = st.get("t")
+    if t is None:
+        return layer
+    mass = _clip(sp.get("scale", 1.0) * KIND_SCALE.get(kind, 1.0) * 1.6, 0.7, 1.6)
+    lean_t, sq_t = _body_targets(sp, st, phase)
+    key = (id(sp), facing)
+    S = BODY.get(key)
+    if S is None or not (0.0 <= t - S["t"] < 0.2):          # a new scene (or a jump in time): start in the target posture
+        S = BODY[key] = {"t": t, "a": lean_t, "va": 0.0, "q": sq_t, "vq": 0.0}
+    dt = t - S["t"]
+    if dt > 0:
+        w, z = 11.0 / math.sqrt(mass), 0.5
+        for _ in range(3):                                   # three small steps per frame keeps the spring stable
+            h = dt / 3
+            S["va"] += (w * w * (lean_t - S["a"]) - 2 * z * w * S["va"]) * h
+            S["a"] += S["va"] * h
+            S["vq"] += (w * w * (sq_t - S["q"]) - 2 * z * w * S["vq"]) * h
+            S["q"] += S["vq"] * h
+        S["t"] = t
+    lean, sq = S["a"], S["q"]
+    if kind != "chimera" and st.get("moving", True):         # footfall: the body sinks as each foot takes the weight (chimeras have this in their gait)
+        sq += 0.012 * mass * (0.5 + 0.5 * math.cos(2 * (phase - math.pi / 2)))
+    sq = _clip(sq, -0.06, 0.16)
+    lean = _clip(lean, -9.0, 14.0)
+    BODY_LOG.append((round(lean, 2), round(sq, 4)))
+    if abs(lean) < 0.15 and abs(sq) < 0.003:
+        return layer
+    bb = layer.getchannel("A").point(lambda v: 255 if v > 150 else 0).getbbox()
+    if not bb:
+        return layer
+    padx, pady = 220, 90
+    box = (max(int(bb[0]) - padx, 0), max(int(bb[1]) - pady, 0), min(int(bb[2]) + padx, layer.width), min(int(bb[3]) + 60, layer.height))
+    crop = layer.crop(box).convert("RGBa")                   # premultiplied, so the edges do not get dark fringes
+    ax, ay = cx - box[0], gy - box[1] + 14                    # the feet's contact line
+    T = math.tan(math.radians(lean)) * facing
+    wx = 1.0 + 0.55 * sq
+    hy = 1.0 - sq
+    coeffs = (1 / wx, T / wx, ax - (ax + T * ay) / wx, 0.0, 1 / hy, ay - ay / hy)
+    tr = crop.transform(crop.size, Image.AFFINE, coeffs, Image.BILINEAR).convert("RGBA")
+    out = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+    out.paste(tr, (box[0], box[1]))
+    return out
+
+
+# ---- movement log: how far each creature moves between two frames (a "teleport" or a weightless flick shows up as a huge step)
+MOTION_LOG = []        # one row per scene and creature: frames, largest one-frame move in px, number of jumps over MOTION_JUMP_PX
+_MOT, _SCENE = {}, [""]
+MOTION_JUMP_PX = 200
+
+
+def _motion_note(sp, st, bb):
+    t = st.get("t")
+    if t is None:
+        return
+    key = id(sp)
+    x, y = (bb[0] + bb[2]) / 2.0, float(bb[3])
+    w_, h_ = float(bb[2] - bb[0]), float(bb[3] - bb[1])
+    edge = bb[0] <= 2 or bb[2] >= W - 2                     # partly off screen: its outline is clipped, so the centre is not reliable
+    R = _MOT.get(key)
+    if R is None or not (0.0 <= t - R["t"] < 0.1):
+        R = _MOT[key] = {"t": t, "x": x, "y": y, "w": w_, "h": h_, "edge": edge, "max": 0.0, "jumps": 0, "n": 0, "cuts": 0, "scene": _SCENE[0], "t0": t}
+        MOTION_LOG.append(R)
+    elif t > R["t"]:
+        step = math.hypot(x - R["x"], y - R["y"])
+        cut = abs(h_ - R["h"]) > 0.2 * max(R["h"], 1) or abs(w_ - R["w"]) > 0.2 * max(R["w"], 1)    # a different shot size: a cut, not a move
+        if cut:
+            R["cuts"] += 1
+        elif not (edge or R["edge"]):
+            R["max"] = max(R["max"], step)
+            R["jumps"] += step > MOTION_JUMP_PX
+        R["n"] += 1
+        R["t"], R["x"], R["y"], R["w"], R["h"], R["edge"] = t, x, y, w_, h_, edge
