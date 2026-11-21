@@ -7751,6 +7751,8 @@ def _lit_draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=Non
     out[..., :3] = C.astype(np.uint8)
     out[..., 3] = (A * 255).astype(np.uint8)
     base.paste(Image.fromarray(out, "RGBA").convert("RGB"), (x0, y0), Image.fromarray(out[..., 3], "L"))
+    if st.get("xray"):
+        _xray_overlay(base, solid, x0, y0, sp, cx, gy, s, facing, st["xray"])
 
 
 draw_creature = _lit_draw_creature
@@ -9591,149 +9593,230 @@ def chase_scene(out, dur, world, sp, prey_text="", cwd=None):
     return {"zoom_at": c[1], "lunge_at": leap_t, "land_at": c[4] + 0.8 * (c[5] - c[4]), "steps": steps, "impact_at": c[4] + 0.8 * (c[5] - c[4])}
 
 
-# ================================================================ the universal skeleton / anatomy view (any creature, any body plan)
+# ================================================================ universal skeleton / anatomy view (any creature, any body plan)
 ANATOMY_RX = r"skeleton|\bbones?\b|anatom|rib ?cage|\bskull|\bspine\b|\bvertebra|inside (its|the) body|x-ray|beneath (its|the) (skin|scales|fur)"
 
 
-def _bone_plan(mask, facing=1):
-    """Reads the creature's own silhouette (a boolean array) and lays a plausible skeleton inside it, so the bones always match the body that
-    is drawn: a hybrid with a long tail, wings or extra legs gets bones for exactly those parts. Returns drawing primitives in mask pixels."""
-    h, w = mask.shape
-    ys, xs = np.nonzero(mask)
-    if len(xs) < 50:
+# ================================================================ universal skeleton / anatomy view (works on ANY creature: hybrids, monsters, prey, people-sized figures)
+
+
+def _smooth1d(a, n=9):
+    k = np.ones(n) / n
+    pad = np.pad(a, (n // 2, n // 2), mode="edge")
+    return np.convolve(pad, k, mode="valid")
+
+
+def anatomy_bones(solid, x0, y0, sp, cx, gy, s, facing):
+    """Works out the skeleton from the creature's drawn outline (so it always lines up with the animated body) and from its genes
+    (leg count, wings, shell, tail, skull size). Returns a dict of polylines in screen coordinates."""
+    g = sp.get("g") if isinstance(sp.get("g"), dict) else {}
+    h, w = solid.shape
+    cols = np.where(solid.max(axis=0) > 0.5)[0]
+    if len(cols) < 20:
         return None
-    x0, x1, y0, y1 = xs.min(), xs.max(), ys.min(), ys.max()
-    L = float(x1 - x0 + 1)
-    m_img = Image.fromarray((mask * 255).astype(np.uint8), "L")
-    k = max(9, int(min(y1 - y0, L) * 0.22)) | 1                         # thinner than this = limb, neck, tail
-    core = np.asarray(m_img.filter(ImageFilter.MinFilter(k)).filter(ImageFilter.MaxFilter(k))) > 127
-    if core.sum() < 30:
-        core = mask
-    cy_, cx_ = np.nonzero(core)
-    tx0, tx1, ty0, ty1 = cx_.min(), cx_.max(), cy_.min(), cy_.max()
-    mid_y = (ty0 + ty1) / 2.0
-    head_x, tail_x = (x1, x0) if facing >= 0 else (x0, x1)
-    def end_y(xv, span=22):                                              # the body's vertical middle at the very tip
-        cols = range(max(int(xv - span), 0), min(int(xv + span), w))
-        yy = [yv for c in cols for yv in np.nonzero(mask[:, c])[0]]
-        return float(np.mean(yy)) if yy else mid_y
-    hy, ty_ = end_y(head_x), end_y(tail_x)
-    spine = [(tail_x, ty_), ((tail_x + (tx0 if facing >= 0 else tx1)) / 2, (ty_ + mid_y) / 2),
-             (tx0 if facing >= 0 else tx1, mid_y), ((tx0 + tx1) / 2, mid_y - (ty1 - ty0) * 0.08),
-             (tx1 if facing >= 0 else tx0, mid_y - (ty1 - ty0) * 0.05), ((tx1 if facing >= 0 else tx0) + (head_x - (tx1 if facing >= 0 else tx0)) * 0.55, (mid_y + hy) / 2), (head_x - facing * L * 0.07, hy)]
-    # limbs: thin parts that reach below the torso
-    below = mask.copy()
-    below[: int(ty1 - (ty1 - ty0) * 0.25), :] = False
-    below &= ~core
-    lab = Image.fromarray((below * 255).astype(np.uint8), "L")
-    comps, seen = [], np.zeros_like(below)
-    col_has = below.any(0)
-    run = None
-    for c in range(w + 1):
-        on = c < w and col_has[c]
-        if on and run is None:
-            run = c
-        if (not on) and run is not None:
-            if c - run >= 6:
-                yy, xx = np.nonzero(below[:, run:c])
-                comps.append((run + xx.mean(), yy.max()))
-            run = None
-    legs = []
-    for cx, gy_ in comps:
-        hip_y = ty1 - (ty1 - ty0) * 0.2
-        knee = (cx + facing * 14, hip_y + (gy_ - hip_y) * 0.55)
-        legs.append([(cx, hip_y), knee, (cx - facing * 4, gy_ - 6)])
-    ribs = []
-    nr = 8
-    for i in range(nr):
-        rx = tx0 + (tx1 - tx0) * (0.18 + 0.64 * i / (nr - 1))
-        ext = (ty1 - ty0) * 0.46 * (1 - abs(i - nr / 2.5) / nr * 0.9)
-        ribs.append((rx, mid_y - (ty1 - ty0) * 0.05, ext))
-    head_len = L * 0.16
-    skull = (head_x - facing * head_len * 0.5, hy, head_len, (ys.max() - ys.min()) * 0.13 + 10)
-    return {"spine": spine, "legs": legs, "ribs": ribs, "skull": skull, "box": (x0, y0, x1, y1), "torso": (tx0, ty0, tx1, ty1)}
+    c0, c1 = int(cols[0]), int(cols[-1])
+    top = np.full(w, np.nan)
+    bot = np.full(w, np.nan)
+    for x in range(c0, c1 + 1):
+        ys = np.where(solid[:, x] > 0.5)[0]
+        if len(ys):
+            top[x], bot[x] = ys[0], ys[-1]
+    xs = np.arange(c0, c1 + 1)
+    tp, bt = top[c0:c1 + 1], bot[c0:c1 + 1]
+    ok = ~np.isnan(tp)
+    tp = np.interp(xs, xs[ok], tp[ok])
+    bt = np.interp(xs, xs[ok], bt[ok])
+    torso = g.get("torso")
+    Ht = (float(torso[2]) * s) if torso else 0.30 * float(np.nanmax(bt) - np.nanmin(tp))
+    thick = bt - tp
+    spine = np.where(thick > 1.25 * Ht, tp + 0.45 * Ht, tp + 0.5 * thick)        # legs and wings do not drag the spine around
+    spine = _smooth1d(spine, 15)
+    head_dir = 1 if (sp.get("head0", (1, 0))[0] * facing) > 0 else -1
+    hx = cx + facing * sp.get("head0", (150, -150))[0] * s - x0
+    hy = gy + sp.get("head0", (150, -150))[1] * s - y0
+    ratio = lambda x: (x - c0) / max(c1 - c0, 1) if head_dir > 0 else (c1 - x) / max(c1 - c0, 1)     # 0 at the tail tip, 1 at the nose
+    bones = {"spine": [], "ribs": [], "legs": [], "wings": [], "tail": [], "skull": None, "neck": [], "dorsal": [], "shell": []}
+    # the backbone from the tail tip to the base of the skull; the neck joins it to the head
+    for i, x in enumerate(xs):
+        u = ratio(x)
+        if u <= 0.97 and abs(x - hx) > 12:
+            bones["spine"].append((x0 + x, y0 + float(spine[i])))
+    if head_dir > 0:
+        bones["spine"].sort()
+    else:
+        bones["spine"].sort(reverse=True)
+    sp_pts = bones["spine"]
+    # vertebrae are small dots along it, ribs hang from the middle of the trunk
+    thick_cols = [i for i, x in enumerate(xs) if thick[i] > 0.7 * Ht and 0.2 < ratio(x) < 0.75]
+    if thick_cols:
+        a, b = xs[thick_cols[0]], xs[thick_cols[-1]]
+        n = int(np.clip((b - a) / (0.11 * Ht + 6), 5, 11))
+        for r_ in range(n):
+            x = a + (b - a) * (r_ + 0.5) / n
+            i = int(np.clip(x - c0, 0, len(xs) - 1))
+            ys0 = float(spine[i])
+            depth = min(0.62 * Ht, max(float(bt[i] - ys0) - 8, 10)) * (1 - 0.35 * abs((r_ / max(n - 1, 1)) - 0.35))
+            sway = head_dir * 0.10 * Ht
+            bones["ribs"].append([(x0 + x, y0 + ys0 + 2), (x0 + x + sway, y0 + ys0 + depth * 0.55), (x0 + x - sway * 0.3, y0 + ys0 + depth)])
+    # limbs: every place where the body reaches down to the ground is a leg
+    reach = bt > (np.nanmax(bt) - 0.18 * (np.nanmax(bt) - np.nanmin(tp)))
+    low_cols = [i for i in range(len(xs)) if reach[i] and bt[i] > spine[i] + 0.55 * Ht]
+    groups, cur = [], []
+    for i in low_cols:
+        if cur and i - cur[-1] > 6:
+            groups.append(cur)
+            cur = []
+        cur.append(i)
+    if cur:
+        groups.append(cur)
+    nl = int(g.get("legs", (None, 4))[1]) if g.get("legs") else len(groups)
+    for gi, grp in enumerate(groups[:max(nl, 2)]):
+        i = grp[len(grp) // 2]
+        foot = (x0 + xs[i], y0 + float(bt[i]))
+        hip = (x0 + xs[i], y0 + float(spine[i]) + 0.35 * Ht)
+        L = foot[1] - hip[1]
+        bend = (-1 if gi % 2 else 1) * head_dir * 0.18 * L
+        knee = (hip[0] + bend, hip[1] + 0.52 * L)
+        toe = (foot[0] + head_dir * 0.22 * Ht * 0.6, foot[1])
+        bones["legs"].append([hip, knee, foot, toe])
+    # wings: the topmost part of the outline above the body is the wing tip
+    if g.get("wings"):
+        j = int(np.argmin(tp))
+        if tp[j] < spine[j] - 0.6 * Ht:
+            tip = (x0 + xs[j], y0 + float(tp[j]))
+            sh = (x0 + xs[int(np.clip((c0 + (c1 - c0) * 0.55) - c0, 0, len(xs) - 1))], y0 + float(spine[int(np.clip((c1 - c0) * 0.55, 0, len(xs) - 1))]))
+            elbow = (sh[0] + (tip[0] - sh[0]) * 0.45 - head_dir * 0.12 * Ht, sh[1] + (tip[1] - sh[1]) * 0.55)
+            bones["wings"].append([sh, elbow, tip])
+            for f in range(4):
+                a = (f - 1.5) * 0.22
+                end = (tip[0] - head_dir * (0.2 + 0.12 * f) * Ht * 1.6, tip[1] + (0.7 + 0.35 * f) * Ht * 0.9)
+                bones["wings"].append([elbow if f < 2 else (elbow[0] + (tip[0] - elbow[0]) * 0.5, elbow[1] + (tip[1] - elbow[1]) * 0.5), end])
+    if g.get("shell"):
+        i0, i1 = int(len(xs) * 0.25), int(len(xs) * 0.7)
+        bones["shell"] = [(x0 + xs[i], y0 + float(tp[i]) + 4) for i in range(i0, i1, 4)]
+    if g.get("dorsal"):
+        for i in range(int(len(xs) * 0.2), int(len(xs) * 0.85), max(len(xs) // 14, 6)):
+            bones["dorsal"].append([(x0 + xs[i], y0 + float(spine[i]) - 4), (x0 + xs[i] - head_dir * 6, y0 + float(tp[i]) + 2)])
+    # skull: sized from the creature's own head genes
+    hd = g.get("head") or {}
+    sw, sh_ = (hd.get("skull") or (46, 40))
+    snout = hd.get("snout")
+    sl = float(snout[1]) if snout else 50.0
+    bones["skull"] = {"c": (x0 + hx, y0 + hy), "w": float(sw) * s * 1.1, "h": float(sh_) * s * 1.1, "snout": sl * s, "dir": head_dir}
+    # the neck: dots from the end of the trunk to the skull
+    if sp_pts:
+        endp = sp_pts[-1]
+        for q in range(1, 6):
+            bones["neck"].append((endp[0] + (x0 + hx - endp[0]) * q / 6, endp[1] + (y0 + hy - endp[1]) * q / 6))
+    return bones
 
 
-def _draw_bones(d, plan, ox, oy, k, facing=1, glow=True):
-    """k 0..1 = how much of it is revealed (the sweep runs from the head end to the tail end)."""
-    x0, y0, x1, y1 = plan["box"]
-    bone, edge = (238, 232, 214), (120, 220, 255)
-    sweep = x1 - (x1 - x0 + 40) * k if facing >= 0 else x0 + (x1 - x0 + 40) * k
-    vis = (lambda x: x >= sweep) if facing >= 0 else (lambda x: x <= sweep)
-    def line(pts, w, col=bone):
-        pts = [(p[0] + ox, p[1] + oy) for p in pts if vis(p[0])]
-        if len(pts) > 1:
-            if glow:
-                d.line(pts, fill=edge + (70,), width=w + 8, joint="curve")
-            d.line(pts, fill=col + (255,), width=w, joint="curve")
-    sp_ = plan["spine"]
-    dense = []
-    for i in range(len(sp_) - 1):                                         # smooth spine through the points
-        for s in range(10):
-            f = s / 10
-            dense.append((sp_[i][0] + (sp_[i + 1][0] - sp_[i][0]) * f, sp_[i][1] + (sp_[i + 1][1] - sp_[i][1]) * f))
-    dense.append(sp_[-1])
-    line(dense, 7)
-    for i, (x, y) in enumerate(dense[::3]):                               # vertebrae
-        if vis(x):
-            r = 7 if i % 2 == 0 else 5
-            d.ellipse((x + ox - r, y + oy - r, x + ox + r, y + oy + r), fill=bone + (255,), outline=edge + (120,))
-    for rx, ry, ext in plan["ribs"]:                                      # rib cage
-        if vis(rx):
-            arc = [(rx + facing * ext * 0.35 * math.sin(a), ry + ext * (1 - math.cos(a)) * 0.9) for a in np.linspace(0, math.pi * 0.62, 9)]
-            line(arc, 5)
-    for leg in plan["legs"]:                                              # limbs: joint, long bone, joint, foot
-        line(leg, 8)
-        for (x, y) in leg:
-            if vis(x):
-                d.ellipse((x + ox - 9, y + oy - 9, x + ox + 9, y + oy + 9), fill=bone + (255,), outline=edge + (140,))
-    cx, cy, ln, hh = plan["skull"]
-    if vis(cx):                                                           # skull, eye socket, jaw and teeth
-        d.ellipse((cx + ox - ln * 0.55, cy + oy - hh, cx + ox + ln * 0.55, cy + oy + hh * 0.8), fill=bone + (255,), outline=edge + (150,), width=3)
-        d.ellipse((cx + ox + facing * ln * 0.12 - 9, cy + oy - hh * 0.35 - 9, cx + ox + facing * ln * 0.12 + 9, cy + oy - hh * 0.35 + 9), fill=(20, 22, 30, 255))
-        jx = cx + facing * ln * 0.55
-        d.line((cx + ox + facing * ln * 0.05, cy + oy + hh * 0.7, jx + ox, cy + oy + hh * 0.55), fill=bone + (255,), width=6)
-        for i in range(5):
-            tx = cx + facing * (ln * (0.12 + 0.09 * i))
-            d.polygon([(tx + ox - 4, cy + oy + hh * 0.62), (tx + ox + 4, cy + oy + hh * 0.62), (tx + ox, cy + oy + hh * 0.62 + 12)], fill=bone + (255,))
+def _xray_overlay(base, solid, x0, y0, sp, cx, gy, s, facing, xr):
+    """xr = {"k": 0..1 how strongly the x-ray shows, "front": screen x the scan line has reached, "dir": scan direction, "labels": bool}"""
+    k = float(xr.get("k", 1.0))
+    if k <= 0.01:
+        return
+    bones = anatomy_bones(solid, x0, y0, sp, cx, gy, s, facing)
+    if not bones:
+        return
+    # the body dims and cools toward a scan look
+    h, w = solid.shape
+    reg = base.crop((x0, y0, x0 + w, y0 + h))
+    xs = (np.arange(w, dtype=np.float32) + x0)[None, :]
+    front = xr.get("front")
+    scan = np.ones((h, w), dtype=np.float32) if front is None else np.clip((float(front) - xs) * float(xr.get("dir", 1)) / 40.0 + 0.5, 0, 1).repeat(h, axis=0)
+    a = (solid * scan * 0.62 * k)[..., None]
+    arr = np.asarray(reg, dtype=np.float32)
+    cool = np.array((14, 34, 52), dtype=np.float32)
+    arr = arr * (1 - a) + cool * a
+    reg = Image.fromarray(arr.astype(np.uint8))
+    base.paste(reg, (x0, y0))
+    # bones on a transparent layer, then a soft glow
+    L = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(L, "RGBA")
+    bw = max(3, int(6 * s))
+    col = (238, 242, 232, 255)
+    sp_ = bones["spine"]
+    if len(sp_) > 2:
+        d.line(sp_, fill=col, width=bw + 2, joint="curve")
+        for i in range(0, len(sp_), max(len(sp_) // 26, 3)):
+            q = sp_[i]
+            d.ellipse((q[0] - bw, q[1] - bw, q[0] + bw, q[1] + bw), fill=col)
+    for rb in bones["ribs"]:
+        d.line(rb, fill=col, width=bw, joint="curve")
+    for lg in bones["legs"]:
+        d.line(lg, fill=col, width=bw + 1, joint="curve")
+        for p_ in (lg[0], lg[1]):
+            d.ellipse((p_[0] - bw * 1.4, p_[1] - bw * 1.4, p_[0] + bw * 1.4, p_[1] + bw * 1.4), fill=col)
+    for wn in bones["wings"]:
+        d.line(wn, fill=col, width=bw, joint="curve")
+    if len(bones["shell"]) > 2:
+        d.line(bones["shell"], fill=col, width=bw, joint="curve")
+    for ds in bones["dorsal"]:
+        d.line(ds, fill=col, width=max(2, bw - 1))
+    for q in bones["neck"]:
+        d.ellipse((q[0] - bw, q[1] - bw, q[0] + bw, q[1] + bw), fill=col)
+    sk = bones["skull"]
+    if sk:
+        (kx, ky), sw, shh, sn, dr = sk["c"], sk["w"], sk["h"], sk["snout"], sk["dir"]
+        d.ellipse((kx - sw * 0.6, ky - shh * 0.6, kx + sw * 0.6, ky + shh * 0.6), outline=col, width=bw)           # braincase
+        d.polygon([(kx + dr * sw * 0.4, ky - shh * 0.25), (kx + dr * (sw * 0.4 + sn), ky - shh * 0.05), (kx + dr * (sw * 0.4 + sn * 0.9), ky + shh * 0.3),
+                   (kx + dr * sw * 0.3, ky + shh * 0.45)], outline=col, width=bw)                                     # snout / jaw
+        d.ellipse((kx - sw * 0.1, ky - shh * 0.28, kx + sw * 0.2, ky + shh * 0.04), fill=(8, 18, 28, 255), outline=col, width=max(2, bw - 2))  # eye socket
+    alpha = np.asarray(L.getchannel("A"), dtype=np.float32) / 255.0
+    if front is not None:
+        full = np.arange(base.width, dtype=np.float32)[None, :]
+        keep = np.clip((float(front) - full) * float(xr.get("dir", 1)) / 40.0 + 0.5, 0, 1)
+        alpha = alpha * keep
+    L.putalpha(Image.fromarray((alpha * 255 * k).astype(np.uint8), "L"))
+    glow = L.filter(ImageFilter.GaussianBlur(9 * max(s, 0.6)))
+    base.paste(glow.convert("RGB"), (0, 0), Image.fromarray((np.asarray(glow.getchannel("A")) * 0.8).astype(np.uint8), "L"))
+    base.paste(L.convert("RGB"), (0, 0), L.getchannel("A"))
+    if front is not None and 0 < k:                                   # the bright scan line itself
+        sd = ImageDraw.Draw(base, "RGBA")
+        fx = float(front)
+        sd.rectangle((fx - 3, y0, fx + 3, y0 + h), fill=(150, 235, 255, int(150 * k)))
+    if xr.get("labels") and k > 0.6:
+        names = [("SKULL", sk["c"] if sk else None), ("SPINE", sp_[len(sp_) // 2] if sp_ else None)]
+        if bones["ribs"]:
+            names.append(("RIBS", bones["ribs"][len(bones["ribs"]) // 2][1]))
+        if bones["wings"]:
+            names.append(("WING BONES", bones["wings"][0][1]))
+        elif bones["legs"]:
+            names.append(("LIMBS", bones["legs"][0][1]))
+        elif bones["shell"]:
+            names.append(("SHELL", bones["shell"][len(bones["shell"]) // 2]))
+        ld = ImageDraw.Draw(base, "RGBA")
+        f = _font(34)
+        ytop = y0 - 20
+        for i, (nm, pt) in enumerate(names):
+            if pt is None:
+                continue
+            tx = 80 + i * 245 if i < 4 else 80
+            ty = max(300, int(ytop) - 70 - (i % 2) * 54)
+            ld.line((tx + 60, ty + 40, pt[0], pt[1]), fill=(160, 220, 240, int(190 * k)), width=2)
+            ld.ellipse((pt[0] - 6, pt[1] - 6, pt[0] + 6, pt[1] + 6), outline=(200, 245, 255, int(230 * k)), width=2)
+            ld.text((tx, ty), nm, font=f, fill=(210, 240, 250, int(240 * k)))
+            _BOXES.append((tx, ty, tx + 28 * len(nm), ty + 44))
 
 
-def anatomy_scene(out, dur, world, sp, facing=1, cwd=None):
-    """Normal body -> an x-ray sweep from head to tail reveals the skeleton inside the very same body -> held -> back to the normal body.
-    Works for any creature the engine can draw (animals, hybrids, monsters, side characters): the bones are read from its own outline."""
-    zc, front, back_, s0 = _fit_scale(sp, 680) if sp.get("kind") == "chimera" else (1.0, 0, 0, 0)
-    cx, gy = 540, GROUND + 20
-    st = {"t": 0.0, "moving": False, "noemerge": True, "noshadow": True}
-    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    _nb = len(_BOXES)
-    _draw_creature_plain(ImageDraw.Draw(layer, "RGBA"), sp, cx, gy, 0.0, facing, zc if sp.get("kind") == "chimera" else None, st, None)
-    del _BOXES[_nb:]
-    bb = layer.getchannel("A").point(lambda v: 255 if v > 150 else 0).getbbox()
-    plan, ox, oy = None, 0, 0
-    if bb:
-        pad = 12
-        ox, oy = max(bb[0] - pad, 0), max(bb[1] - pad, 0)
-        crop = layer.crop((ox, oy, min(bb[2] + pad, W), min(bb[3] + pad, H)))
-        plan = _bone_plan(np.asarray(crop.getchannel("A")) > 150, facing)
+def anatomy_scene(out, dur, world, sp, cwd=None, standing=True):
+    """The x-ray view: the creature stands, a scan line sweeps nose to tail, the skeleton appears inside the body with a few clean labels, holds,
+    then dissolves back to the normal picture. Clean and educational, no injuries. Works for any creature spec (hybrid, monster, prey...)."""
+    zc, front, back_, s0 = _fit_scale(sp, 620)
+    world.push, world.shake = 0.05, 0.0
 
     def paint(im, d, t, u, cam):
-        k = _smooth((u - 0.22) / 0.34)                                    # 0 = normal, 1 = fully x-rayed
-        back = _smooth((u - 0.86) / 0.14)
-        k_eff = k * (1 - back)
-        _BOXES.append(bb or (100, 500, 980, 1380))
-        if k_eff <= 0.01 or plan is None:
-            im.alpha_composite(layer) if im.mode == "RGBA" else im.paste(layer, (0, 0), layer)
-            return
-        a = layer.getchannel("A")
-        ghost = layer.copy()
-        ghost.putalpha(a.point(lambda v: int(v * (1 - 0.72 * k_eff))))     # the body fades to a ghost around the bones
-        veil = Image.new("RGBA", im.size, (6, 14, 30, int(120 * k_eff)))
-        im.paste(veil, (0, 0), veil)
-        im.paste(ghost, (0, 0), ghost)
-        ov = Image.new("RGBA", im.size, (0, 0, 0, 0))
-        _draw_bones(ImageDraw.Draw(ov, "RGBA"), plan, ox, oy, min(1.0, k * 1.0), facing)
-        if k_eff < 1:
-            ov.putalpha(ov.getchannel("A").point(lambda v: int(v * k_eff ** 0.6)))
-        im.paste(ov, (0, 0), ov)
-    write_video(out, dur, paint, world, cwd, cam_dir=0)
-    return {"anatomy": True, "bones": bool(plan), "legs": len(plan["legs"]) if plan else 0}
+        k_in = _smooth(u / 0.16)
+        k_out = 1 - _smooth((u - 0.86) / 0.14)
+        k = min(k_in, k_out)
+        x = 540
+        head_dir = 1
+        # the scan line travels from the head end to the tail end between 12% and 40% of the scene
+        span = 460
+        sweep = _smooth((u - 0.10) / 0.30)
+        fr = (x + span) - sweep * 2 * span
+        draw_creature(d, sp, x, GROUND + 20, t * STEP * 0.12, 1, zc,
+                      {"t": t, "moving": False, "headup": 0.15 + 0.1 * math.sin(t), "xray": {"k": k, "front": fr if u < 0.45 else None, "dir": -1, "labels": True}})
+    write_video(out, dur, paint, world, cwd, cam_dir=0.0)
+    return {"ability": "anatomy"}

@@ -1532,12 +1532,14 @@ def make_title_card():
             log(f"Title card check FAILED: {p}")
         TITLECARD_STATUS.append(False)
         return None
+    TITLECARD_BOX.append(rep["boxes"]["title"])
     log(f"Title card check passed: {len(rep['boxes'])} elements, title {rep['title_size']}px, no overlaps.")
     TITLECARD_STATUS.append(True)
     return "titlecard.png"
 
 
 TITLECARD_STATUS = []
+TITLECARD_BOX = []
 LOOP_INFO = {}
 
 
@@ -1973,6 +1975,115 @@ def plan_scenes(sentences, total, ds=None):
 
 
 HOOK_EYE = (255, 170, 40)     # the colour of the creature's eyes in the opening hook; each story sets its own
+
+
+# ---------------------------------------------------------------- the quality gate: nothing is approved (or uploaded) unless every mandatory check passes
+ANGLES_USED, PLACES_USED, ABILITY_EXPECTED, PAUSE_EXPECTED = [], [], [], []
+
+
+def _gray_frames(path, times, size=(54, 96)):
+    """Grabs small grey frames from the finished video (for the final inspection)."""
+    import numpy as np
+    out = []
+    for t in times:
+        r = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{max(t, 0):.2f}", "-i", str(path), "-frames:v", "1", "-vf", f"scale={size[0]}:{size[1]},format=gray",
+                            "-f", "rawvideo", "-"], capture_output=True)
+        a = np.frombuffer(r.stdout, dtype=np.uint8)
+        out.append(a.reshape(size[1], size[0]).astype(np.float32) if a.size == size[0] * size[1] else None)
+    return out
+
+
+def run_quality_checks(video_path, words, kind):
+    """Every mandatory stage, as real measurements. Returns a list of (stage, passed, message)."""
+    import numpy as np
+    res = []
+
+    def add(stage, ok, msg):
+        res.append((stage, bool(ok), msg))
+    add("Voice approved", voice_approved(), "the narrator voice is approved" if voice_approved() else "the narrator voice has not been approved")
+    if TITLECARD:
+        okc = bool(TITLECARD_STATUS) and TITLECARD_STATUS[-1]
+        add("Title card", okc, "no overlaps, readable at phone size" if okc else "the card failed its layout check")
+    cr = CAPTION_REPORT[-1] if CAPTION_REPORT else None
+    if cr is None:
+        add("Captions", False, "no caption report")
+    else:
+        add("Captions", cr.get("collisions", 1) == 0 and cr.get("omitted", 0) <= max(2, cr.get("captions", 1) // 8),
+            f"no caption covers a creature ({cr.get('omitted', 0)} left out)")
+    add("Sound and narration", SYNC_REPORT.get("overlaps", 0) == SYNC_REPORT.get("turned_down", 0) and len(SOUND_SYNC) >= len(PAUSE_EXPECTED),
+        f"{len(SOUND_SYNC)} narrator pause(s), {SYNC_REPORT.get('overlaps', 0)} overlap(s) fixed")
+    if AUDIO_REPORT:
+        add("Narrator louder than music", AUDIO_REPORT.get("p10_db", 99) >= 5.0,
+            f"narrator is {AUDIO_REPORT.get('median_db')} dB above the rest (weakest moments {AUDIO_REPORT.get('p10_db')} dB)")
+    if ABILITY_EXPECTED:
+        shown = {i for _, i in ABILITY_LOG} | set(ANATOMY_LOG)
+        miss = [i for i in ABILITY_EXPECTED if i not in shown]
+        add("Abilities shown", not miss, "every ability the narrator describes is demonstrated" if not miss else f"scene(s) {miss} describe an ability that is not shown")
+    if kind == "hybrid" and len(PLACES_USED) >= 3:
+        add("Scene variety", len(set(PLACES_USED)) >= 2 and len(set(ANGLES_USED)) >= 2, f"{len(set(PLACES_USED))} places, {len(set(ANGLES_USED))} camera angles")
+    elif ANGLES_USED:
+        add("Scene variety", len(set(ANGLES_USED)) >= 3 or len(ANGLES_USED) < 5, f"{len(set(ANGLES_USED))} camera angles")
+    try:
+        dur = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(video_path)], capture_output=True, text=True).stdout.strip())
+    except Exception:
+        dur = 0.0
+    add("File", 8 < dur <= 60.0, f"{dur:.1f}s long")
+    last_word = max((w_[1] for w_ in words), default=0.0)
+    add("Ending", dur - last_word >= 0.8, f"{dur - last_word:.1f}s between the last word and the end")
+    ts = [0.05, 0.8, 2.6, 6.0] + [dur * f for f in (0.2, 0.35, 0.5, 0.65, 0.8, 0.9)] + [dur - 0.1]
+    fr = _gray_frames(video_path, ts)
+    if all(f is not None for f in fr):
+        dead = sum(1 for f in fr if f.mean() < 2.0)
+        add("Picture", dead <= 1, f"{dead} blank frame(s) in {len(fr)} samples")
+        if TITLECARD and TITLECARD_STATUS and TITLECARD_STATUS[-1]:
+            tb = TITLECARD_BOX[-1] if TITLECARD_BOX else None
+            if tb:
+                big = _gray_frames(video_path, [0.7, 2.6], size=(270, 480))
+                if all(f is not None for f in big):
+                    x0_, y0_, x1_, y1_ = [int(v / 4) for v in tb]
+                    on, off = [float((f[y0_:y1_, x0_:x1_] > 235).mean()) for f in (big[1], big[0])]
+                    add("Title card visible", on >= 0.01 and on > off + 0.005, f"title text on screen at 2.6s ({on:.3f} bright vs {off:.3f} before it appears)")
+        if LOOP_INFO:
+            diff = float(np.abs(fr[-1] - fr[0]).mean())
+            add("Loop", diff < 25.0 and fr[-1].mean() < 60, f"last frame vs first frame differ by {diff:.0f}/255 (dark fog to dark fog)")
+        else:
+            add("Loop", False, "the loop ending was not applied")
+    else:
+        add("Picture", False, "could not read frames from the video")
+    return res
+
+
+def quality_gate(video_path, words, kind, rebuild=None):
+    """Stage 7. One automatic repair attempt (re-render) if something fails, then STOP: no approval, no upload, a clear report."""
+    failed, res = [], []
+    for attempt in (1, 2):
+        res = run_quality_checks(video_path, words, kind)
+        failed = [r for r in res if not r[1]]
+        for stage, ok, msg in res:
+            log(f"QC {'PASS' if ok else 'FAIL'} - {stage}: {msg}")
+        if not failed:
+            break
+        if attempt == 1 and rebuild is not None:
+            log("QC: re-rendering once to try to repair: " + ", ".join(r[0] for r in failed))
+            try:
+                rebuild()
+            except Exception as e:
+                log(f"QC: the re-render failed ({e})")
+                break
+    ready = not failed
+    try:
+        OUT.mkdir(exist_ok=True)
+        (OUT / "quality_report.json").write_text(json.dumps({"production_ready": ready, "checks": [{"stage": s, "passed": ok, "detail": m} for s, ok, m in res]}, indent=1))
+    except Exception:
+        pass
+    if not ready and os.environ.get("QC_ENFORCE", "1") != "0":
+        try:
+            pathlib.Path(video_path).rename(OUT / "short_NOT_APPROVED.mp4")
+        except Exception:
+            pass
+        sys.exit("STOPPED - NOT APPROVED, nothing uploaded. Failed checks: " + "; ".join(f"{s} ({m})" for s, ok, m in res if not ok) +
+                 ". See output/quality_report.json. (Set the variable QC_ENFORCE to 0 only if you want to publish anyway.)")
+    return ready
 
 
 def build_video(scenes, assets, audio_name, captions_name, out_path):
@@ -4141,6 +4252,7 @@ def build_folk_main(plan):
     for i_, b_ in enumerate(beats):          # the kill sound gets the room to itself: the narrator finishes, then silence, then the sound
         if b_ in SOUND_PAUSE and not modern and i_ < n - 1 and beats[i_ + 1] != b_ and os.environ.get("SOUND_PAUSE", "1") != "0":
             PAUSES[i_] = SOUND_PAUSE[b_]
+            PAUSE_EXPECTED.append(i_)
     if PAUSES:
         try:
             audio_name, words, durs = insert_sound_pauses(audio_name, words, durs, PAUSES)
@@ -4198,6 +4310,7 @@ def build_folk_main(plan):
         w.push = PUSH.get(beats[i], 0.0) if not sh["insert"] else 0.0
         w.shake = SHAKE.get(beats[i], 0.0) if not sh["insert"] else 0.0
         w.angle = shot_angle(j, beats[i], sh, modern, n, i)
+        ANGLES_USED.append(w.angle)
         out = str(WORK / f"toon_s{j}.mp4")
         toon.HOST_SPEAKER = 1 if sentences[i].get("speaker") == "host" else 0   # who is talking in a host scene: reactor or storyteller
         w.clock = story.get("time") or "2:48"
@@ -4269,6 +4382,8 @@ def build_folk_main(plan):
     build_video(scenes, {"h": {"plate": None, "sprite": None, "clip": None}}, "mix.wav",
                 "captions.ass" if has_caps else None, out_path)
     log(f"Video ready: {out_path} ({total:.1f}s of speech)")
+    quality_gate(out_path, words, "folk", rebuild=lambda: build_video(scenes, {"h": {"plate": None, "sprite": None, "clip": None}}, "mix.wav",
+                                                                      "captions.ass" if has_caps else None, out_path))
 
     title = story["title"][:80].rstrip() + " #Shorts"
     description = (
@@ -4447,6 +4562,14 @@ def build_main():
     else:
         sh = toon.hybrid_spec_from(toon.design_hybrid(a, b))
     scenes = plan_scenes(sentences, total, sent_durs)
+    END_TAIL_S = 1.4          # a proper ending: after the last word the picture and the sound get time to land (and the loop begins)
+    try:
+        run(["ffmpeg", "-y", "-i", audio_name, "-af", f"apad=pad_dur={END_TAIL_S}", "-ar", "44100", "-ac", "1", "voice_end.wav"], cwd=WORK)
+        audio_name = "voice_end.wav"
+        total += END_TAIL_S
+        scenes[-1]["dur"] += END_TAIL_S
+    except Exception as e_:
+        log(f"Ending tail could not be added ({e_}).")
     first = scenes[0]
     t = open_times(first["hook"], first["morph"])
     world = toon.World(place_name, 1)
@@ -4484,6 +4607,8 @@ def build_main():
             sc_["anatomy"] = bool(re.search(toon.ANATOMY_RX, sentences[sc_["si"]].get("text", "").lower())) and sc_["dur"] >= 3.0
             if sc_["anatomy"]:
                 sc_["ability"] = None
+            if sc_["ability"] or sc_["anatomy"]:
+                ABILITY_EXPECTED.append(i_)
     sh0 = sh
     for i, sc in enumerate(scenes):
         if sc["kind"] == "open":
@@ -4502,6 +4627,8 @@ def build_main():
         w.focus_y = 0.70
         w.push = 0.18 if i % 2 == 0 else 0.0     # a slow push-in on every other shot, otherwise a locked frame
         w.angle = "wide" if (sc.get("host") or i == hunt_at or sc["kind"] == "hold") else ANGLE_CYCLE[i % len(ANGLE_CYCLE)]
+        ANGLES_USED.append(w.angle)
+        PLACES_USED.append(sc.get("place", place_name))
         out = str(WORK / f"toon_s{i}.mp4")
         if sc["kind"] == "hold":
             toon.walk_scene(out, sc["dur"], w, sh, 1, (1.0, 1.15), cwd=WORK, outro=(sh, min(1.5, sc["dur"] * 0.6)))
@@ -4599,6 +4726,7 @@ def build_main():
     build_video(scenes, assets, "mix.wav", "captions.ass" if has_caps else None, out_path)
     log(f"Video ready: {out_path} ({total:.1f}s of speech, AI video clips used: {len(clips)}/3, "
         f"real animal calls: {sounds['real_calls']}/2)")
+    quality_gate(out_path, words, "hybrid", rebuild=lambda: build_video(scenes, assets, "mix.wav", "captions.ass" if has_caps else None, out_path))
 
     title = story["title"][:80].rstrip() + " #Shorts"
     description = (
