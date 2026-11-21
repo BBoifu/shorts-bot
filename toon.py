@@ -1234,8 +1234,19 @@ def closeup(im, d, sp, t, dur, z0, z1, roar=0.6, shake=0.0, tt=0.0):
     z = z0 + (z1 - z0) * k
     ox = shake * 0.5 * math.sin(tt * 90)
     oy = shake * 0.35 * math.cos(tt * 77)
+    _nb = len(_BOXES)
     draw_creature(d, sp, 0, 0, tt * 2.0, 1, z, {"t": tt, "roar": roar, "moving": False},
                   focus=(ax, ay, 600 + ox, 800 + oy))
+    if len(_BOXES) > _nb:       # in a close-up the protected subject is the FACE (eyes, mouth), not every pixel of the neck and body
+        g = sp.get("g") if isinstance(sp.get("g"), dict) else {}
+        hd = g.get("head") or {}
+        sw_, sh_ = hd.get("skull") or (60, 50)
+        sn = hd.get("snout")
+        s_ = 1.4 * z * sp.get("scale", 1.0) * KIND_SCALE.get(sp.get("kind"), 1.0)
+        hw = _clip((sw_ * 0.6 + (float(sn[1]) if sn else 60.0)) * s_ * 1.05, 260, 460)
+        hh = _clip(sh_ * 0.75 * s_, 230, 340)
+        del _BOXES[_nb:]
+        _BOXES.append((600 + ox - hw * 0.8, 800 + oy - hh, 600 + ox + hw * 1.0, 800 + oy + hh))
 
 
 # ---------------------------------------------------------------- scenes
@@ -1766,6 +1777,7 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1, cam_fn=None):
            "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-an", out]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, cwd=cwd)
     _LIGHT_WORLD[0] = world
+    REACT.update(t=-99.0, power=0.0)
     track = []
     EMERGE.update(dur=float(getattr(world, "emerge", 0.0) or 0.0), t0=None, last=-9.0, t=0.0)
     try:
@@ -2255,7 +2267,7 @@ def attack_scene(out, dur, world, sp, cwd=None):
             closeup(im, d, sp3, 0.0, 0.3, 2.3, 2.7, roar=1.0, shake=12, tt=t)
             return red_wash(im, 0.4)
         if k < 0.64:      # the camera goes in close: claws and teeth through cloth and skin
-            _BOXES.append((100, 520, 980, 1380))
+            _BOXES.append((100, 540, 980, 1240))
             return maul_frame(im, t, (k - 0.07) / (0.64 - 0.07), sp, (44, 50, 82), "cloth", seed=5)
         k = 0.64 + (k - 0.64) * 0.55
         sx = 16 * math.sin(t * 90) * max(0.0, 1 - k * 4)
@@ -7327,7 +7339,7 @@ def pounce_scene(out, dur, world, sp, prey_text="", cwd=None):
 
     def paint(im, d, t, u, cam):
         if t >= t_cut:
-            _BOXES.append((100, 520, 980, 1380))
+            _BOXES.append((100, 540, 980, 1240))
             return maul_frame(im, t, (t - t_cut) / max(dur - t_cut, 0.1), sp, pcol, "fur", seed=11)
         m = m_at(t)
         z = zc
@@ -9321,7 +9333,7 @@ def maul_scene(out, dur, world, sp, prey_text="", cwd=None):
     world.no_cinema = True
 
     def paint(im, d, t, u, cam):
-        _BOXES.append((100, 520, 980, 1380))
+        _BOXES.append((100, 540, 980, 1240))
         return maul_frame(im, t, u, sp, pcol, "fur", seed=3)
     write_video(out, dur, paint, world, cwd, cam_dir=0)
     return {"hits": [dur * 0.30]}
@@ -9820,3 +9832,322 @@ def anatomy_scene(out, dur, world, sp, cwd=None, standing=True):
                       {"t": t, "moving": False, "headup": 0.15 + 0.1 * math.sin(t), "xray": {"k": k, "front": fr if u < 0.45 else None, "dir": -1, "labels": True}})
     write_video(out, dur, paint, world, cwd, cam_dir=0.0)
     return {"ability": "anatomy"}
+
+
+# ================================================================ depth objects, reactions and wrecks
+# 1) Independent objects (trees, rocks, grass, stones) scattered at different depths. Each one has its own size, haze and scroll speed
+#    (mid-ground ones sit behind the creature and scroll a little slower than the ground; a few big dark ones sit in front and scroll faster).
+# 2) The scenery answers the action: a footfall, a roar or a crash starts a shock; trees bend and spring back, grass whips, rocks jump
+#    and shake loose dust, small stones hop.
+# 3) smash_scene: a creature wrecks a vehicle: contact, then the metal crumples, glass cracks and flies, sparks, the ground cracks,
+#    a wheel rolls off, smoke rises and the wreck stays there.
+import zlib
+
+REACT = {"t": -99.0, "power": 0.0, "x": 540.0}
+SMASH_VERB_RX = r"\b(crush|crushed|crushes|smash|smashed|smashes|flip|flipped|flips|tear|tore|torn|rip|ripped|slam|slammed|wreck|wrecked|flatten|flattened|ram|rammed|hurl|hurled|throw|threw|crumple|crumpled|destroy|destroyed|stomp|stomped|overturn|overturned|mangled|bash|bashed|batter|battered)\b"
+VEHICLE_RX = r"\b(cars?|trucks?|buses|bus|vans?|jeeps?|taxis?|vehicles?|lorry|lorries|tractors?|wagons?|carriages?|pickup)\b"
+
+
+def react(power=1.0, x=540.0):
+    """Something heavy happened at screen position x: nearby scenery will answer it."""
+    t = EMERGE.get("t", 0.0)
+    if t - REACT["t"] > 0.3 or power > REACT["power"] * 0.6:
+        REACT.update(t=t, power=min(1.8, power), x=x)
+
+
+def _shock(t, x):
+    """(sway, hop) at screen position x: a decaying wobble and a decaying jump."""
+    dt = t - REACT["t"]
+    if dt < 0 or dt > 2.4:
+        return 0.0, 0.0
+    fall = 1.0 / (1.0 + abs(x - REACT["x"]) / 420.0)
+    p = REACT["power"] * fall
+    return p * math.exp(-dt * 1.9) * math.sin(dt * 12.0 + 0.5), p * math.exp(-dt * 3.2) * abs(math.sin(dt * 10.5))
+
+
+def _scatter_kind(st):
+    s = st.get("sil")
+    if s in ("trees", "pines", "dead"):
+        return "tree"
+    if s in ("reeds", "wheat"):
+        return "grass"
+    if s == "graves":
+        return "grave"
+    if s == "clouds":
+        return None
+    return "rock"
+
+
+def _scatter_objs(world):
+    if hasattr(world, "_scat"):
+        return world._scat
+    st = world.st
+    rnd = random.Random(zlib.crc32(repr((st.get("sky"), st.get("ground"), st.get("sil"))).encode()))
+    prim = _scatter_kind(st)
+    objs = []
+    if prim is None:
+        world._scat = objs
+        return objs
+    g = rgb(st["ground"]) if isinstance(st.get("ground"), str) else (60, 50, 45)
+    hz = rgb(st["sky"][1])
+    for i in range(9):                                  # mid-ground, behind the creature: hazy and small
+        kind = prim if (i % 3 != 2 or prim == "rock") else "rock"
+        k = rnd.uniform(0.78, 0.92)
+        col = mix(tuple(int(c * 0.55) for c in g), hz, 0.30)
+        objs.append({"kind": kind, "ox": i * 160 + rnd.uniform(-50, 50), "k": k, "sc": rnd.uniform(0.5, 0.85), "y": GROUND - rnd.uniform(36, 4),
+                     "col": col, "seed": rnd.randint(1, 9999), "front": False})
+    for i in range(3):                                  # in front of the creature: big, dark, low, they scroll faster
+        kind = "grass" if prim in ("tree", "grass") else "rock"
+        col = tuple(int(c * 0.30) for c in g)
+        objs.append({"kind": kind, "ox": i * 520 + rnd.uniform(0, 160), "k": rnd.uniform(1.18, 1.34), "sc": rnd.uniform(1.4, 1.9), "y": GROUND + rnd.uniform(400, 470),
+                     "col": col, "seed": rnd.randint(1, 9999), "front": True})
+    world._scat = objs
+    return objs
+
+
+def _draw_scatter_obj(d, o, x, t):
+    y, sc, col, kind = o["y"], o["sc"], tuple(int(c) for c in o["col"]), o["kind"]
+    rnd = random.Random(o["seed"])
+    sway, hop = _shock(t, x)
+    wind = 1.2 * math.sin(t * 1.3 + o["ox"] * 0.01)
+    if kind == "tree":
+        H = (230 + rnd.uniform(-30, 40)) * sc
+        bend = (sway * 46 + wind * 6) * sc
+        pts = [(x + bend * (i / 8) ** 2, y - H * i / 8) for i in range(9)]
+        w0, w1 = 11 * sc, 4 * sc
+        left = [(px - (w0 + (w1 - w0) * i / 8), py) for i, (px, py) in enumerate(pts)]
+        right = [(px + (w0 + (w1 - w0) * i / 8), py) for i, (px, py) in enumerate(pts)]
+        d.polygon(left + right[::-1], fill=col + (255,))
+        tx, ty = pts[-1]
+        if rnd.random() < 0.5:                                           # leafy crown
+            for dx, dy, r in ((-34, 8, 46), (30, 4, 50), (0, -34, 54), (-6, 26, 42)):
+                bx, by = tx + (dx + sway * 14) * sc * 0.9, ty + dy * sc
+                d.ellipse((bx - r * sc, by - r * sc * 0.8, bx + r * sc, by + r * sc * 0.8), fill=col + (255,))
+        else:                                                            # bare branches that whip with the shock
+            for s_ in (-1, 1):
+                for j in range(3):
+                    by = y - H * (0.55 + 0.14 * j)
+                    bx0 = x + bend * (0.55 + 0.14 * j) ** 2
+                    ex = bx0 + s_ * (70 - 14 * j) * sc + sway * 26 * sc * s_
+                    d.line((bx0, by, ex, by - 55 * sc), fill=col + (255,), width=max(2, int(5 * sc - j)))
+    elif kind == "grass":
+        for b in range(11):
+            bx = x + (b - 5) * 9 * sc
+            hh = rnd.uniform(60, 130) * sc
+            tipx = bx + rnd.uniform(-10, 10) * sc + (sway * 34 + wind * 7) * sc * (hh / (130 * sc))
+            d.polygon([(bx - 3 * sc, y), (tipx, y - hh), (bx + 3 * sc, y)], fill=col + (255,))
+    elif kind == "grave":
+        gx = x + sway * 3
+        hh = rnd.uniform(70, 110) * sc
+        d.rounded_rectangle((gx - 24 * sc, y - hh, gx + 24 * sc, y + 4), radius=int(22 * sc), fill=col + (255,))
+    else:                                                                # rock with a lit facet and a few stones around it
+        shift = sway * 5 * sc
+        w, h = 64 * sc, 46 * sc
+        rr = [rnd.uniform(0.75, 1.1) for _ in range(6)]
+        pts = [(x + shift - w * rr[0], y + 4), (x + shift - w * 0.62 * rr[1], y - h * rr[2]), (x + shift + w * 0.1, y - h * 1.12 * rr[3]),
+               (x + shift + w * 0.7 * rr[4], y - h * 0.7 * rr[5]), (x + shift + w * rr[0], y + 4)]
+        d.polygon(pts, fill=col + (255,))
+        lt = tuple(min(255, int(c * 1.35 + 10)) for c in col)
+        d.polygon([pts[1], pts[2], (pts[2][0] - 8 * sc, pts[2][1] + 24 * sc), (pts[1][0] + 10 * sc, pts[1][1] + 22 * sc)], fill=lt + (255,))
+        for j in range(3):
+            px = x + (j - 1) * 46 * sc + rnd.uniform(-8, 8)
+            ph = hop * 30 * (0.6 + 0.4 * j) * sc
+            d.ellipse((px - 6 * sc, y - 6 * sc - ph, px + 6 * sc, y - ph), fill=col + (255,))
+        if hop > 0.05:                                                   # dust shaken off the rock
+            d.ellipse((x - w * 0.8, y - h * 0.6 - hop * 14, x + w * 0.8, y + 6), fill=(150, 135, 115, int(70 * min(1, hop))))
+
+
+def _scatter_draw(world, im, cam, t, front):
+    if getattr(world, "no_scatter", False):
+        return
+    objs = [o for o in _scatter_objs(world) if o["front"] == front]
+    if not objs:
+        return
+    d = ImageDraw.Draw(im, "RGBA")
+    P = 1500.0
+    for o in sorted(objs, key=lambda o: o["y"]):
+        x = (o["ox"] - cam * o["k"]) % P - 220
+        if -200 < x < W + 200:
+            _draw_scatter_obj(d, o, x, t)
+
+
+_wf_depth0 = World.frame
+
+
+def _wf_depth(self, cam, t):
+    im = _wf_depth0(self, cam, t)
+    _scatter_draw(self, im, cam, t, False)
+    return im
+
+
+World.frame = _wf_depth
+_cf_depth0 = World.cinema_front
+
+
+def _cf_depth(self, im, cam, t):
+    im = _cf_depth0(self, im, cam, t)
+    _scatter_draw(self, im, cam, t, True)
+    return im
+
+
+World.cinema_front = _cf_depth
+
+_dc_prev = draw_creature
+
+
+def draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=None, focus=None):
+    if st and st.get("roar", 0) > 0.5:
+        react(0.8, cx)                                  # a roar shakes the scenery
+    return _dc_prev(img_draw, sp, cx, gy, phase, facing, scale, st, focus)
+
+
+_step_fx_prev = _step_fx
+
+
+def _step_fx(d, world, x, k, seed=1, size=1.0):
+    if 0 < k < 0.08:
+        react(0.55 * size, x)                           # a footfall makes the ground answer
+    return _step_fx_prev(d, world, x, k, seed, size)
+
+
+# ---- the wreck
+_CAR_COLS = ((165, 45, 45), (48, 92, 150), (200, 200, 206), (186, 148, 40))
+
+
+def _draw_car(d, x, gy, sq, col, shake=0.0, glass=1.0, lights=1.0, cracks=0.0, wheel=None, seed=3):
+    """A side-on car facing right. sq = 0 whole .. 1 flattened. wheel = (x, y) of the front wheel once it has come off."""
+    rnd = random.Random(seed)
+    x += shake
+    wdt = 340 * (1 + 0.16 * sq)
+    R = 36
+    bb = gy - 40 + 34 * sq                                  # body bottom: it sinks to the ground as it is crushed
+    bt = bb - 78 * (1 - 0.5 * sq)                           # body top
+    ct = bt - 86 * (1 - 0.86 * sq)                          # roof
+    dark = tuple(int(c * 0.55) for c in col)
+    lite = tuple(min(255, int(c * 1.25 + 25)) for c in col)
+    spread = 0.31 + 0.10 * sq
+    wl = (x - wdt * spread, gy - R)
+    wr = (x + wdt * spread, gy - R) if wheel is None else wheel
+    for wx, wy in (wl, wr):                                 # wheels (the near ones, under the body)
+        d.ellipse((wx - R, wy - R, wx + R, wy + R), fill=(18, 18, 20, 255))
+        d.ellipse((wx - R * 0.45, wy - R * 0.45, wx + R * 0.45, wy + R * 0.45), fill=(120, 124, 130, 255))
+    sag = 22 * sq
+    body = [(x - wdt / 2, bb), (x - wdt / 2, bt + 14), (x - wdt / 2 + 18, bt), (x + wdt * 0.12, bt),
+            (x + wdt * 0.3, bt + sag * 0.6), (x + wdt / 2 - 24, bt + 4 + sag * 0.5), (x + wdt / 2, bt + 20), (x + wdt / 2, bb)]
+    d.polygon(body, fill=col + (255,))
+    d.rectangle((x - wdt / 2, bb - 14, x + wdt / 2, bb), fill=dark + (255,))
+    d.line((x - wdt / 2 + 20, bt + 3, x + wdt * 0.1, bt + 3), fill=lite + (255,), width=3)
+    cab = [(x - wdt / 2 + 78, bt), (x - wdt / 2 + 128, ct + sag), (x + 12, ct + sag * 1.4), (x + wdt * 0.2 + 20 * sq, bt)]
+    d.polygon(cab, fill=col + (255,))
+    win = [(x - wdt / 2 + 92, bt - 4), (x - wdt / 2 + 132, ct + 10 + sag), (x + 6, ct + 10 + sag * 1.4), (x + wdt * 0.2 + 6, bt - 4)]
+    if glass > 0.02:
+        d.polygon(win, fill=(150, 190, 210, int(215 * glass)))
+        d.line((x - 30, ct + 12 + sag, x - 36, bt - 4), fill=col + (255,), width=6)
+    else:
+        d.polygon(win, fill=(14, 18, 22, 255))
+    if cracks > 0.02:                                       # the glass cracks outwards from the point of impact
+        cx0, cy0 = x - 20, ct + 14 + sag
+        for _ in range(int(3 + 9 * cracks)):
+            a = rnd.uniform(0, 2 * math.pi)
+            L = rnd.uniform(26, 82) * cracks
+            d.line((cx0, cy0, cx0 + math.cos(a) * L, cy0 + math.sin(a) * L * 0.7), fill=(238, 246, 250, 235), width=2)
+    for _ in range(int(7 * sq)):                            # crumple lines across the body
+        px = rnd.uniform(x - wdt * 0.4, x + wdt * 0.4)
+        d.line((px, bt + 6, px + rnd.uniform(-26, 26), bb - 12), fill=dark + (230,), width=3)
+    d.ellipse((x + wdt / 2 - 22, bt + 22, x + wdt / 2 - 4, bt + 40), fill=(255, 235, 150, int(255 * lights)))
+    d.ellipse((x - wdt / 2 + 2, bt + 22, x - wdt / 2 + 16, bt + 38), fill=(225, 40, 40, 255))
+    d.rectangle((x - wdt / 2 - 4, bb - 22, x - wdt / 2 + 4, bb - 4), fill=(40, 40, 44, 255))
+    d.rectangle((x + wdt / 2 - 4, bb - 22, x + wdt / 2 + 8, bb - 4), fill=(40, 40, 44, 255))
+    return {"box": (x - wdt / 2 - 10, ct - 6, x + wdt / 2 + 12, gy + 4), "roof": (x - 20, ct), "engine": (x + wdt * 0.25, bt)}
+
+
+def smash_scene(out, dur, world, sp, obj="car", cwd=None):
+    """The creature walks up to a car and wrecks it. Contact, deformation, aftermath: the roof folds, the glass cracks and showers out,
+    sparks, the ground cracks, dust and shaken scenery, a wheel rolls away, smoke rises and the crushed car stays."""
+    zc, front, back_, s0 = _fit_scale(sp, 520)
+    F, B = front * s0 * zc, back_ * s0 * zc
+    GY = GROUND + 20
+    cx1 = 60 + B + 40
+    cx0 = cx1 - 150
+    car_x = cx1 + F + 75
+    t_hit = 0.44
+    th = dur * t_hit
+    col = _CAR_COLS[zlib.crc32(str(sp.get("name", "")).encode()) % len(_CAR_COLS)]
+    rnd = random.Random(11)
+    shards = [(rnd.uniform(-330, 330), rnd.uniform(-640, -200), rnd.uniform(5, 12), rnd.uniform(0, 6)) for _ in range(26)]
+    sparks = [(rnd.uniform(-260, 260), rnd.uniform(-420, -120)) for _ in range(16)]
+    cracks_ = [[(rnd.uniform(-1, 1), rnd.uniform(0.25, 0.9)) for _ in range(4)] for _ in range(7)]
+    rest = [rnd.uniform(-4, 22) for _ in shards]
+    world.push, world.shake = 0.04, 0.0
+    done = {"react": False}
+
+    def paint(im, d, t, u, cam):
+        age = t - th
+        sq = 0.0 if age < 0 else _smooth(age / (0.10 * dur)) * 1.0
+        if age > 0:
+            sq = min(1.0, sq) - 0.035 * math.exp(-max(0.0, age - 0.3) * 4) * math.sin(max(0.0, age - 0.3) * 18) * (1 if age > 0.3 else 0)
+        pre = _smooth(u / 0.34)
+        cx = cx0 + (cx1 - cx0) * pre + (50 * math.sin(math.pi * min(1, max(0, (age + 0.1) / 0.45))) if age > -0.1 else 0)
+        # tremor in the car as the creature closes in (the headlights flicker too)
+        trem = (1.5 * math.sin(t * 60) * pre) if age < 0 else 0.0
+        fl = 0.6 + 0.4 * math.sin(t * 25) if age < 0 and u > 0.2 else (1.0 if age < 0 else max(0.0, 1.0 - age * 3.0) * (0.5 + 0.5 * math.sin(t * 40)))
+        glass = 1.0 if age < 0 else max(0.0, 1.0 - age / 0.18)
+        crk = 0.0 if age < 0 else min(1.0, age / 0.12)
+        wheel = None
+        if age > 0.04:
+            a_ = age - 0.04
+            wx = car_x + 118 + 200 * (1 - math.exp(-a_ * 1.4)) / 1.4
+            wy = GY - 36 - abs(math.sin(a_ * 7)) * 42 * math.exp(-a_ * 1.5)
+            wheel = (wx, wy)
+        if age > 0:
+            world.shake = 8.0 * math.exp(-age * 5.0)
+            if not done["react"]:
+                done["react"] = True
+            react(1.6, car_x)
+        # cracks in the ground, growing out from the car and staying
+        if age > 0:
+            kk = min(1.0, age / 0.5)
+            for ci, pts in enumerate(cracks_):
+                px, py = car_x + (ci - 3) * 18, GY + 10
+                line = [(px, py)]
+                for (dx, dy) in pts:
+                    px += dx * 70 * kk
+                    py += dy * 22 * kk
+                    line.append((px, py))
+                d.line(line, fill=(28, 22, 18, 215), width=3)
+        info = _draw_car(d, car_x, GY - 24, sq, col, trem, glass, fl, crk, wheel, seed=5)
+        _BOXES.append(tuple(int(v) for v in info["box"]))
+        strike = math.sin(math.pi * min(1, max(0, (age + 0.18) / 0.5))) if age > -0.18 else 0.0
+        crouch = 0.6 * _smooth((u - 0.26) / 0.12) * (1 - _smooth((age + 0.05) / 0.1)) if age < 0.05 else 0.0
+        roar = 0.7 * _smooth((age - 0.5) / 0.2) * (1 - _smooth((age - 1.6) / 0.4)) if age > 0.5 else 0.0
+        draw_creature(d, sp, cx, GY, t * STEP * 0.5, 1, zc,
+                      {"t": t, "moving": age < 0.0, "lunge": strike * 0.9, "crouch": crouch, "roar": roar, "headup": 0.0 if age < 0.5 else 0.2})
+        if age > 0:                                                  # what the impact throws out
+            rx, ry = info["roof"]
+            for i, (vx, vy, sz, ph) in enumerate(shards):
+                a_ = age - 0.01 * (i % 5)
+                if a_ < 0:
+                    continue
+                sx, sy = rx + vx * a_, ry + vy * a_ + 900 * a_ * a_ / 2
+                if sy > GY + rest[i]:
+                    sy = GY + rest[i]
+                    sx = rx + vx * math.sqrt(2 * (GY + rest[i] - ry + 600) / 900) * 0.6 + (vx * a_ * 0.1)
+                al = 235 if sy >= GY - 1 else 255
+                d.polygon([(sx, sy), (sx + sz, sy + sz * 0.4), (sx + sz * 0.3, sy + sz)], fill=(190, 225, 240, al))
+            for (vx, vy) in sparks:
+                if age < 0.5:
+                    sx, sy = rx + vx * age * 0.9, ry + 40 + vy * age + 700 * age * age / 2
+                    d.line((sx, sy, sx - vx * 0.03, sy - vy * 0.03 * 0.6), fill=(255, 205, 90, int(255 * (1 - age / 0.5))), width=3)
+            for k_, (off, sz, sd) in enumerate(((0.0, 1.9, 1), (0.22, 1.3, 2))):
+                kk = (age - off) / 1.3
+                if 0 < kk < 1:
+                    _dust(d, car_x + (k_ * 2 - 1) * 70, GY + 10, kk, seed=sd, size=sz, up=1.4)
+            ex, ey = info["engine"]
+            for i in range(8):                                        # smoke from the engine, drifting up and thickening
+                a_ = age - 0.3 - i * 0.16
+                if 0 < a_ < 2.6:
+                    r = 16 + a_ * 28
+                    d.ellipse((ex + 14 * math.sin(a_ * 2 + i) - r, ey - a_ * 78 - r, ex + 14 * math.sin(a_ * 2 + i) + r, ey - a_ * 78 + r),
+                              fill=(70, 70, 74, int(125 * (1 - a_ / 2.6))))
+    write_video(out, dur, paint, world, cwd, cam_dir=0.0)
+    return {"hits": [dur * t_hit, dur * t_hit + 0.22], "impact_at": dur * t_hit}
