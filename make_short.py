@@ -1324,7 +1324,7 @@ def even_words(text, total):
     return out
 
 
-CAPTION_SPOTS = (1400, 1540, 480, 640, 880, 1120)   # where the bottom edge of a caption can sit, in order of preference
+CAPTION_SPOTS = (1400, 1540, 1575, 480, 400, 640, 880, 1120)   # where the bottom edge of a caption can sit, in order of preference
 CAPTION_X0, CAPTION_X1 = 150, 930                    # the caption never leaves this band (clear of the right-hand Shorts buttons)
 SAFE_TOP, SAFE_BOTTOM = 220, 1580                    # mobile interface safe zone for caption boxes
 CAPTION_OK = 0.02                                    # a caption may touch at most 2% of its own box with the creature
@@ -1370,11 +1370,175 @@ def _place_caption(track, start, end, dims, prev_y):
     for c in cands:
         if not caption_in_safe_zone(c, dims):
             continue
+        if TITLECARD and start < CARD_OFF and end > CARD_ON and (c - dims[1] < CARD_Y1 + 20 and c > CARD_Y0 - 20):
+            continue            # the title card is on screen there
         ov = _cap_overlap(track, start, end, c, dims)
         if ov <= CAPTION_OK:
             return c, ov
         best = min(best, (ov, c), key=lambda p: p[0])
     return None, best[0]
+
+
+# ---------------------------------------------------------------- the title card (designed image, not subtitle text)
+FONT_URLS = {
+    "script": ("DancingScript.ttf", "https://raw.githubusercontent.com/google/fonts/main/ofl/dancingscript/DancingScript%5Bwght%5D.ttf"),
+    "caps": ("Cinzel.ttf", "https://raw.githubusercontent.com/google/fonts/main/ofl/cinzel/Cinzel%5Bwght%5D.ttf"),
+}
+TITLECARD = {}                       # set by write_captions: what the card says and when it is on screen
+CARD_ON, CARD_OFF = 1.2, 4.6
+CARD_Y0, CARD_Y1 = 250, 1000          # the band of the frame the card uses (captions keep out of it while it shows)
+CARD_ACCENTS = {"DARK FOLKLORE": (232, 185, 80), "MODERN": (150, 190, 235), "LOST WORLD": (240, 130, 70),
+                "IMPOSSIBLE ANIMALS": (140, 220, 150), "NATURE": (110, 200, 200)}
+
+
+def _card_font(kind, size):
+    from PIL import ImageFont
+    name, url = FONT_URLS[kind]
+    path = WORK / "fonts" / name
+    try:
+        if not path.exists():
+            (WORK / "fonts").mkdir(exist_ok=True)
+            r = requests.get(url, timeout=30)
+            r.raise_for_status()
+            path.write_bytes(r.content)
+        f = ImageFont.truetype(str(path), size)
+        try:
+            f.set_variation_by_axes([700 if kind == "script" else 600])
+        except Exception:
+            pass
+        return f
+    except Exception:
+        for fb in ("/usr/share/fonts/truetype/liberation/LiberationSerif-BoldItalic.ttf",
+                   "/usr/share/fonts/truetype/dejavu/DejaVuSerif-BoldItalic.ttf"):
+            if os.path.exists(fb):
+                return ImageFont.truetype(fb, size)
+        return ImageFont.load_default()
+
+
+def _spaced(draw, xy_center, text, font, fill, spacing):
+    """Letter-spaced text centred on x. Returns its box."""
+    widths = [draw.textlength(ch, font=font) for ch in text]
+    total = sum(widths) + spacing * (len(text) - 1)
+    x = xy_center[0] - total / 2
+    top = None
+    for ch, w in zip(text, widths):
+        draw.text((x, xy_center[1]), ch, font=font, fill=fill)
+        x += w + spacing
+    bb = draw.textbbox((xy_center[0] - total / 2, xy_center[1]), text, font=font)
+    return (int(xy_center[0] - total / 2), bb[1], int(xy_center[0] + total / 2), bb[3])
+
+
+def title_card_png(series, episode, title, place, path, accent=None):
+    """series (small), episode (discreet), title (cursive, the focus), place (small). Returns the layout report.
+    Every box is measured; the card is refused if two boxes touch, anything leaves the safe width, or text is too small for a phone."""
+    from PIL import Image, ImageDraw, ImageFilter
+    accent = accent or next((c for k, c in CARD_ACCENTS.items() if k in series.upper()), (232, 185, 80))
+    W_, H_ = 1080, 1920
+    im = Image.new("RGBA", (W_, H_), (0, 0, 0, 0))
+    glow = Image.new("RGBA", (W_, H_), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    gd.ellipse((-120, CARD_Y0 - 60, W_ + 120, CARD_Y1 + 120), fill=(4, 6, 12, 150))          # a dark soft pool so the text reads on any scene
+    gd.ellipse((200, 380, 880, 700), fill=accent + (28,))                                      # a faint coloured light behind the title
+    im = Image.alpha_composite(im, glow.filter(ImageFilter.GaussianBlur(70)))
+    d = ImageDraw.Draw(im)
+    boxes = {}
+    cx = W_ // 2
+    f_series = _card_font("caps", 46)
+    boxes["series"] = _spaced(d, (cx, 300), series.upper(), f_series, (225, 222, 214, 255), 9)
+    y = boxes["series"][3] + 26
+    d.line((cx - 150, y, cx - 18, y), fill=accent + (200,), width=2)                             # a thin rule with a small diamond
+    d.line((cx + 18, y, cx + 150, y), fill=accent + (200,), width=2)
+    d.polygon([(cx, y - 8), (cx + 8, y), (cx, y + 8), (cx - 8, y)], fill=accent + (255,))
+    boxes["rule"] = (cx - 150, y - 8, cx + 150, y + 8)
+    if episode:
+        f_ep = _card_font("caps", 42)
+        boxes["episode"] = _spaced(d, (cx, y + 34), f"EPISODE {episode}", f_ep, accent + (255,), 8)
+        y = boxes["episode"][3]
+    # the title: as large as fits in at most two lines inside the safe width
+    t = str(title).strip()
+    size, lines = 150, [t]
+    while size >= 84:
+        f_t = _card_font("script", size)
+        words, lines, cur = t.split(), [], ""
+        for w_ in words:
+            trial = (cur + " " + w_).strip()
+            if d.textlength(trial, font=f_t) <= 900 or not cur:
+                cur = trial
+            else:
+                lines.append(cur)
+                cur = w_
+        lines.append(cur)
+        if len(lines) <= 2 and all(d.textlength(l, font=f_t) <= 900 for l in lines):
+            break
+        size -= 8
+    f_t = _card_font("script", size)
+    ty = y + 50
+    tb = None
+    for ln in lines:
+        w_ = d.textlength(ln, font=f_t)
+        for off, a in ((4, 140),):                                                              # soft shadow, then the text
+            d.text((cx - w_ / 2 + off, ty + off), ln, font=f_t, fill=(0, 0, 0, a))
+        d.text((cx - w_ / 2, ty), ln, font=f_t, fill=(250, 244, 230, 255))
+        bb = d.textbbox((cx - w_ / 2, ty), ln, font=f_t)
+        tb = bb if tb is None else (min(tb[0], bb[0]), min(tb[1], bb[1]), max(tb[2], bb[2]), max(tb[3], bb[3]))
+        ty = bb[3] + 6
+    boxes["title"] = tb
+    if place:
+        psz = 40
+        while psz > 39 and sum(d.textlength(ch, font=_card_font("caps", psz)) for ch in place) + 8 * len(place) > 900:
+            psz -= 2
+        ptxt = place.upper()
+        if "," in ptxt and sum(d.textlength(ch, font=_card_font("caps", psz)) for ch in ptxt) + 8 * len(ptxt) > 900:
+            ptxt = ptxt.split(",")[0]          # a very long place line is cut back to its first part rather than run off the screen
+        boxes["place"] = _spaced(d, (cx, tb[3] + 40), ptxt, _card_font("caps", psz), (200, 198, 190, 255), 8)
+    im.save(path)
+    # ---- validation
+    problems, names = [], list(boxes)
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            a, b = boxes[names[i]], boxes[names[j]]
+            gap = max(b[1] - a[3], a[1] - b[3], b[0] - a[2], a[0] - b[2])
+            if gap < 12:
+                problems.append(f"'{names[i]}' and '{names[j]}' are too close or overlap (gap {gap}px)")
+    for n_, b in boxes.items():
+        if b[0] < 60 or b[2] > W_ - 60:
+            problems.append(f"'{n_}' leaves the safe width ({b[0]}..{b[2]})")
+        if b[3] > CARD_Y1 or b[1] < CARD_Y0 - 40:
+            problems.append(f"'{n_}' leaves the card band ({b[1]}..{b[3]})")
+    if size < 84:
+        problems.append("the title does not fit in two lines at a readable size")
+    for n_, px in (("series", 46), ("episode", 42), ("place", 39)):
+        if n_ in boxes and px * 360 / 1080 < 13:
+            problems.append(f"'{n_}' is too small on a phone")
+    return {"boxes": boxes, "title_size": size, "problems": problems, "lines": lines}
+
+
+def make_title_card():
+    """Renders the card from what write_captions stored. Returns the png name, or None when there is no card or it failed its check."""
+    tc = TITLECARD
+    if not tc:
+        return None
+    try:
+        rep = title_card_png(tc["series"], tc["episode"], tc["title"], tc["place"], WORK / "titlecard.png")
+    except Exception as e:
+        log(f"Title card could not be drawn ({e}).")
+        return None
+    try:
+        (WORK / "titlecard_report.json").write_text(json.dumps(rep, indent=1, default=str))
+    except Exception:
+        pass
+    if rep["problems"]:
+        for p in rep["problems"]:
+            log(f"Title card check FAILED: {p}")
+        TITLECARD_STATUS.append(False)
+        return None
+    log(f"Title card check passed: {len(rep['boxes'])} elements, title {rep['title_size']}px, no overlaps.")
+    TITLECARD_STATUS.append(True)
+    return "titlecard.png"
+
+
+TITLECARD_STATUS = []
+LOOP_INFO = {}
 
 
 def write_captions(words, total, path, card=None, track=None, card_big=None):
@@ -1455,10 +1619,15 @@ def write_captions(words, total, path, card=None, track=None, card_big=None):
                 else:
                     rep["omitted"] += 1
                     rep["omitted_text"].append(" ".join(w[2] for w in c))
+                    rep.setdefault("omitted_detail", []).append({"text": " ".join(w[2] for w in c), "from": round(s0, 2), "to": round(e0, 2),
+                                                                 "overlap_by_spot": {sp_: round(_cap_overlap(track, s0, e0, sp_, dims_of(c)), 2) for sp_ in CAPTION_SPOTS}})
             rep["split"] += 1
             continue
         rep["omitted"] += 1                                   # better no caption than a caption over the creature
         rep["omitted_text"].append(" ".join(w[2] for w in chunk))
+        rep.setdefault("omitted_detail", []).append({"text": " ".join(w[2] for w in chunk), "from": round(start, 2), "to": round(end, 2),
+                                                     "overlap_by_spot": {c: round(_cap_overlap(track, start, end, c, dims_of(chunk)), 2) for c in CAPTION_SPOTS},
+                                                     "box": next(([round(v) for v in b] for t_, b in track if t_ >= start and b), None)})
     # --- the mandatory check: every caption that was written is re-tested against every sampled frame
     if track:
         for st_, en_, yb, dims, txt in EMITTED:
@@ -1467,6 +1636,8 @@ def write_captions(words, total, path, card=None, track=None, card_big=None):
                 rep["collisions"] += 1
                 rep.setdefault("collision_details", []).append({"text": txt, "from": round(st_, 2), "to": round(en_, 2), "y": yb, "overlap": round(ov, 3)})
                 log(f"Caption collision: '{txt}' {st_:.1f}-{en_:.1f}s at y={yb} covers {ov:.0%} of its box")
+    if track:
+        rep["track_tail"] = [(round(t_, 2), [round(v) for v in b] if b else None) for t_, b in track[-60::15]]
     CAPTION_REPORT.append(rep)
     try:
         (path.parent / "caption_report.json").write_text(json.dumps(rep, indent=1))
@@ -1474,18 +1645,15 @@ def write_captions(words, total, path, card=None, track=None, card_big=None):
         pass
     log(f"Caption check: {rep['captions']} captions, {rep['moved']} moved out of the way, {rep['split']} split, "
         f"{rep['omitted']} left out rather than cover the creature, {rep['collisions']} collisions left")
+    TITLECARD.clear()
     if card:
         top, low = card, None
-        if card_big and "\u00b7" in card:      # series above the name, place below it
+        if "\u00b7" in card:       # "PLACE  ·  SERIES #N": series and episode are separate elements, the place is a small line
             region_part, series_part = [x.strip() for x in card.split("\u00b7", 1)]
             top, low = series_part, region_part
-        lines.append(f"Dialogue: 1,{ass_time(1.2)},{ass_time(4.0)},Card,,0,0,0,,{{\\fad(350,500)}}{top}")
-        if card_big:   # the creature's name: large, golden, with a soft glow, easing in
-            big = str(card_big).upper().replace("{", "").replace("}", "")
-            lines.append(f"Dialogue: 1,{ass_time(1.5)},{ass_time(4.2)},Title,,0,0,0,,"
-                         f"{{\\fad(400,550)\\blur1.2\\fscx93\\fscy93\\t(0,900,\\fscx100\\fscy100)}}{big}")
-        if low:
-            lines.append(f"Dialogue: 1,{ass_time(1.8)},{ass_time(4.2)},Card2,,0,0,0,,{{\\fad(400,500)}}{low}")
+        mm = re.match(r"(.*?)\s*#\s*(\d+)\s*$", top)
+        ser, ep = (mm.group(1).strip(), mm.group(2)) if mm else (top, "")
+        TITLECARD.update({"series": ser, "episode": ep, "title": str(card_big or ser), "place": low or ""})
     path.write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
     return True
 
@@ -1704,6 +1872,85 @@ def open_block(dh, dm, assets, out):
     return t
 
 
+# ---------------------------------------------------------------- the Impossible series: abilities, places, walking only when it means something
+ABILITY_WORDS = (
+    ("camouflage", r"colou?r|camoufl|blend|chameleon|vanish|invisible|disappear|shimmer|ripple of"),
+    ("swim", r"\bswim|\bswims|\bdive|\bdives|underwater|beneath the (water|waves|surface)|\bgills?\b"),
+    ("fly", r"\bfl(y|ies|ew|ying)\b|\bsoar|\bglid|airborne|wings? (spread|beat|open)|takes? off|\bleaps? into the (air|sky)"),
+    ("defend", r"\bdefen[cs]|\bspikes?\b|\bspines?\b|\bvenom|\bpoison|\bspits?\b|\bfrill|\bhiss|\barmou?r|\bshell\b|\bpuff|\bflares?\b"),
+)
+WALK_WORDS = (r"\bsize\b|\bhuge|\bgiant|\bmassive|\bheavy|\bweigh|\btower|\bfootstep|\bstomp|\bapproach|\bwalk|\bmarch|\bstalk|"
+              r"\bcreep|\bcrept|\btoward|\btracks?\b|\btremble|\bground shakes?|\bshak(es|ing) the ground|\bpace|\bpaces\b")
+BIOMES = (
+    (r"shark|whale|fish|octopus|squid|eel|dolphin|ray|jelly|orca|seahorse|crab|lobster", "the deep ocean"),
+    (r"camel|scorpion|lizard|snake|fennec|meerkat|vulture|gecko|chameleon", "the Sahara desert"),
+    (r"penguin|polar|seal|walrus|arctic|reindeer|yeti|husky", "Antarctica"),
+    (r"frog|croc|alligator|hippo|toad|newt|turtle|heron|salamander|axolotl", "a swamp full of toxic mud"),
+    (r"monkey|parrot|jaguar|tiger|toucan|sloth|gorilla|python|panther|tapir|orangutan", "a rainforest after a flood"),
+    (r"eagle|goat|yak|falcon|condor|ibex|snow leopard|llama|hawk", "a mountain peak above the clouds"),
+    (r"lion|zebra|elephant|giraffe|rhino|cheetah|buffalo|antelope|horse|cow|deer|wolf|dog|cat|bear", "open grasslands"),
+    (r"bat|spider|mole|badger|owl|centipede|scorpion", "a deep cave"),
+    (r"fox|moose|lynx|boar|squirrel|raccoon|hedgehog", "a snowy forest"),
+)
+TEXT_PLACES = (
+    (r"ocean|\bsea\b|underwater|reef|\bwaves?\b|\bdeep water", "the deep ocean"),
+    (r"\bice\b|snow|frozen|glacier|arctic|blizzard", "Antarctica"),
+    (r"desert|\bsand\b|dunes?\b", "the Sahara desert"),
+    (r"swamp|\bmud\b|marsh|wetland|\bbog\b", "a swamp full of toxic mud"),
+    (r"jungle|rainforest|canopy|vines", "a rainforest after a flood"),
+    (r"volcan|\blava\b|magma|\bash\b", "a land of active volcanoes"),
+    (r"\bcave|tunnel|underground|burrow", "a deep cave"),
+    (r"mountain|cliff|\bpeak|\bridge\b|summit", "a mountain peak above the clouds"),
+    (r"grassland|savanna|meadow|\bplains?\b|\bfield\b", "open grasslands"),
+)
+
+
+def detect_ability(text):
+    low = (text or "").lower()
+    for name, rx in ABILITY_WORDS:
+        if re.search(rx, low):
+            return name
+    return None
+
+
+def needs_walk(text):
+    return bool(re.search(WALK_WORDS, (text or "").lower()))
+
+
+def creature_biomes(*names):
+    out = []
+    for nm in names:
+        for rx, place in BIOMES:
+            if re.search(rx, str(nm).lower()) and place in toon_places() and place not in out:
+                out.append(place)
+    return out
+
+
+def toon_places():
+    import toon
+    return toon.PLACES
+
+
+def choose_scene_place(i, text, base, a, b, used):
+    """A different, believable place for each stretch of the story: what the sentence says first, otherwise the places the two parent
+    animals really live in. The first and last shots use the episode's own place. Never the same place twice in a row when another one fits."""
+    import toon
+    low = (text or "").lower()
+    named = next((pl for rx, pl in TEXT_PLACES if re.search(rx, low) and pl in toon.PLACES), None)
+    pool = [base] + [p for p in creature_biomes(a, b) if p != base]
+    if named and named not in pool:
+        pool.insert(1, named)
+    pick = named if named else None
+    if pick is None:
+        cands = [p for p in pool if not used or p != used[-1]]
+        counts = {p: used.count(p) for p in pool}
+        cands.sort(key=lambda p: (counts[p], pool.index(p)))
+        pick = cands[0] if cands else base
+    if used and pick == used[-1] and len(pool) > 1:
+        pick = next((p for p in pool if p != used[-1]), pick)
+    return pick
+
+
 def plan_scenes(sentences, total, ds=None):
     """Split the audio time across sentences, then decide what to show for each."""
     if ds is None:
@@ -1758,23 +2005,48 @@ def build_video(scenes, assets, audio_name, captions_name, out_path):
     if captions_name:
         vf += f",subtitles={captions_name}"
     hook_in, hook_fc = [], None
+    card_png = make_title_card() if os.environ.get("TITLE_CARD", "1") != "0" else None
+    head, tail = vf.split("curves=preset=vintage", 1)
+    graph, cur, n_in = [f"[0:v]{head.rstrip(',')}[b]"], "b", 2
     if os.environ.get("HOOK", "1") != "0":
         try:     # the opening hook: fangs on the scream, glowing eyes pushing in, then the story dissolves in
             import toon
             toon.hook_clip(str(WORK / "hook.mp4"), tuple(HOOK_EYE), cwd=WORK)
-            head, tail = vf.split("curves=preset=vintage", 1)
-            hook_fc = (f"[0:v]{head.rstrip(',')}[b];[2:v]format=rgba,fade=t=out:st={toon.HOOK_LEN - 0.3:.2f}:d=0.3:alpha=1[hk];"
-                       f"[b][hk]overlay=0:0:eof_action=pass:enable='lt(t,{toon.HOOK_LEN:.2f})'[o];"
-                       f"[o]curves=preset=vintage{tail}[vout]")
+            graph.append(f"[{n_in}:v]format=rgba,fade=t=out:st={toon.HOOK_LEN - 0.3:.2f}:d=0.3:alpha=1[hk];"
+                         f"[{cur}][hk]overlay=0:0:eof_action=pass:enable='lt(t,{toon.HOOK_LEN:.2f})'[h1]")
+            cur, n_in = "h1", n_in + 1
             hook_in = ["-i", "hook.mp4"]
         except Exception as e:
             log(f"Opening hook skipped ({e}).")
-            hook_fc = None
+    if card_png:    # the title card eases in with a small upward drift and fades out
+        hook_in += ["-loop", "1", "-t", f"{CARD_OFF + 0.2:.1f}", "-i", card_png]
+        graph.append(f"[{n_in}:v]format=rgba,fade=t=in:st={CARD_ON:.2f}:d=0.8:alpha=1,fade=t=out:st={CARD_OFF - 0.7:.2f}:d=0.7:alpha=1[tc];"
+                     f"[{cur}][tc]overlay=x=0:y='20*(1-min(1,max(0,(t-{CARD_ON:.2f})/1.4)))':eof_action=pass:enable='between(t,{CARD_ON:.2f},{CARD_OFF:.2f})'[h2]")
+        cur, n_in = "h2", n_in + 1
+    T_end = min(59.0, audio_seconds(WORK / audio_name))
+    if os.environ.get("LOOP", "1") != "0" and T_end > 8:
+        try:     # the loop: the last second sinks into the same dark fog the opening starts in, a pair of eyes watches, then it all restarts
+            import toon
+            toon.hook_frame(0.0, tuple(HOOK_EYE)).save(WORK / "loop_fog.png")
+            toon.hook_frame(0.62, tuple(HOOK_EYE)).save(WORK / "loop_eyes.png")
+            LOOP_LEN = 1.3
+            hook_in += ["-loop", "1", "-t", f"{LOOP_LEN + 1.5:.2f}", "-i", "loop_fog.png", "-loop", "1", "-t", f"{LOOP_LEN + 1.5:.2f}", "-i", "loop_eyes.png"]
+            t0_ = T_end - LOOP_LEN
+            graph.append(f"[{n_in}:v]format=rgba,fade=t=in:st=0:d=1.0:alpha=1,setpts=PTS+{t0_:.3f}/TB[lf];"
+                         f"[{cur}][lf]overlay=0:0:eof_action=pass:enable='gte(t,{t0_:.3f})'[l1]")
+            graph.append(f"[{n_in + 1}:v]format=rgba,fade=t=in:st=0.35:d=0.5:alpha=1,fade=t=out:st=1.1:d=0.2:alpha=1,setpts=PTS+{t0_:.3f}/TB[le];"
+                         f"[l1][le]overlay=0:0:eof_action=pass:enable='gte(t,{t0_ + 0.35:.3f})'[l2]")
+            cur, n_in = "l2", n_in + 2
+            LOOP_INFO.update({"fog_png": "loop_fog.png", "from": round(t0_, 2), "to": round(T_end, 2)})
+        except Exception as e:
+            log(f"Loop ending skipped ({e}).")
+    if len(graph) > 1:
+        hook_fc = ";".join(graph) + f";[{cur}]curves=preset=vintage{tail}[vout]"
     vmap = ["-map", "0:v"] if not hook_fc else ["-filter_complex", hook_fc, "-map", "[vout]"]
     run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "list.txt", "-i", audio_name] + hook_in +
         ([] if hook_fc else ["-vf", vf]) + vmap + ["-map", "1:a",
          "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
-         "-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-ac", "2", "-ar", "44100",
+         "-af", f"afade=t=out:st={max(0.0, T_end - 0.35):.2f}:d=0.35,loudnorm=I=-14:TP=-1.5:LRA=11", "-ac", "2", "-ar", "44100",
          "-c:a", "aac", "-b:a", "192k", "-shortest", "-t", "59", str(out_path)], cwd=WORK)
 
 
@@ -1892,6 +2164,7 @@ def main():
     words = None
     audio_name = "voice.wav"
     if not gemini_tts(narration, WORK / "voice.wav", style=NARRATOR_STYLE):
+        voice_fallback_check()
         log("Falling back to the basic free voice.")
         audio_name = "voice.mp3"
         words = asyncio.run(edge_voice(narration, str(WORK / "voice.mp3")))
@@ -3039,6 +3312,110 @@ async def edge_clip(text, mp3_path, voice, rate, pitch):
                 f.write(chunk["data"])
 
 
+# ---------------------------------------------------------------- the voice audition (nothing is rendered before the owner approves the voice)
+def voice_approved():
+    return bool(NARRATOR.get("approved_by_listening")) or os.environ.get("VOICE_APPROVED", "").strip().lower() in ("1", "yes", "true")
+
+
+def voice_fallback_check():
+    """The approved voice may not be swapped for a different one without the owner knowing."""
+    if os.environ.get("ALLOW_VOICE_FALLBACK", "0") == "1":
+        return
+    sys.exit("STOPPED: the approved narrator voice (" + str(GEMINI_VOICE) + ") could not be produced right now, and the rules say a different "
+             "voice must never be used silently. Run the workflow again in a few minutes. (To allow the basic free voice anyway, set the "
+             "variable ALLOW_VOICE_FALLBACK to 1.)")
+
+
+def audition_text(sentences, words=26):
+    out, n = [], 0
+    for s in sentences:
+        if s.get("speaker", "narrator") not in ("narrator",):
+            continue
+        out.append(s["text"])
+        n += len(s["text"].split())
+        if n >= words:
+            break
+    return " ".join(out)
+
+
+def voice_audition_gate(sentences):
+    """Stage 2. Unless the voice is approved, make a 10-second sample of THIS script in the exact voice setup and stop.
+    Approve: set narrator.json 'approved_by_listening' to true (or the variable VOICE_APPROVED to yes). Reject: run again with
+    GEMINI_VOICE set to another voice (for example Orus, Algenib or Enceladus) to hear that one instead."""
+    force = os.environ.get("VOICE_AUDITION", "0") == "1"
+    if voice_approved() and not force:
+        return
+    OUT.mkdir(exist_ok=True)
+    WORK.mkdir(exist_ok=True)
+    text = audition_text(sentences)
+    voice = os.environ.get("GEMINI_VOICE") or GEMINI_VOICE
+    ok = GEMINI_API_KEY and gemini_tts(text, WORK / "audition_raw.wav", style=NARRATOR_STYLE, voice=voice)
+    if not ok:
+        sys.exit("STOPPED: the voice audition could not be made (Gemini voice not available right now). Nothing was rendered. Try again later.")
+    run(["ffmpeg", "-y", "-i", "audition_raw.wav", "-af", SCARY_CHAIN, "-t", "10", "-ar", "44100", "-ac", "1",
+         str((OUT / "voice_audition.mp3").resolve())], cwd=WORK)
+    (OUT / "voice_audition.json").write_text(json.dumps({"voice": voice, "style": NARRATOR_STYLE, "text": text,
+                                                         "approved": False, "how_to_approve": "narrator.json: approved_by_listening true, voice = this voice"}, indent=1))
+    sys.exit(f"VOICE AUDITION READY (voice {voice}): listen to output/voice_audition.mp3. Nothing else was rendered. If it is good, set "
+             "approved_by_listening to true in narrator.json (and put this voice name in 'voice'); if not, run again with GEMINI_VOICE "
+             "set to another voice. The full video is only made after approval.")
+
+
+# ---------------------------------------------------------------- the narrator stops for a loud sound
+SOUND_PAUSE = {"attack": 2.2}        # silence after the narrator's sentence while the kill sound plays on its own (seconds)
+JUMP_FRAC = {}                      # shot index -> where the jump-scare lands (a fraction of the shot)
+SOUND_SYNC = []                      # what was done, for the report and the final check
+
+
+def insert_sound_pauses(audio_name, words, durs, pauses, search=0.5):
+    """Cuts the narration at the quietest moment next to the end of each given sentence and puts real silence there.
+    pauses: {sentence index: seconds}. Returns (new wav name, words, durs) with every later time shifted by the silence."""
+    import numpy as np
+    run(["ffmpeg", "-y", "-i", audio_name, "-ar", "44100", "-ac", "1", "-c:a", "pcm_s16le", "pz_in.wav"], cwd=WORK)
+    with wave.open(str(WORK / "pz_in.wav")) as w_:
+        sr = w_.getframerate()
+        x = np.frombuffer(w_.readframes(w_.getnframes()), dtype=np.int16)
+    ends = list(np.cumsum(durs))
+    pieces, pos = [], 0
+    new_durs, new_words = list(durs), [list(w) for w in words]
+    last_cut = 0.0
+    for i in sorted(pauses):
+        gap = float(pauses[i])
+        te = float(ends[i])
+        lo, hi = max(last_cut + 0.4, te - search), min(len(x) / sr - 0.2, te + search)
+        tc = te
+        qdb = None
+        if hi > lo:
+            hop, win = int(sr * 0.01), int(sr * 0.03)
+            best = None
+            for s in range(int(lo * sr), int(hi * sr) - win, hop):
+                r = float(np.sqrt(np.mean((x[s:s + win].astype(np.float32) / 32768.0) ** 2)) + 1e-9)
+                if best is None or r < best[0]:
+                    best = (r, s + win // 2)
+            tc, qdb = best[1] / sr, 20 * math.log10(best[0])
+        c = int(tc * sr)
+        pieces += [x[pos:c], np.zeros(int(gap * sr), dtype=np.int16)]
+        pos = c
+        new_durs[i] += (tc - te) + gap
+        if i + 1 < len(new_durs):
+            new_durs[i + 1] -= (tc - te)
+        for w in new_words:
+            if w[0] >= tc:
+                w[0] += gap
+                w[1] += gap
+        last_cut = tc
+        SOUND_SYNC.append({"sentence": i, "cut_at": round(tc, 2), "silence": gap, "cut_level_db": None if qdb is None else round(qdb, 1)})
+        log(f"Narrator pauses {gap:.1f}s after sentence {i + 1} (cut at {tc:.2f}s, level {qdb if qdb is None else round(qdb)} dB) so the sound effect plays alone.")
+    pieces.append(x[pos:])
+    out = np.concatenate(pieces)
+    with wave.open(str(WORK / "voice_gap.wav"), "wb") as o:
+        o.setnchannels(1)
+        o.setsampwidth(2)
+        o.setframerate(sr)
+        o.writeframes(out.tobytes())
+    return "voice_gap.wav", [tuple(w) for w in new_words], new_durs
+
+
 def make_story_voice(sentences, beats, narrator):
     """One acted clip per sentence (with its own mood, pitch and pace) joined with natural pauses.
     Returns (wav name, per-sentence starts, clip lengths, gaps, deliveries) or raises."""
@@ -3223,6 +3600,38 @@ def maul_sound_events(sounds, t0, dur):
     return ev, (claw - 0.38, claw - 0.03)
 
 
+SYNC_REPORT = {}
+
+
+def sound_sync_check(events, words, loud=0.6):
+    """Stage 4: no prominent sound effect may play over a spoken word. Overlapping ones are turned down (the narrator stays clear)
+    and counted; the report says how many overlaps there were and how many were fixed."""
+    spans = []
+    for a, b, _w in sorted(words):
+        if spans and a - spans[-1][1] < 0.25:
+            spans[-1][1] = max(spans[-1][1], b)
+        else:
+            spans.append([a, b])
+    found = fixed = 0
+    for ev in events:
+        stem = pathlib.Path(str(ev["file"])).stem.split("_")[0]
+        if stem not in MAJOR_SOUNDS or ev.get("vol", 1.0) < loud:
+            continue
+        try:
+            ln = min(audio_seconds(pathlib.Path(ev["file"])), ev.get("max", 99.0))
+        except Exception:
+            ln = 1.0
+        s, e = ev["at"], ev["at"] + ln
+        ov = sum(max(0.0, min(e, b) - max(s, a)) for a, b in spans)
+        if ov > 0.15:
+            found += 1
+            ev["vol"] = min(ev.get("vol", 1.0), 0.4)
+            fixed += 1
+    SYNC_REPORT.update({"overlaps": found, "turned_down": fixed, "pauses": list(SOUND_SYNC)})
+    log(f"Sound sync check: {len(SOUND_SYNC)} narrator pause(s), {found} loud sound(s) overlapped speech, {fixed} turned down.")
+    return events
+
+
 def folk_sound_events(durs, beats, impacts, sounds, hits=None, quiet=None, origin=None):
     hits = hits or {}
     quiet = quiet if quiet is not None else []
@@ -3277,7 +3686,7 @@ def folk_sound_events(durs, beats, impacts, sounds, hits=None, quiet=None, origi
             ev.append({"file": sounds["whoosh"], "at": at + d * 0.3, "vol": 0.35})
             ev.append({"file": sounds["boom"], "at": at + d * 0.9, "vol": 0.7})
         elif beats[i] == "jump":
-            cut = at + d * 0.72
+            cut = at + d * JUMP_FRAC.get(i, 0.72)
             quiet.append((cut - 1.0, cut - 0.05))
             ev.append({"file": sounds["riser"], "at": max(at, cut - 1.3), "vol": 0.5, "max": 1.2})
             ev.append({"file": sounds["boom"], "at": cut, "vol": 1.0})
@@ -3514,6 +3923,7 @@ ESTABLISH_VARIANTS = ["pan", "push", "pull", "storm", "low"]
 MIN_SHOT = 4.4  # a scene shorter than this is not split
 
 
+ABILITY_LOG, WALK_LOG, ANATOMY_LOG = [], [], []
 ANGLE_CYCLE = ("wide", "low", "drift", "close", "high", "dutch")
 CREATURE_BEATS = ("stalk", "walk", "chase", "omen", "village", "footprints", "aftermath")
 
@@ -3636,6 +4046,7 @@ def build_folk_main(plan):
     region = story["region"]
     episode = plan.get("episode", 1)
     narration = " ".join(s["text"] for s in sentences)
+    voice_audition_gate(sentences)
     place_name, place_desc, ambient_query, place_light, place_grade = FOLK_PLACE
     LOOK["grade"] = GRADES.get(place_grade, "null")
     WORK.mkdir(exist_ok=True)
@@ -3681,6 +4092,7 @@ def build_folk_main(plan):
             pass
         elif not gemini_tts(paced_text(sentences, range(len(sentences)), beats), WORK / "voice.wav", style=NARRATOR_STYLE,
                             voice=os.environ.get("GEMINI_VOICE") or GEMINI_VOICE):
+            voice_fallback_check()
             log("Falling back to the basic free voice.")
             audio_name = "voice.mp3"
             words = asyncio.run(edge_voice(narration, str(WORK / "voice.mp3")))
@@ -3724,6 +4136,19 @@ def build_folk_main(plan):
         durs = [speech_len * c / sum(chars) for c in chars]
         durs[0] += lead
         durs[-1] += (tail if lead else 0.3)
+    PAUSES = {}
+    SOUND_SYNC.clear()
+    for i_, b_ in enumerate(beats):          # the kill sound gets the room to itself: the narrator finishes, then silence, then the sound
+        if b_ in SOUND_PAUSE and not modern and i_ < n - 1 and beats[i_ + 1] != b_ and os.environ.get("SOUND_PAUSE", "1") != "0":
+            PAUSES[i_] = SOUND_PAUSE[b_]
+    if PAUSES:
+        try:
+            audio_name, words, durs = insert_sound_pauses(audio_name, words, durs, PAUSES)
+            total = audio_seconds(WORK / audio_name)
+        except Exception as e_:
+            log(f"Narration pauses skipped ({e_}).")
+            PAUSES = {}
+            SOUND_SYNC.clear()
     settings = ["forest" if b == "dig" else "field" if b == "fly" else "village" for b in beats] if modern else assign_settings(sentences, beats)
     if modern:  # sentences that share a scene play as one longer scene, so its action is not restarted
         mb, md, ms = [], [], []
@@ -3790,10 +4215,20 @@ def build_folk_main(plan):
             if beat == "valley":  # the wide view of the valley, used as an establishing cutaway
                 w.push, w.pull = (0.0, 0.18) if sh["variant"] == "pull" else (0.18, 0.0)
             hits[j] = toon.INSERT_FUNCS[beat](out, dur, w, cur, cwd=WORK).get("hits", [])
+        elif (not modern) and veil == 0.0 and beats[i] not in ("attack", "jump") and dur >= 3.0 and re.search(toon.ANATOMY_RX, sentences[i].get("text", "").lower()):
+            _an = toon.anatomy_scene(out, dur, w, creature_v, cwd=WORK)           # the narration talks about the body: show what is inside it
+            ANATOMY_LOG.append(i)
         elif modern:
+            if beat == "jump":      # the scare lands a beat AFTER the last spoken word, in silence
+                tail_ = (locals().get("tail", 0.45) if lead else 0.45)
+                JUMP_FRAC[j] = min(0.88, max(0.45, (dur - tail_ + 0.35) / dur))
+                toon.JUMP_CUT[0] = JUMP_FRAC[j]
             hits[j] = getattr(toon, beat + "_scene")(out, dur, w, cur, cwd=WORK).get("hits", [])
+            toon.JUMP_CUT[0] = None
         elif beat == "attack":
+            toon.PAUSE_REMAIN[0] = (PAUSES[i] + 0.1) if i in PAUSES and not sh.get("insert") else None
             _ai = toon.attack_scene(out, dur, w, creature_v, cwd=WORK)
+            toon.PAUSE_REMAIN[0] = None
             impacts[j] = _ai["impact_at"]
             MAULS[j] = (_ai["maul_at"], _ai["maul_dur"])
             blooded = True
@@ -3822,6 +4257,7 @@ def build_folk_main(plan):
     sounds = prepare_sounds(animal, animal, ambient_query)
     quiet = []
     events = folk_sound_events(durs, beats, impacts, sounds, hits, quiet, origin)
+    events = sound_sync_check(events, words)
     try:
         splan = score_plan(story, beats, durs, impacts)
         log("Score: " + splan["mood"] + ", reveals at " + ", ".join(f"{r:.1f}s" for r, _ in splan["reveals"]))
@@ -3967,6 +4403,7 @@ def build_main():
     sentences = story["sentences"]
     look = story["hybrid_look"]
     narration = " ".join(s["text"] for s in sentences)
+    voice_audition_gate(sentences)
     LOOK["grade"] = GRADES.get(place_grade, "null")
     log(f"Building: {a} + {b} in {place_name}")
     log(f"Title: {story['title']}")
@@ -3990,6 +4427,7 @@ def build_main():
             narration = " ".join(s["text"] for s in sentences)
             words, audio_name, sent_durs = None, "voice.wav", None
     if sent_durs is None and not gemini_tts(narration, WORK / "voice.wav", style=NARRATOR_STYLE):
+        voice_fallback_check()
         log("Falling back to the basic free voice.")
         audio_name = "voice.mp3"
         words = asyncio.run(edge_voice(narration, str(WORK / "voice.mp3")))
@@ -4039,13 +4477,28 @@ def build_main():
     k = 0
     prev_shot = None
     scene_tracks = {}
+    used_places = []
+    for i_, sc_ in enumerate(scenes):         # which scenes must DEMONSTRATE an ability the narration describes
+        if sc_["kind"] == "scene" and i_ != hunt_at and not sc_.get("host") and sentences[sc_["si"]].get("action") != "hunt":
+            sc_["ability"] = detect_ability(sentences[sc_["si"]].get("text", "")) if sc_["dur"] >= 2.6 else None
+            sc_["anatomy"] = bool(re.search(toon.ANATOMY_RX, sentences[sc_["si"]].get("text", "").lower())) and sc_["dur"] >= 3.0
+            if sc_["anatomy"]:
+                sc_["ability"] = None
     sh0 = sh
     for i, sc in enumerate(scenes):
         if sc["kind"] == "open":
             continue
         fp_ = sc.get("si", len(sentences) - 1) / max(len(sentences) - 1, 1)
         sh = dict(sh0, veil=(0.9 if fp_ < 0.4 else (0.5 if fp_ < 0.6 else 0.0))) if story.get("format") == "Cryptid encounter" else sh0
-        w = toon.World(place_name, i + 2)
+        if sc["kind"] == "scene" and 0 < i < len(scenes) - 1:
+            loc = choose_scene_place(i, (sentences[sc["si"]].get("text", "") + " " + sentences[sc["si"]].get("image", "")), place_name, a, b, used_places)
+        else:
+            loc = place_name
+        if sc.get("ability") == "swim":
+            loc = "the deep ocean"
+        used_places.append(loc)
+        sc["place"] = loc
+        w = toon.World(loc, i + 2)
         w.focus_y = 0.70
         w.push = 0.18 if i % 2 == 0 else 0.0     # a slow push-in on every other shot, otherwise a locked frame
         w.angle = "wide" if (sc.get("host") or i == hunt_at or sc["kind"] == "hold") else ANGLE_CYCLE[i % len(ANGLE_CYCLE)]
@@ -4053,8 +4506,11 @@ def build_main():
         if sc["kind"] == "hold":
             toon.walk_scene(out, sc["dur"], w, sh, 1, (1.0, 1.15), cwd=WORK, outro=(sh, min(1.5, sc["dur"] * 0.6)))
         elif sentences[sc["si"]].get("action") == "hunt" and i != hunt_at:     # a second kill sentence: the close-up of claws and jaws
-            toon.maul_scene(out, sc["dur"], w, sh, story.get("prey", ""), cwd=WORK)
-            sc["maul"] = True
+            if os.environ.get("HYBRID_GORE", "0") == "1":
+                toon.maul_scene(out, sc["dur"], w, sh, story.get("prey", ""), cwd=WORK)
+                sc["maul"] = True
+            else:
+                toon.chase_scene(out, sc["dur"], w, sh, story.get("prey", ""), cwd=WORK)
             sc["steps"] = []
         elif sc.get("host"):                      # the two hosts by the fire, recalling what happened to them
             toon.HOST_SPEAKER = 1 if sentences[sc["si"]].get("speaker") == "host" else 0
@@ -4063,18 +4519,36 @@ def build_main():
             sc["hosts"] = True
         elif i == hunt_at:
             globals()["HOOK_EYE"] = tuple(sh.get("eye", (255, 170, 40)))[:3]
-            hunt_info = toon.pounce_scene(out, sc["dur"], w, sh, story.get("prey", ""), cwd=WORK)
+            if os.environ.get("HYBRID_GORE", "0") == "1":
+                hunt_info = toon.pounce_scene(out, sc["dur"], w, sh, story.get("prey", ""), cwd=WORK)
+            else:       # this series stays non-graphic: a multi-shot chase with the whole prey in view
+                hunt_info = toon.chase_scene(out, sc["dur"], w, sh, story.get("prey", ""), cwd=WORK)
             sc["hunt"] = True
             sc["steps"] = hunt_info.get("steps", [])
+        elif sc.get("anatomy"):                  # the narration talks about bones or anatomy
+            toon.anatomy_scene(out, sc["dur"], w, sh, cwd=WORK)
+            sc["steps"] = []
+            ANATOMY_LOG.append(i)
+        elif sc.get("ability"):                  # the narration names an ability: show it happening
+            alt = next((p for p in ("the Sahara desert", "Antarctica", "a rainforest after a flood", "a swamp full of toxic mud") if p != sc["place"]), "the Sahara desert")
+            toon.ability_scene(out, sc["dur"], w, sh, sc["ability"], sc["place"], alt, cwd=WORK)
+            sc["steps"] = []
+            ABILITY_LOG.append((sc["ability"], i))
         else:
             # a different physical action in each shot: walk, feed, turn, walk the other way, a close-up reaction
-            kinds = ["walk", "feed", "turn", "walkback", "face"]
+            kinds = ["face", "feed", "turn", "pov", "loom", "shoulder"]       # walking is NOT a filler: only when the story is about size, weight or approach
             shot_type = kinds[k % len(kinds)]
             act = sentences[sc["si"]].get("action") if "si" in sc else ""
+            stext = sentences[sc["si"]].get("text", "") if "si" in sc else ""
             if act and act != "hunt":
                 shot_type = act                  # the picture is what the sentence says the creature is doing
+                if shot_type in ("walk", "walkback") and not needs_walk(stext):
+                    shot_type = kinds[k % len(kinds)]
+                    WALK_LOG.append(("walk replaced", i))
                 if shot_type == prev_shot:
                     shot_type = {"walk": "walkback", "walkback": "walk"}.get(shot_type, shot_type)
+            elif needs_walk(stext):
+                shot_type = "walk" if shot_type != prev_shot else "walkback"
             if sc["dur"] < 3.6 and shot_type in ("feed", "turn"):
                 shot_type = "walk"
             if sc["dur"] < 2.4 and shot_type in ("pov", "loom", "shoulder", "chase", "footprints"):

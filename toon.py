@@ -1057,6 +1057,8 @@ def head_anchor(sp):
             "bug": (140, -100), "crab": (0, -210)}.get(k, (100, -250))
 
 
+JUMP_CUT = [None]          # where in the scene the jump-scare lands (a fraction); set so it follows the last spoken word
+PAUSE_REMAIN = [None]   # seconds the narrator keeps quiet at the end of a scene while its loud sound plays; the kill is timed to start it
 _CLOSEUP = [False]   # set while a macro close-up is on screen (no mist, no overlays)
 _BOXES = []          # where the creature was drawn in the current frame (for captions to stay out of its way)
 _REC_OFF = [0, 0]
@@ -1251,6 +1253,9 @@ PLACES = {
     "a swamp full of toxic mud": dict(sky=("#2f3e25", "#101c0f"), far="#213623", near="#122414", ground="#1c2c14", sil="reeds", sun="#d8e8b0", part="fireflies"),
     "the edge of a black hole": dict(sky=("#000000", "#180b2a"), far="#1c1036", near="#0c071a", ground="#0b0816", sil="rocks", sun="hole", part="stars"),
 }
+PLACES["a deep cave"] = dict(sky=("#07070d", "#1a1626"), far="#241d36", near="#100c1c", ground="#08060e", sil="spikes", sun=None, part="dust")
+PLACES["open grasslands"] = dict(sky=("#79b0dc", "#efe0b0"), far="#8aa35a", near="#587a3a", ground="#34502a", sil="dunes", sun="#fff3c8", part="dust")
+PLACES["a snowy forest"] = dict(sky=("#8fa8c4", "#dfe8f0"), far="#5d7a8a", near="#3a5260", ground="#e6eef4", sil="trees", sun="#ffffff", part="snow")
 PLACES["a village at night"] = dict(sky=("#0a1030", "#1b2a55"), far="#101c3a", near="#080f22",
                                     ground="#050914", sil="trees", sun="#d8dcc8", part="fireflies")
 PLACES["an eerie pathway"] = dict(sky=("#1a0f2e", "#3a2548"), far="#241638", near="#120a20", ground="#0a0612",
@@ -1823,6 +1828,37 @@ WALK_PX = 176.0                      # how fast the ground scrolls under a walki
 STEP = 1.9 * 2 * math.pi * 0.68     # step rate: about one step every 1.5 s for a big creature
 
 
+
+def _step_fx(d, world, x, k, seed=1, size=1.0):
+    """The ground answers every footfall, in a way that fits the place: dust on dry ground, a snow puff, water droplets in a swamp or sea,
+    sparks on burning ground. k = 0..1 through the effect."""
+    if k <= 0 or k >= 1:
+        return
+    st = getattr(world, "st", {}) or {}
+    part, rnd = st.get("part"), random.Random(seed)
+    y = GROUND + 14
+    wet = part in ("bubbles", "fireflies") or st.get("sil") == "reeds"
+    if part == "embers":
+        for i in range(10):
+            a = rnd.uniform(-1.1, 1.1)
+            ex, ey = x + 120 * a * k * size, y - 150 * k * size * rnd.uniform(0.4, 1)
+            d.ellipse((ex - 4, ey - 4, ex + 4, ey + 4), fill=(255, int(150 + 80 * rnd.random()), 40, int(230 * (1 - k))))
+    elif wet:
+        for i in range(12):
+            a = rnd.uniform(-1.0, 1.0)
+            h = 120 * rnd.uniform(0.5, 1.0) * size
+            px = x + 150 * a * k * size
+            py = y - 4 * h * k * (1 - k) * 2.2
+            d.ellipse((px - 5, py - 5, px + 5, py + 5), fill=(205, 230, 245, int(210 * (1 - k))))
+    elif part == "snow" or st.get("ground") in ("#e3edf5", "#f4f7fb", "#afc9e6"):
+        for i in range(9):
+            a = rnd.uniform(-1, 1)
+            r = (14 + 30 * k) * size * rnd.uniform(0.7, 1.2)
+            d.ellipse((x + 90 * a * k * size - r, y - 30 * k * size - r * 0.8, x + 90 * a * k * size + r, y - 30 * k * size + r * 0.7), fill=(240, 246, 252, int(170 * (1 - k))))
+    else:
+        _dust(d, x, y, k, seed=seed, size=size * 0.8)
+
+
 def walk_scene(out, dur, world, sp, facing=1, zoom=(1.0, 1.0), hybrid_roar_end=False, cwd=None,
                intro=None, outro=None):
     """One creature walking across the scene. intro/outro = (creature, seconds): a close-up of
@@ -1841,6 +1877,15 @@ def walk_scene(out, dur, world, sp, facing=1, zoom=(1.0, 1.0), hybrid_roar_end=F
         sh = (3 * math.sin(t * 70)) if roar > 0.1 else 0
         draw_creature(d, sp, (400 if facing == 1 else 680) + sh, GROUND + 20, t * STEP * 0.5,
                       facing, z, {"t": t, "roar": roar, "moving": True})
+        for n_, tc in enumerate(_fx_steps):                                         # the ground reacts to each footfall
+            if 0 <= t - tc < 0.7:
+                _step_fx(d, world, (400 if facing == 1 else 680) + (-1) ** n_ * 70 * z * facing + 40 * facing, (t - tc) / 0.7, seed=n_ + 3, size=z)
+        if roar > 0.3:                                                              # a roar shakes loose a ring of dust / sparks
+            _step_fx(d, world, (400 if facing == 1 else 680) - 90 * facing, (t * 1.7) % 1.0, seed=int(t * 9), size=1.1)
+    try:
+        _fx_steps = _contacts(sp, lambda t_: t_ * STEP * 0.5, dur, lambda t_: True)
+    except Exception:
+        _fx_steps = []
     cf = None
     if sp["kind"] == "chimera":
         cf = (lambda t, g0=chim_ground(sp): t * g0 * facing)
@@ -2162,6 +2207,10 @@ def attack_scene(out, dur, world, sp, cwd=None):
     sp3 = dict(sp)
     sp3["bloody"] = True
     t_walk, t_run, t_leap, t_hit = 0.12, 0.20, 0.36, 0.42
+    if PAUSE_REMAIN[0]:      # the narrator has finished: the strike starts exactly when her silence starts
+        t_hit = min(0.8, max(0.3, (dur - PAUSE_REMAIN[0]) / dur))
+        f_ = t_hit / 0.42
+        t_walk, t_run, t_leap = t_walk * f_, t_run * f_, t_leap * f_
     _m0 = dur * (t_hit + (1 - t_hit) * 0.07)
     info = {"impact_at": dur * t_hit, "stalk_at": dur * t_walk, "maul_at": _m0, "maul_dur": dur * (1 - t_hit) * 0.57}
     world.shake = 0.0
@@ -3374,7 +3423,7 @@ def cctv_scene(out, dur, world, sp, cwd=None):
 
 def jump_scene(out, dur, world, sp, cwd=None):
     """A dark room. Two red eyes open in the black, slowly, then the face is suddenly right in the lens."""
-    cut = 0.72
+    cut = JUMP_CUT[0] or 0.72
     world.shake = 0.0
 
     def paint(im, d, t, u, cam):
@@ -7263,6 +7312,10 @@ def pounce_scene(out, dur, world, sp, prey_text="", cwd=None):
     pcol = tuple(prey["color"])[:3]
     t1, t2, t3, t4 = dur * 0.15, dur * 0.26, dur * 0.42, dur * 0.50   # stalk end, notice end, leap start, landing
     t_cut = dur * 0.56                                                 # then the camera cuts in close: the kill
+    if PAUSE_REMAIN[0]:      # the narrator has finished: the close-up (and its sound) gets the silent window
+        t_cut = min(dur * 0.85, max(dur * 0.35, dur - PAUSE_REMAIN[0]))
+        f_ = t_cut / (dur * 0.56)
+        t1, t2, t3, t4 = t1 * f_, t2 * f_, t3 * f_, t4 * f_
     Pf, m_at = _speed_profile([(t1, 0.55), (t2, 0.2), (t3, 2.1), (t4, 0.0), (dur + 1.0, 0.0)])
     s0 = 1.4 * sp.get("scale", 1.0) * KIND_SCALE.get("chimera", 1.0)
     reach_x, _ = _head_reach(sp)
@@ -7632,6 +7685,8 @@ def _lit_draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=Non
     A = np.asarray(crop.getchannel("A"), dtype=np.float32) / 255.0
     solid = (A > 0.6).astype(np.float32)
     C = np.asarray(crop.convert("RGB"), dtype=np.float32)
+    if st.get("tint"):                                   # an ability on screen: the skin changes colour (same drawing, new colours)
+        C = _apply_tint(C, A, x0, y0, st["tint"])
     dx0, dy0 = LIGHT["dir"]
     world = _LIGHT_WORLD[0]
     lc = np.array(_light_color(world) if world is not None else (150, 185, 255), dtype=np.float32)
@@ -9337,3 +9392,348 @@ def hook_clip(out, eye=(255, 170, 40), cwd=None):
         _CLOSEUP[0] = True
         return hook_frame(t, eye)
     write_video(out, HOOK_LEN, paint, w, cwd, cam_dir=0)
+
+
+# ================================================================ abilities shown on screen, and the non-graphic cinematic hunt
+def _apply_tint(C, A, x0, y0, tn):
+    """Skin colour change sweeping along the body. tn = {"color": (r,g,b), "front": screen x of the wavefront, "dir": +1 or -1
+    (the way the wave travels), "soft": width of the soft edge, "t": time}. Pixels behind the front already have the new colour; at the
+    front a bright shimmer and a few pale spots show the change happening. Brightness (the drawn shading) is kept."""
+    h, w = A.shape
+    if tn.get("base") is not None:       # a body that already wears an earlier colour: start from that
+        g0 = C.mean(axis=2, keepdims=True) / 255.0
+        C = np.array(tn["base"], dtype=np.float32)[None, None, :] * (0.45 + 0.95 * g0) * 0.93 + C * 0.07
+    xs = (np.arange(w, dtype=np.float32) + x0)[None, :]
+    soft = float(tn.get("soft", 150))
+    m = np.clip((float(tn["front"]) - xs) * float(tn.get("dir", 1)) / soft + 0.5, 0.0, 1.0)
+    m = np.repeat(m, h, axis=0)
+    grey = C.mean(axis=2, keepdims=True) / 255.0
+    col = np.array(tn["color"], dtype=np.float32)
+    target = col[None, None, :] * (0.45 + 0.95 * grey)
+    yy = np.arange(h, dtype=np.float32)[:, None]
+    spots = (np.sin((xs + x0) * 0.071 + yy * 0.043 + tn.get("t", 0.0) * 2.0) * np.sin(yy * 0.057 - xs * 0.05)) > 0.55
+    band = (m * (1 - m) * 4.0)[..., None]
+    out = C * (1 - m[..., None] * 0.93) + target * (m[..., None] * 0.93)
+    out = out + band * 70.0 + (band[..., 0] * spots * 55.0)[..., None]
+    return np.clip(out, 0, 255)
+
+
+def _place_tone(name):
+    st = PLACES.get(name, DEFAULT_PLACE)
+    c = mix(st["far"], st["near"], 0.45)
+    return tuple(int(min(255, v * 1.35 + 14)) for v in c[:3])
+
+
+def _bubbles(d, x, y, t, n=9, seed=2):
+    rnd = random.Random(seed)
+    for i in range(n):
+        ph = (t * rnd.uniform(0.25, 0.6) + rnd.random()) % 1.0
+        bx = x + rnd.uniform(-120, 120) + 12 * math.sin(t * 3 + i)
+        by = y - 380 * ph
+        r = rnd.uniform(5, 14) * (0.6 + 0.4 * ph)
+        d.ellipse((bx - r, by - r, bx + r, by + r), outline=(210, 235, 255, int(150 * (1 - ph))), width=2)
+
+
+def _fit_scale(sp, span=640):
+    s0 = 1.4 * sp.get("scale", 1.0) * KIND_SCALE.get("chimera", 1.0)
+    front, back_ = max(sp["bbox"][2], 100.0), max(-sp["bbox"][0], 100.0)
+    return _clip(span / ((front + back_) * s0 + 1.0), 0.45, 1.0), front, back_, s0
+
+
+def ability_scene(out, dur, world, sp, kind, place_a=None, place_b=None, cwd=None):
+    """The narration names an ability, so the picture DEMONSTRATES it.
+    camouflage: the skin changes colour in a wave from head to tail to match the background; the background changes and it changes again.
+    swim: it glides through water with bubbles. fly: it soars high above the ground. defend: it rears, flares and holds its ground."""
+    zc, front, back_, s0 = _fit_scale(sp)
+    world.push, world.shake = 0.06, 0.0
+    info = {"ability": kind, "steps": []}
+    if kind == "camouflage":
+        wa = world
+        wb = World(place_b or "the Sahara desert", 5)
+        wb.focus_y = getattr(world, "focus_y", 0.7)
+        tone_a, tone_b = _place_tone(place_a or "a dark forest"), _place_tone(place_b or "the Sahara desert")
+        L = back_ * s0 * zc
+
+        def paint(im, d, t, u, cam):
+            bgk = _smooth((u - 0.42) / 0.12)                       # the scenery changes around it
+            if bgk > 0.0:
+                im2 = wb.frame(cam * 0.4, t)
+                im = Image.blend(im, im2, bgk) if bgk < 1 else im2
+                d = ImageDraw.Draw(im, "RGBA")
+            x = 330 + 150 * u
+            tn = None
+            a1 = _smooth((u - 0.12) / 0.30)                       # first change: toward the first background, head to tail
+            b1 = _smooth((u - 0.58) / 0.30)                       # second change: toward the second background
+            head_x, tail_x = x + 330 * zc, x - 330 * zc
+            if b1 > 0:
+                tn = {"color": tone_b, "front": head_x + 150 - b1 * (head_x - tail_x + 360), "dir": -1, "soft": 160, "t": t}
+                tn["base"] = tone_a              # the second wave passes over a body that already wears the first colour
+            elif a1 > 0:
+                tn = {"color": tone_a, "front": head_x + 150 - a1 * (head_x - tail_x + 360), "dir": -1, "soft": 160, "t": t}
+            draw_creature(d, sp, x, GROUND + 20, t * STEP * 0.18, 1, zc,
+                          {"t": t, "moving": False, "tint": tn, "headup": 0.2 + 0.15 * math.sin(t * 1.3)})
+            return im
+        write_video(out, dur, paint, world, cwd, cam_dir=0.2)
+        info["tones"] = (tone_a, tone_b)
+        return info
+    if kind == "swim":
+        def paint(im, d, t, u, cam):
+            x = 280 + 460 * _smooth(u)
+            y = GROUND - 330 + 46 * math.sin(t * 1.9)
+            _bubbles(d, x - 60, y - 120, t, 10, 3)
+            draw_creature(d, sp, x, y, t * STEP * 0.35, 1, zc * 0.95, {"t": t, "moving": True, "noshadow": True})
+            _bubbles(d, x + 140, y - 60, t + 3, 6, 8)
+        write_video(out, dur, paint, world, cwd, cam_dir=0.6)
+        return info
+    if kind == "fly":
+        def paint(im, d, t, u, cam):
+            x = 200 + 640 * _smooth(u)
+            y = GROUND - 560 + 70 * math.sin(t * 2.2) - 80 * u
+            d.ellipse((x - 150, GROUND + 6, x + 150, GROUND + 36), fill=(6, 8, 14, 90))        # its shadow slides over the ground far below
+            for k in range(6):                                                                    # wind streaks rushing past
+                sx = (W + 200 - ((t * (700 + 90 * k) + k * 211) % (W + 400)))
+                sy = 420 + k * 170
+                d.line((sx, sy, sx + 170, sy), fill=(255, 255, 255, 60), width=3)
+            draw_creature(d, sp, x, y, t * STEP * 0.5, 1, zc * 0.9, {"t": t, "moving": True, "noshadow": True})
+        write_video(out, dur, paint, world, cwd, cam_dir=2.0)
+        return info
+    # defend: rear up, flare, hold ground against something unseen at the edge of the dark
+    def paint(im, d, t, u, cam):
+        k = _smooth(u / 0.35)
+        px = 520
+        for i in range(15):                                                      # a fan of spines / frill flaring behind it
+            a = math.radians(-165 + i * 11.5)
+            r0, r1 = 170 * zc, (320 + 90 * math.sin(i * 1.7 + t * 9) * 0.3) * zc * (0.4 + 0.8 * k)
+            cx, cy = px, GROUND - 330 * zc
+            d.polygon([(cx + math.cos(a - 0.05) * r0, cy + math.sin(a) * r0), (cx + math.cos(a) * r1, cy + math.sin(a) * r1),
+                       (cx + math.cos(a + 0.05) * r0, cy + math.sin(a) * r0)], fill=sp["color"][:3] + (int(170 * k),) if len(sp["color"]) >= 3 else (200, 90, 60, int(170 * k)))
+        for ex in (1010, 1050):                                                  # the threat: eyes at the edge of the frame
+            d.ellipse((ex - 14 + 8 * math.sin(t * 5), 1180, ex + 14, 1210), fill=(255, 40, 30, int(220 * k)))
+        draw_creature(d, sp, px - 40 + 6 * math.sin(t * 40) * (u > 0.4), GROUND + 20, t * STEP * 0.25, 1, zc * (1.0 + 0.16 * k),
+                      {"t": t, "moving": False, "roar": k * (0.6 + 0.4 * math.sin(t * 7) ** 2), "crouch": 0.2 * (1 - k), "headup": 0.7 * k})
+        if 0.35 < u < 0.7:
+            _dust(d, px - 280 * zc, GROUND + 14, (u - 0.35) / 0.35, seed=6, size=1.1)
+            _dust(d, px + 180 * zc, GROUND + 14, (u - 0.35) / 0.35, seed=7, size=1.1)
+    write_video(out, dur, paint, world, cwd, cam_dir=0, cam_fn=lambda t: 0.0)
+    return info
+
+
+def chase_scene(out, dur, world, sp, prey_text="", cwd=None):
+    """A non-graphic hunt in six shots, both animals always fully visible: 1 wide (prey grazing, hybrid stalking, slow zoom-out),
+    2 close on the prey as it notices, 3 tracking shot of the chase with the prey swerving, 4 the prey turns and stands its ground while
+    the hybrid skids to a stop, 5 the leap into a cloud of dust, 6 the hybrid standing in the settling dust. No blood."""
+    prey, pscale = prey_spec(prey_text)
+    zc, front, back_, s0 = _fit_scale(sp, 560)
+    world.push, world.shake = 0.0, 0.0
+    c = [dur * f for f in (0.0, 0.24, 0.36, 0.60, 0.74, 0.90, 1.0)]
+    GY = GROUND + 20
+    leap_t = c[4] + 0.12 * dur
+
+    def prey_at(d, x, t, scale_mul=1.0, dip=0.0, hop=0.0, run=False, headup=0.0):
+        draw_creature(d, prey, x, GY - hop, t * STEP * (1.6 if run else 0.2), 1, pscale * scale_mul,
+                      {"t": t, "moving": run, "dip": dip, "headup": headup})
+
+    def paint(im, d, t, u, cam):
+        if t < c[1]:                                                         # 1 wide establishing, slow zoom-out
+            k = (t - c[0]) / (c[1] - c[0])
+            z = zc * (1.12 - 0.12 * k)
+            prey_at(d, 760, t, 1.0 - 0.0 * k, dip=0.55 + 0.45 * math.sin(t * 2.2))
+            draw_creature(d, sp, 250 + 70 * k, GY, t * STEP * 0.30, 1, z, {"t": t, "moving": True, "headup": 0.25})
+        elif t < c[2]:                                                       # 2 close on the prey: it freezes, head up, ears alert
+            k = (t - c[1]) / (c[2] - c[1])
+            dim(im, 60)
+            prey_at(d, 540 + 3 * math.sin(t * 50), t, 2.3 - 0.15 * k, headup=1.0)
+            d.polygon([(540 - 11, 760), (540 + 11, 760), (540 + 6, 900), (540 - 6, 900)], fill=(255, 240, 200, int(230 * min(1, k * 5))))
+            d.ellipse((540 - 9, 920, 540 + 9, 938), fill=(255, 240, 200, int(230 * min(1, k * 5))))
+        elif t < c[3]:                                                       # 3 tracking shot: the chase, the prey swerves
+            k = (t - c[2]) / (c[3] - c[2])
+            gap = 650 - 210 * _smooth(k)
+            px = 800 + 50 * math.sin(k * 9)
+            prey_at(d, px, t, run=True, hop=12 * abs(math.sin(t * 9)))
+            draw_creature(d, sp, px - gap, GY, t * STEP * 1.2, 1, zc, {"t": t, "moving": True, "headup": 0.0, "ground": chim_ground(sp) * 2.2})
+            _dust(d, px - gap - 150 * zc, GY - 4, (t * 3) % 1.0, seed=int(t * 3) + 1, size=0.7)
+        elif t < c[4]:                                                       # 4 the prey turns and holds its ground; the hybrid skids and crouches
+            k = (t - c[3]) / (c[4] - c[3])
+            prey_at(d, 830, t, hop=60 * abs(math.sin(k * 7)) * (1 - k * 0.3), headup=0.8)
+            draw_creature(d, sp, 400 - 60 * (1 - _smooth(min(1, k * 2))), GY, t * STEP * 0.5, 1, zc,
+                          {"t": t, "moving": k < 0.5, "crouch": 0.6 * _smooth(k), "anticipate": _smooth(k)})
+            if k < 0.6:
+                _dust(d, 330, GY - 4, k / 0.6, seed=3, size=1.3)
+        elif t < c[5]:                                                       # 5 the leap: a cloud of dust swallows the meeting point
+            k = (t - c[4]) / (c[5] - c[4])
+            lk = _clip((t - leap_t) / max(c[5] - leap_t, 0.1), 0.0, 1.0)
+            hx = 400 + (570 - 400) * _smooth(lk) if t > leap_t else 400
+            lift = -190 * math.sin(math.pi * lk) if t > leap_t else 0.0
+            if lk < 0.7:
+                prey_at(d, 830, t, hop=20 * abs(math.sin(t * 12)), headup=0.6)
+            draw_creature(d, sp, hx, GY + lift, t * STEP * 0.5, 1, zc,
+                          {"t": t, "moving": t > leap_t, "lunge": math.sin(math.pi * lk), "crouch": 0.5 * (1 - lk) if t <= leap_t else 0.0,
+                           "anticipate": 1.0 if t <= leap_t else 0.0})
+            if lk > 0.55:
+                kk = (lk - 0.55) / 0.45
+                for i in range(14):
+                    ang = i * 0.9
+                    rr = (70 + 140 * kk) * (0.7 + 0.3 * math.sin(i * 2.1))
+                    d.ellipse((830 + 120 * math.cos(ang) * kk - rr, GY - 90 - 80 * kk * abs(math.sin(ang)) - rr * 0.7,
+                               830 + 120 * math.cos(ang) * kk + rr, GY - 90 - 80 * kk * abs(math.sin(ang)) + rr * 0.7),
+                              fill=(156, 138, 112, int(210 * (1 - 0.4 * kk))))
+        else:                                                                # 6 it stands in the settling dust
+            k = (t - c[5]) / (c[6] - c[5])
+            draw_creature(d, sp, 520, GY, t * STEP * 0.2, 1, zc,
+                          {"t": t, "moving": False, "roar": min(1, k * 3) * (1 if k < 0.9 else 0.3), "headup": 0.6})
+            for i in range(10):
+                rr = 150 * (0.7 + 0.3 * math.sin(i * 2.7))
+                d.ellipse((800 + 70 * math.cos(i * 1.3) - rr, GY - 60 - rr * 0.5, 800 + 70 * math.cos(i * 1.3) + rr, GY - 60 + rr * 0.6),
+                          fill=(156, 138, 112, int(150 * (1 - k))))
+
+    steps = [c[2] + 0.3 * i for i in range(int((c[3] - c[2]) / 0.3))]
+    write_video(out, dur, paint, world, cwd, cam_dir=1, cam_fn=lambda t: (t - c[2]) * 520 if c[2] < t < c[3] else (0.0 if t <= c[2] else (c[3] - c[2]) * 520))
+    return {"zoom_at": c[1], "lunge_at": leap_t, "land_at": c[4] + 0.8 * (c[5] - c[4]), "steps": steps, "impact_at": c[4] + 0.8 * (c[5] - c[4])}
+
+
+# ================================================================ the universal skeleton / anatomy view (any creature, any body plan)
+ANATOMY_RX = r"skeleton|\bbones?\b|anatom|rib ?cage|\bskull|\bspine\b|\bvertebra|inside (its|the) body|x-ray|beneath (its|the) (skin|scales|fur)"
+
+
+def _bone_plan(mask, facing=1):
+    """Reads the creature's own silhouette (a boolean array) and lays a plausible skeleton inside it, so the bones always match the body that
+    is drawn: a hybrid with a long tail, wings or extra legs gets bones for exactly those parts. Returns drawing primitives in mask pixels."""
+    h, w = mask.shape
+    ys, xs = np.nonzero(mask)
+    if len(xs) < 50:
+        return None
+    x0, x1, y0, y1 = xs.min(), xs.max(), ys.min(), ys.max()
+    L = float(x1 - x0 + 1)
+    m_img = Image.fromarray((mask * 255).astype(np.uint8), "L")
+    k = max(9, int(min(y1 - y0, L) * 0.22)) | 1                         # thinner than this = limb, neck, tail
+    core = np.asarray(m_img.filter(ImageFilter.MinFilter(k)).filter(ImageFilter.MaxFilter(k))) > 127
+    if core.sum() < 30:
+        core = mask
+    cy_, cx_ = np.nonzero(core)
+    tx0, tx1, ty0, ty1 = cx_.min(), cx_.max(), cy_.min(), cy_.max()
+    mid_y = (ty0 + ty1) / 2.0
+    head_x, tail_x = (x1, x0) if facing >= 0 else (x0, x1)
+    def end_y(xv, span=22):                                              # the body's vertical middle at the very tip
+        cols = range(max(int(xv - span), 0), min(int(xv + span), w))
+        yy = [yv for c in cols for yv in np.nonzero(mask[:, c])[0]]
+        return float(np.mean(yy)) if yy else mid_y
+    hy, ty_ = end_y(head_x), end_y(tail_x)
+    spine = [(tail_x, ty_), ((tail_x + (tx0 if facing >= 0 else tx1)) / 2, (ty_ + mid_y) / 2),
+             (tx0 if facing >= 0 else tx1, mid_y), ((tx0 + tx1) / 2, mid_y - (ty1 - ty0) * 0.08),
+             (tx1 if facing >= 0 else tx0, mid_y - (ty1 - ty0) * 0.05), ((tx1 if facing >= 0 else tx0) + (head_x - (tx1 if facing >= 0 else tx0)) * 0.55, (mid_y + hy) / 2), (head_x - facing * L * 0.07, hy)]
+    # limbs: thin parts that reach below the torso
+    below = mask.copy()
+    below[: int(ty1 - (ty1 - ty0) * 0.25), :] = False
+    below &= ~core
+    lab = Image.fromarray((below * 255).astype(np.uint8), "L")
+    comps, seen = [], np.zeros_like(below)
+    col_has = below.any(0)
+    run = None
+    for c in range(w + 1):
+        on = c < w and col_has[c]
+        if on and run is None:
+            run = c
+        if (not on) and run is not None:
+            if c - run >= 6:
+                yy, xx = np.nonzero(below[:, run:c])
+                comps.append((run + xx.mean(), yy.max()))
+            run = None
+    legs = []
+    for cx, gy_ in comps:
+        hip_y = ty1 - (ty1 - ty0) * 0.2
+        knee = (cx + facing * 14, hip_y + (gy_ - hip_y) * 0.55)
+        legs.append([(cx, hip_y), knee, (cx - facing * 4, gy_ - 6)])
+    ribs = []
+    nr = 8
+    for i in range(nr):
+        rx = tx0 + (tx1 - tx0) * (0.18 + 0.64 * i / (nr - 1))
+        ext = (ty1 - ty0) * 0.46 * (1 - abs(i - nr / 2.5) / nr * 0.9)
+        ribs.append((rx, mid_y - (ty1 - ty0) * 0.05, ext))
+    head_len = L * 0.16
+    skull = (head_x - facing * head_len * 0.5, hy, head_len, (ys.max() - ys.min()) * 0.13 + 10)
+    return {"spine": spine, "legs": legs, "ribs": ribs, "skull": skull, "box": (x0, y0, x1, y1), "torso": (tx0, ty0, tx1, ty1)}
+
+
+def _draw_bones(d, plan, ox, oy, k, facing=1, glow=True):
+    """k 0..1 = how much of it is revealed (the sweep runs from the head end to the tail end)."""
+    x0, y0, x1, y1 = plan["box"]
+    bone, edge = (238, 232, 214), (120, 220, 255)
+    sweep = x1 - (x1 - x0 + 40) * k if facing >= 0 else x0 + (x1 - x0 + 40) * k
+    vis = (lambda x: x >= sweep) if facing >= 0 else (lambda x: x <= sweep)
+    def line(pts, w, col=bone):
+        pts = [(p[0] + ox, p[1] + oy) for p in pts if vis(p[0])]
+        if len(pts) > 1:
+            if glow:
+                d.line(pts, fill=edge + (70,), width=w + 8, joint="curve")
+            d.line(pts, fill=col + (255,), width=w, joint="curve")
+    sp_ = plan["spine"]
+    dense = []
+    for i in range(len(sp_) - 1):                                         # smooth spine through the points
+        for s in range(10):
+            f = s / 10
+            dense.append((sp_[i][0] + (sp_[i + 1][0] - sp_[i][0]) * f, sp_[i][1] + (sp_[i + 1][1] - sp_[i][1]) * f))
+    dense.append(sp_[-1])
+    line(dense, 7)
+    for i, (x, y) in enumerate(dense[::3]):                               # vertebrae
+        if vis(x):
+            r = 7 if i % 2 == 0 else 5
+            d.ellipse((x + ox - r, y + oy - r, x + ox + r, y + oy + r), fill=bone + (255,), outline=edge + (120,))
+    for rx, ry, ext in plan["ribs"]:                                      # rib cage
+        if vis(rx):
+            arc = [(rx + facing * ext * 0.35 * math.sin(a), ry + ext * (1 - math.cos(a)) * 0.9) for a in np.linspace(0, math.pi * 0.62, 9)]
+            line(arc, 5)
+    for leg in plan["legs"]:                                              # limbs: joint, long bone, joint, foot
+        line(leg, 8)
+        for (x, y) in leg:
+            if vis(x):
+                d.ellipse((x + ox - 9, y + oy - 9, x + ox + 9, y + oy + 9), fill=bone + (255,), outline=edge + (140,))
+    cx, cy, ln, hh = plan["skull"]
+    if vis(cx):                                                           # skull, eye socket, jaw and teeth
+        d.ellipse((cx + ox - ln * 0.55, cy + oy - hh, cx + ox + ln * 0.55, cy + oy + hh * 0.8), fill=bone + (255,), outline=edge + (150,), width=3)
+        d.ellipse((cx + ox + facing * ln * 0.12 - 9, cy + oy - hh * 0.35 - 9, cx + ox + facing * ln * 0.12 + 9, cy + oy - hh * 0.35 + 9), fill=(20, 22, 30, 255))
+        jx = cx + facing * ln * 0.55
+        d.line((cx + ox + facing * ln * 0.05, cy + oy + hh * 0.7, jx + ox, cy + oy + hh * 0.55), fill=bone + (255,), width=6)
+        for i in range(5):
+            tx = cx + facing * (ln * (0.12 + 0.09 * i))
+            d.polygon([(tx + ox - 4, cy + oy + hh * 0.62), (tx + ox + 4, cy + oy + hh * 0.62), (tx + ox, cy + oy + hh * 0.62 + 12)], fill=bone + (255,))
+
+
+def anatomy_scene(out, dur, world, sp, facing=1, cwd=None):
+    """Normal body -> an x-ray sweep from head to tail reveals the skeleton inside the very same body -> held -> back to the normal body.
+    Works for any creature the engine can draw (animals, hybrids, monsters, side characters): the bones are read from its own outline."""
+    zc, front, back_, s0 = _fit_scale(sp, 680) if sp.get("kind") == "chimera" else (1.0, 0, 0, 0)
+    cx, gy = 540, GROUND + 20
+    st = {"t": 0.0, "moving": False, "noemerge": True, "noshadow": True}
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    _nb = len(_BOXES)
+    _draw_creature_plain(ImageDraw.Draw(layer, "RGBA"), sp, cx, gy, 0.0, facing, zc if sp.get("kind") == "chimera" else None, st, None)
+    del _BOXES[_nb:]
+    bb = layer.getchannel("A").point(lambda v: 255 if v > 150 else 0).getbbox()
+    plan, ox, oy = None, 0, 0
+    if bb:
+        pad = 12
+        ox, oy = max(bb[0] - pad, 0), max(bb[1] - pad, 0)
+        crop = layer.crop((ox, oy, min(bb[2] + pad, W), min(bb[3] + pad, H)))
+        plan = _bone_plan(np.asarray(crop.getchannel("A")) > 150, facing)
+
+    def paint(im, d, t, u, cam):
+        k = _smooth((u - 0.22) / 0.34)                                    # 0 = normal, 1 = fully x-rayed
+        back = _smooth((u - 0.86) / 0.14)
+        k_eff = k * (1 - back)
+        _BOXES.append(bb or (100, 500, 980, 1380))
+        if k_eff <= 0.01 or plan is None:
+            im.alpha_composite(layer) if im.mode == "RGBA" else im.paste(layer, (0, 0), layer)
+            return
+        a = layer.getchannel("A")
+        ghost = layer.copy()
+        ghost.putalpha(a.point(lambda v: int(v * (1 - 0.72 * k_eff))))     # the body fades to a ghost around the bones
+        veil = Image.new("RGBA", im.size, (6, 14, 30, int(120 * k_eff)))
+        im.paste(veil, (0, 0), veil)
+        im.paste(ghost, (0, 0), ghost)
+        ov = Image.new("RGBA", im.size, (0, 0, 0, 0))
+        _draw_bones(ImageDraw.Draw(ov, "RGBA"), plan, ox, oy, min(1.0, k * 1.0), facing)
+        if k_eff < 1:
+            ov.putalpha(ov.getchannel("A").point(lambda v: int(v * k_eff ** 0.6)))
+        im.paste(ov, (0, 0), ov)
+    write_video(out, dur, paint, world, cwd, cam_dir=0)
+    return {"anatomy": True, "bones": bool(plan), "legs": len(plan["legs"]) if plan else 0}
