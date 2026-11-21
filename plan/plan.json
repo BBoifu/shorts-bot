@@ -1,91 +1,290 @@
 {
- "series": "folklore",
- "key": "folk:crocodile:The Cinder Drake|dragon|dragon|rust|Late Cretaceous, 66 million years ago|",
- "episode": 26,
+ "series": "hybrid",
+ "key": "lion+spider@the clouds of Venus",
+ "a": "lion",
+ "b": "spider",
+ "place": [
+  "the clouds of Venus",
+  "thick orange storm clouds with lightning",
+  "thunder storm",
+  "sickly orange light through thick haze",
+  "warm"
+ ],
  "story": {
-  "legend_name": "The Cinder Drake",
-  "region": "Late Cretaceous, 66 million years ago",
-  "title": "When the First Dragon Woke",
-  "narrator": {
-   "gender": "male",
-   "persona": "a calm, warm storyteller, like a nature documentary narrator who is quietly afraid"
-  },
-  "monster": {
-   "palette": "rust",
-   "eyes": "gold",
-   "size": "huge",
-   "body": "dragon",
-   "horn": null,
-   "cracks": true
-  },
+  "title": "When the Lion Spider Claims the Venus Clouds",
+  "creature_name": "Leoarachnid",
+  "prey": "sulfuric gas-glider",
+  "signature_move": "It pounces with feline force before anchoring itself with invisible silk to pin the struggling gas-glider.",
+  "hybrid_look": "It has a heavy, muscular big-cat body with tawny fur mixed with chitin texture, a lion-shaped head with spider eyes, thick padded paws, and a long tail ending in a dark tuft as it prowls with slow, heavy confidence.",
   "sentences": [
    {
-    "text": "For millions of years the sky belonged to the flying reptiles and the ground to the Tyrannosaurus rex, and nothing had ever challenged either.",
-    "delivery": "calm",
+    "text": "This beast drops from the toxic clouds to claim your soul.",
+    "image": "a swirling vortex of yellow sulfuric acid clouds churning across the upper atmosphere of Venus",
+    "action": "walk",
     "speaker": "narrator",
-    "voice": ""
+    "frame": false
    },
    {
-    "text": "Countless winged predators drifted through the red sunset, knowing no fear from anything above.",
-    "delivery": "hushed",
+    "text": "Meet the Leoarachnid, a fictional hybrid inheriting the muscle of a lion and the eyes and chitin of a spider.",
+    "image": "dense layers of crushing atmospheric pressure beneath a blinding amber sky with lightning flashes",
+    "action": "face",
     "speaker": "narrator",
-    "voice": ""
+    "frame": false
    },
    {
-    "text": "Then a dead volcano woke beneath the valley, making the ground shudder and the horizon bleed.",
-    "delivery": "low",
+    "text": "A massive titan-wasp of the upper winds swoops down, demanding this atmospheric territory for itself.",
+    "image": "turbulent towering columns of superheated carbon dioxide gas rising toward the blackness of space",
+    "action": "turn",
     "speaker": "narrator",
-    "voice": ""
+    "frame": false
    },
    {
-    "text": "That mountain looks angry.",
-    "delivery": "urgent",
-    "speaker": "host",
-    "voice": "host"
+    "text": "We should have turned back.",
+    "image": "a desolate plain of jagged volcanic rock glowing red beneath the thick suffocating greenhouse haze",
+    "action": "walkback",
+    "frame": true,
+    "speaker": "narrator"
    },
    {
-    "text": "The mountain burst open as black smoke choked the sun, sending herds and the great king fleeing together.",
-    "delivery": "urgent",
+    "text": "The rival wasp strikes first, slashing the air with jagged stingers while the hybrid stands its ground.",
+    "image": "violent streaks of electrostatic lightning tearing through dark swirling bands of planetary weather",
+    "action": "footprints",
     "speaker": "narrator",
-    "voice": ""
+    "frame": false
    },
    {
-    "text": "Deep inside the burning crater something massive shifted, forged from jagged horns, obsidian scales, and living fire.",
-    "delivery": "trembling",
+    "text": "It pounces with feline force before anchoring itself with invisible silk to pin the struggling gas-glider.",
+    "image": "endless amber horizons stretching out beneath a scorching sun filtered through heavy cloud layers",
+    "action": "hunt",
     "speaker": "narrator",
-    "voice": ""
+    "frame": false
    },
    {
-    "text": "It snapped its vast wings and rose, instantly scattering the ancient flyers who suddenly realized they were prey.",
-    "delivery": "dread",
+    "text": "Its heavy muscular body absorbs the brute impact, while multi-faceted spider eyes track every frantic escape route.",
+    "image": "deep canyon walls of weathered basalt bleeding heat into the perpetual twilight of the upper winds",
+    "action": "feed",
     "speaker": "narrator",
-    "voice": ""
+    "frame": false
    },
    {
-    "text": "The old king roared a futile challenge upward, but the beast answered with a blinding flash of white heat.",
-    "delivery": "sorrow",
+    "text": "Yet this apex predator panics completely around heavy magnets, and What should I combine next? Tell me in the comments.",
+    "image": "a fading glow of distant thermal vents hissing through thick orange mist near the equator",
+    "action": "walk",
     "speaker": "narrator",
-    "voice": ""
-   },
-   {
-    "text": "The sky and the ground now belonged to a single tyrant, leaving us to wonder what else sleeps beneath the ash.",
-    "delivery": "awe",
-    "speaker": "narrator",
-    "voice": ""
+    "frame": false
    }
   ],
-  "host_lines": [
-   {
-    "after": 3,
-    "text": "That mountain looks angry."
-   }
+  "format": "Rival showdown"
+ },
+ "episode": 31,
+ "design": {
+  "hybrid": true,
+  "parents": [
+   "lion",
+   "spider"
   ],
-  "animal": "crocodile",
-  "story_type": "dragon",
-  "format": "prehistoric",
-  "origin": "",
-  "time": "2:48",
-  "hero": "traveller",
-  "people": "alone"
- }
+  "dominant": "spider",
+  "secondary": "lion",
+  "dom_weight": 0.62,
+  "torso": [
+   "barrel",
+   326.0446078968896,
+   152.9133324647753,
+   0.0
+  ],
+  "arch": 0.0,
+  "legs": [
+   "digi",
+   4,
+   172.19461631071727,
+   36.58173514110771
+  ],
+  "foot": "paw",
+  "gait": "prowl",
+  "legs_from": "lion",
+  "arms": null,
+  "head": {
+   "skull": [
+    67.32290314423715,
+    63.24272719610156
+   ],
+   "snout": [
+    "snout",
+    50,
+    44,
+    36,
+    0.0
+   ],
+   "teeth": "fangs",
+   "ears": [
+    "round",
+    36
+   ],
+   "eyes": "multi",
+   "brow": 0.0,
+   "extras": [
+    "chelicerae",
+    "pedipalps",
+    "mane"
+   ],
+   "eyecol": [
+    220,
+    40,
+    40
+   ]
+  },
+  "neck": [
+   51.466193718573564,
+   0.35
+  ],
+  "neck_bow": 0.12,
+  "tail": "tuft",
+  "tail_len": 0.9189044791310841,
+  "wings": null,
+  "wingfly": false,
+  "shell": null,
+  "dorsal": [],
+  "skin": "fur",
+  "skin2": "chitin",
+  "pal": [
+   [
+    108,
+    83,
+    62
+   ],
+   [
+    144,
+    47,
+    36
+   ],
+   [
+    200,
+    174,
+    131
+   ]
+  ],
+  "pat": "spots",
+  "hover": 0,
+  "temper": "cold",
+  "glow": false,
+  "ribs": false,
+  "cracks": false,
+  "strike": "pounce",
+  "sig": [
+   "mane",
+   "a striking mane"
+  ],
+  "sigscale": {
+   "mane": 1.3
+  },
+  "donors": {
+   "body": "lion",
+   "legs": "lion",
+   "head": "lion",
+   "face": "spider",
+   "mouth": "lion",
+   "tail": "lion",
+   "skin": "lion",
+   "palette": [
+    "spider",
+    "lion"
+   ]
+  },
+  "flies": false,
+  "words": {},
+  "name": "lion-spider",
+  "fingerprint": {
+   "prof": "barrel",
+   "pitch": 0,
+   "L": 2,
+   "H": 2,
+   "legs": "digi",
+   "nlegs": 4,
+   "legh": 3,
+   "neck": 1,
+   "snout": "snout",
+   "snoutl": 1,
+   "teeth": "fangs",
+   "ears": "round",
+   "eyes": "multi",
+   "tail": "tuft",
+   "wings": "none",
+   "shell": "none",
+   "dorsal": "none",
+   "skin": "fur",
+   "skin2": "chitin",
+   "pat": "spots",
+   "hue": 0,
+   "light": 1,
+   "gait": "prowl",
+   "hover": false,
+   "arms": "none",
+   "extras": "chelicerae+mane+pedipalps"
+  },
+  "fp_distance": 99.0,
+  "attempt": 0
+ },
+ "profile": {
+  "hybrid_name": "lion-spider",
+  "parent_a": "lion",
+  "parent_b": "spider",
+  "dominant_parent": "spider",
+  "dominant": [
+   "lion body structure"
+  ],
+  "secondary": [
+   "spider eyes and face details",
+   "lion tail"
+  ],
+  "proportions": "barrel torso, 326x152, horizontal posture, neck 51, legs digi x4",
+  "head": "a lion-shaped head and the spider's eyes",
+  "limbs": "digi x4",
+  "texture": "fur body, chitin limbs and tail",
+  "colour": {
+   "main": [
+    108,
+    83,
+    62
+   ],
+   "accent": [
+    144,
+    47,
+    36
+   ],
+   "belly": [
+    200,
+    174,
+    131
+   ],
+   "pattern": "spots"
+  },
+  "silhouette": "barrel-tuft",
+  "locomotion": "prowls with slow, heavy confidence",
+  "gait": "prowl",
+  "hovers": false,
+  "signature_ability": "pounce",
+  "temperament": "cold",
+  "signature_feature": "a striking mane",
+  "summary": [
+   "a heavy, muscular big-cat body (from the lion)",
+   "a lion-shaped head and the spider's eyes",
+   "thick, padded paws (from the lion)",
+   "a long tail ending in a dark tuft (from the lion)",
+   "tawny fur mixed with chitin texture"
+  ]
+ },
+ "clips": [
+  {
+   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in the clouds of Venus: thick orange storm clouds with lightning. It has a heavy, muscular big-cat body with tawny fur mixed with chitin texture, a lion-shaped head with spider eyes, thick padded paws, and a long tail ending in a dark tuft as it prowls with slow, heavy confidence. It is menacing and dominant."
+  },
+  {
+   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In thick orange storm clouds with lightning, the same hybrid creature goes after sulfuric gas-glider. It pounces with feline force before anchoring itself with invisible silk to pin the struggling gas-glider.. Fast, powerful movement, camera follows the action. It has a heavy, muscular big-cat body with tawny fur mixed with chitin texture, a lion-shaped head with spider eyes, thick padded paws, and a long tail ending in a dark tuft as it prowls with slow, heavy confidence."
+  },
+  {
+   "title": "Clip 3 - the close-up (plays at the end)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. It has a heavy, muscular big-cat body with tawny fur mixed with chitin texture, a lion-shaped head with spider eyes, thick padded paws, and a long tail ending in a dark tuft as it prowls with slow, heavy confidence."
+  }
+ ]
 }
