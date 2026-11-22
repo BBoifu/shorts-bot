@@ -1,292 +1,112 @@
 {
- "series": "hybrid",
- "key": "ant+camel@a mountain peak above the clouds",
- "a": "ant",
- "b": "camel",
- "place": [
-  "a mountain peak above the clouds",
-  "a snowy rocky summit above a sea of clouds",
-  "mountain wind",
-  "crisp cold sunlight",
-  "cool"
- ],
+ "series": "folklore",
+ "key": "folk:wolf:The Three O'Clock Stalker|crawler|camera|charcoal|A house in Leeds, 3:07 AM|",
+ "episode": 28,
  "story": {
-  "title": "The Ant-Camel of the Cloud Peaks",
-  "creature_name": "Anticamel",
-  "prey": "cloud ibex",
-  "signature_move": "It vaults across the abyss on stilt legs and snaps its mandibles to pin the ibex against the cliff face.",
-  "hybrid_look": "With a three-part segmented ant body, a camel-shaped head with ant eyes, and stilt-long legs ending in wide padded feet, its glossy red-brown armour blends with patches of fur as it paces in a rolling, swaying stride.",
+  "legend_name": "The Three O'Clock Stalker",
+  "region": "A house in Leeds, 3:07 AM",
+  "time": "3:07",
+  "animal": "wolf",
+  "title": "The camera alert at three",
+  "narrator": {
+   "gender": "male",
+   "persona": "a thirty-year-old software engineer reviewing old footage"
+  },
+  "hero": "traveller",
+  "people": "alone",
+  "monster": {
+   "body": "crawler",
+   "palette": "charcoal",
+   "eyes": "white",
+   "size": "medium",
+   "horn": null,
+   "spine": "bone",
+   "eye_count": 2
+  },
   "sentences": [
    {
-    "text": "This impossible giant drinks your nightmares before breakfast.",
-    "image": "a sheer jagged mountain peak rising high above a dense, rolling blanket of white clouds",
-    "action": "face",
+    "text": "My phone buzzed with a motion alert from the living room camera at exactly three-seven.",
+    "beat": "cctv",
+    "delivery": "hushed",
     "speaker": "narrator",
-    "frame": false
+    "frame": false,
+    "voice": ""
    },
    {
-    "text": "Meet the anticamel, an imaginary beast mixing ant segments with a camel's endurance.",
-    "image": "steep alpine ridges glowing under the pale, freezing light of early dawn",
-    "action": "walk",
+    "text": "The timestamp read three-seven every single night since Tuesday.",
+    "beat": "hallway",
+    "delivery": "dread",
     "speaker": "narrator",
-    "frame": false
+    "frame": false,
+    "voice": ""
    },
    {
-    "text": "At sunrise, it paces in a swaying stride across the frozen snowfields.",
-    "image": "vast fields of blue-tinted ice clinging to the steepest slopes of the high mountain",
-    "action": "walk",
+    "text": "I was shaking while watching the grey pixelated feed.",
+    "beat": "bedroom",
+    "delivery": "trembling",
     "speaker": "narrator",
-    "frame": false
+    "frame": false,
+    "voice": ""
    },
    {
-    "text": "I watched it haul twenty times its body weight uphill.",
-    "image": "a narrow, crumbling stone ledge suspended high above an endless abyss of clouds",
-    "action": "footprints",
-    "frame": true,
-    "speaker": "narrator"
-   },
-   {
-    "text": "By midday, it vaults across the abyss on stilt legs and snaps its mandibles to pin the ibex against the cliff face.",
-    "image": "blinding midday sun beating down on barren, slate-gray rock towers",
-    "action": "hunt",
+    "text": "The police said it was just a glitch in the software.",
+    "beat": "cctv",
+    "delivery": "calm",
     "speaker": "narrator",
+    "frame": false,
+    "voice": ""
+   },
+   {
+    "text": "Open the front door for me right now.",
+    "beat": "door",
+    "delivery": "whisper",
+    "speaker": "mimic",
+    "voice": "old_woman",
     "frame": false
    },
    {
-    "text": "How does it survive the thin air up there?",
-    "speaker": "host",
-    "image": "a dramatic view of a mountain peak above the clouds",
-    "action": "",
-    "frame": false
+    "text": "Wait for me, dear.",
+    "beat": "door",
+    "setting": null,
+    "delivery": "hushed",
+    "speaker": "mimic",
+    "voice": "old_woman"
    },
    {
-    "text": "Dusk falls, and its fat-storing hump fuels a midnight march against rival invaders.",
-    "image": "deep purple twilight shadows stretching across massive glaciers and sharp peaks",
-    "action": "turn",
+    "text": "My grandmother passed away five years ago in this very room.",
+    "beat": "hallway",
+    "delivery": "sorrow",
     "speaker": "narrator",
-    "frame": false
+    "frame": false,
+    "voice": ""
    },
    {
-    "text": "Yet, a single drop of spilled sugar water drops it instantly. What should I combine next? Tell me in the comments.",
-    "image": "a pitch-black night sky filled with blazing stars over the silent cloud sea",
-    "action": "feed",
+    "text": "On the screen, a long charcoal shape stepped closer to the camera lens.",
+    "beat": "cctv",
+    "delivery": "urgent",
     "speaker": "narrator",
-    "frame": false
+    "frame": false,
+    "voice": ""
+   },
+   {
+    "text": "Two white eyes pressed right against the glass of the camera.",
+    "beat": "jump",
+    "delivery": "shout",
+    "speaker": "narrator",
+    "frame": false,
+    "voice": ""
+   },
+   {
+    "text": "Would you check the front door if you heard that voice tonight?",
+    "beat": "door",
+    "delivery": "dread",
+    "speaker": "narrator",
+    "frame": false,
+    "voice": ""
    }
   ],
-  "format": "A day in its life"
- },
- "episode": 32,
- "design": {
-  "hybrid": true,
-  "parents": [
-   "ant",
-   "camel"
-  ],
-  "dominant": "ant",
-  "secondary": "camel",
-  "dom_weight": 0.75,
-  "torso": [
-   "pear",
-   278.8292305181252,
-   112.0,
-   0.0
-  ],
-  "arch": 0.0,
-  "legs": [
-   "digi",
-   4,
-   258.0785707695384,
-   20.079840636817814
-  ],
-  "foot": "pad",
-  "gait": "pace",
-  "legs_from": "camel",
-  "arms": null,
-  "head": {
-   "skull": [
-    42.27682037309619,
-    38.433473066451086
-   ],
-   "snout": [
-    "snout",
-    76,
-    28,
-    24,
-    0.25
-   ],
-   "teeth": "flat",
-   "ears": [
-    "round",
-    22
-   ],
-   "eyes": "sleepy",
-   "brow": 0.0,
-   "extras": [
-    "antennae",
-    "mandibles"
-   ],
-   "eyecol": [
-    20,
-    16,
-    16
-   ]
-  },
-  "neck": [
-   195.56938030344767,
-   1.0
-  ],
-  "neck_bow": 0.2,
-  "tail": "tuft",
-  "tail_len": 1.038578141983841,
-  "wings": null,
-  "wingfly": false,
-  "shell": null,
-  "dorsal": [
-   "hump"
-  ],
-  "skin": "chitin",
-  "skin2": "fur",
-  "pal": [
-   [
-    146,
-    90,
-    54
-   ],
-   [
-    150,
-    110,
-    70
-   ],
-   [
-    203,
-    166,
-    121
-   ]
-  ],
-  "pat": "plain",
-  "hover": 0,
-  "temper": "driven",
-  "glow": false,
-  "ribs": false,
-  "cracks": false,
-  "strike": "snap",
-  "sig": [
-   "hump",
-   "a prominent hump"
-  ],
-  "sigscale": {
-   "hump": 1.3
-  },
-  "donors": {
-   "body": "ant",
-   "legs": "camel",
-   "head": "camel",
-   "face": "ant",
-   "mouth": "camel",
-   "tail": "camel",
-   "skin": "ant",
-   "palette": [
-    "ant",
-    "camel"
-   ]
-  },
-  "flies": false,
-  "words": {},
-  "name": "ant-camel",
-  "fingerprint": {
-   "prof": "pear",
-   "pitch": 0,
-   "L": 1,
-   "H": 1,
-   "legs": "digi",
-   "nlegs": 4,
-   "legh": 4,
-   "neck": 3,
-   "snout": "snout",
-   "snoutl": 1,
-   "teeth": "flat",
-   "ears": "round",
-   "eyes": "sleepy",
-   "tail": "tuft",
-   "wings": "none",
-   "shell": "none",
-   "dorsal": "hump",
-   "skin": "chitin",
-   "skin2": "fur",
-   "pat": "plain",
-   "hue": 0,
-   "light": 1,
-   "gait": "pace",
-   "hover": false,
-   "arms": "none",
-   "extras": "antennae+mandibles"
-  },
-  "fp_distance": 99.0,
-  "attempt": 0
- },
- "profile": {
-  "hybrid_name": "ant-camel",
-  "parent_a": "ant",
-  "parent_b": "camel",
-  "dominant_parent": "ant",
-  "dominant": [
-   "ant body structure"
-  ],
-  "secondary": [
-   "ant eyes and face details",
-   "camel tail"
-  ],
-  "proportions": "pear torso, 278x112, horizontal posture, neck 195, legs digi x4",
-  "head": "a camel-shaped head and the ant's eyes",
-  "limbs": "digi x4",
-  "texture": "chitin body, fur limbs and tail",
-  "colour": {
-   "main": [
-    146,
-    90,
-    54
-   ],
-   "accent": [
-    150,
-    110,
-    70
-   ],
-   "belly": [
-    203,
-    166,
-    121
-   ],
-   "pattern": "plain"
-  },
-  "silhouette": "pear-tuft-hump",
-  "locomotion": "paces in a rolling, swaying stride",
-  "gait": "pace",
-  "hovers": false,
-  "signature_ability": "snap",
-  "temperament": "driven",
-  "signature_feature": "a prominent hump",
-  "summary": [
-   "a three-part segmented body (from the ant)",
-   "a camel-shaped head and the ant's eyes",
-   "stilt-long legs with wide padded feet (from the camel)",
-   "a short tuft (from the camel)",
-   "a back with hump",
-   "glossy red-brown armour mixed with fur texture"
-  ]
- },
- "clips": [
-  {
-   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in a mountain peak above the clouds: a snowy rocky summit above a sea of clouds. With a three-part segmented ant body, a camel-shaped head with ant eyes, and stilt-long legs ending in wide padded feet, its glossy red-brown armour blends with patches of fur as it paces in a rolling, swaying stride. It is menacing and dominant."
-  },
-  {
-   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In a snowy rocky summit above a sea of clouds, the same hybrid creature goes after cloud ibex. It vaults across the abyss on stilt legs and snaps its mandibles to pin the ibex against the cliff face.. Fast, powerful movement, camera follows the action. With a three-part segmented ant body, a camel-shaped head with ant eyes, and stilt-long legs ending in wide padded feet, its glossy red-brown armour blends with patches of fur as it paces in a rolling, swaying stride."
-  },
-  {
-   "title": "Clip 3 - the close-up (plays at the end)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. With a three-part segmented ant body, a camel-shaped head with ant eyes, and stilt-long legs ending in wide padded feet, its glossy red-brown armour blends with patches of fur as it paces in a rolling, swaying stride."
-  }
- ]
+  "story_type": "camera",
+  "format": "modern",
+  "origin": ""
+ }
 }
