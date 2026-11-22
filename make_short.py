@@ -1530,12 +1530,49 @@ def title_card_png(series, episode, title, place, path, accent=None):
     boxes["title"] = tb
     if place:
         psz = 40
-        while psz > 39 and sum(d.textlength(ch, font=_card_font("caps", psz)) for ch in place) + 8 * len(place) > 900:
-            psz -= 2
+        f_pl = _card_font("caps", psz)
+
+        pspace = [8]
+
+        def _pw(txt):
+            return sum(d.textlength(ch, font=f_pl) for ch in txt) + pspace[0] * len(txt)
         ptxt = place.upper()
-        if "," in ptxt and sum(d.textlength(ch, font=_card_font("caps", psz)) for ch in ptxt) + 8 * len(ptxt) > 900:
-            ptxt = ptxt.split(",")[0]          # a very long place line is cut back to its first part rather than run off the screen
-        boxes["place"] = _spaced(d, (cx, tb[3] + 40), ptxt, _card_font("caps", psz), (200, 198, 190, 255), 8)
+        plines = [ptxt]
+        if _pw(ptxt) > 900:
+            # a long place line is split over two lines at the word break that makes them most even; if that is not enough the letters are set a little
+            # closer together, and only if that is still not enough does it wrap onto three lines
+            wds = ptxt.split()
+            plines = None
+            for sp_ in (8, 4):
+                pspace[0] = sp_
+                best = None
+                for k in range(1, len(wds)):
+                    l1, l2 = " ".join(wds[:k]), " ".join(wds[k:])
+                    m_ = max(_pw(l1), _pw(l2))
+                    if best is None or m_ < best[0]:
+                        best = (m_, [l1, l2])
+                if best and best[0] <= 900:
+                    plines = best[1]
+                    break
+            if plines is None:
+                plines, cur_ = [], ""
+                for w2_ in wds:
+                    trial_ = (cur_ + " " + w2_).strip()
+                    if _pw(trial_) <= 900 or not cur_:
+                        cur_ = trial_
+                    else:
+                        plines.append(cur_)
+                        cur_ = w2_
+                plines.append(cur_)
+                plines = plines[:3]
+            plines = [(lambda t_: next(t_[:i_] for i_ in range(len(t_), 0, -1) if _pw(t_[:i_]) <= 900))(ln_) for ln_ in plines]     # nothing can ever be wider than the safe width
+        py_ = tb[3] + 40
+        pb = None
+        for ln in plines:
+            bx_ = _spaced(d, (cx, py_), ln, f_pl, (200, 198, 190, 255), pspace[0])
+            pb = bx_ if pb is None else (min(pb[0], bx_[0]), pb[1], max(pb[2], bx_[2]), bx_[3])
+            py_ = bx_[3] + 10
+        boxes["place"] = pb
     im.save(path)
     # ---- validation
     problems, names = [], list(boxes)
