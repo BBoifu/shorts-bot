@@ -2221,9 +2221,30 @@ def red_wash(im, amount):
     return Image.blend(im, Image.new("RGB", im.size, (140, 0, 0)), max(0.0, min(0.7, amount)))
 
 
-def claw_slash(d, cx, cy, k, size=1.0):
-    """Three parallel diagonal claw strokes, white-hot at first and then red."""
+STRIKE_OF = {"swarm": "swarm", "tendril": "suckers", "orb": "bite", "bloom": "thorns"}     # how each strange body kills; everything else uses claws
+NO_BONES = ("swarm", "tendril", "orb", "bloom")                                             # no skeleton to show in the x-ray scene
+
+
+def strike_of(sp):
+    return STRIKE_OF.get((sp or {}).get("kind"), "claws")
+
+
+def has_bones(sp):
+    return (sp or {}).get("kind") not in NO_BONES
+
+
+def claw_slash(d, cx, cy, k, size=1.0, style="claws"):
+    """Three parallel diagonal claw strokes, white-hot at first and then red. Creatures without claws leave marks of their own kind."""
     k = max(0.0, min(1.0, k))
+    if style != "claws":
+        for j in range(7):
+            x, y = cx + ((j * 5) % 7 - 3) * 34 * size, cy - 130 * size + (j % 4) * 80 * size
+            r = (13 + (j % 3) * 6) * size * min(1.0, k * 3.0)
+            col = (255, 245, 235, 255) if k < 0.3 else (190, 10, 16, int(255 * max(0.0, 1 - (k - 0.3) / 0.9)))
+            if style in ("suckers", "bite"):
+                d.ellipse((x - r * 1.6, y - r * 1.6, x + r * 1.6, y + r * 1.6), outline=col, width=max(2, int(7 * size)))
+            d.ellipse((x - r, y - r, x + r, y + r), fill=col)
+        return
     for j in range(3):
         x0, y0 = cx - 150 * size + j * 70 * size, cy - 230 * size
         x1, y1 = x0 + 190 * size * min(1, k * 2.2), y0 + 460 * size * min(1, k * 2.2)
@@ -2278,7 +2299,7 @@ def attack_scene(out, dur, world, sp, cwd=None):
             else:
                 draw_human(d, hx + jx, GROUND + 20, pph, 1, 1.0, cast=False)
             if u >= t_leap:  # the claws rake across the person's back
-                claw_slash(d, hx + 10, GROUND - 200, (u - t_leap) / (t_hit - t_leap) * 0.55)
+                claw_slash(d, hx + 10, GROUND - 200, (u - t_leap) / (t_hit - t_leap) * 0.55, style=strike_of(sp))
             if u > t_walk:
                 beat = max(0.0, math.sin(t * 9 + 3)) ** 6 * 0.2 * min(1, (u - t_walk) / 0.12)
                 return red_wash(im, beat + (0.08 if running else 0.0))
@@ -2297,7 +2318,7 @@ def attack_scene(out, dur, world, sp, cwd=None):
         lantern_on_ground(d, hx + 150, GROUND + 28, t, alive=max(0.0, 1.0 - max(0.0, k - 0.6) * 2.5))
         draw_creature(d, sp3, hx - 330 + sx, GROUND + 20 + sy, ph, 1, 1.05, {"t": t, "moving": False, "roar": min(1, k * 3)})
         blood_burst(d, hx + 20, GROUND - 330, min(1, k * 1.6), seed=7)
-        claw_slash(d, hx + 10, GROUND - 200, 0.55 + k * 1.2)
+        claw_slash(d, hx + 10, GROUND - 200, 0.55 + k * 1.2, style=strike_of(sp))
         if k < 0.14:
             return Image.blend(im, Image.new("RGB", im.size, (255, 255, 255)), 0.6 * (1 - (k - 0.07) / 0.07))
         if k < 0.35:
@@ -2651,12 +2672,13 @@ def transform_scene(out, dur, world, sp, cwd=None):
     return info
 
 
-def chase_scene(out, dur, world, sp, cwd=None):
-    """The person runs for their life and the monster gallops after them, the camera shaking."""
+def person_chase_scene(out, dur, world, sp, cwd=None):
+    """The person runs for their life and the monster gallops after them, the camera shaking.
+    (Named person_chase_scene because the hybrid animal hunt further down is called chase_scene.)"""
     def paint(im, d, t, u, cam):
         ph = t * STEP * 1.05
         jx, jy = 8 * math.sin(t * 61), 6 * math.cos(t * 53)
-        gap = 900 - 360 * u
+        gap = 700 - 270 * u                  # starts close enough that the creature's face is on screen from the first frame
         draw_creature(d, sp, 760 - gap + jx, GROUND + 20 + jy, ph + 1.0, 1, 1.0, {"t": t, "moving": True, "roar": 0.7})
         draw_companion(d, 760 + 170 + jx + 500 * u, GROUND + 20 + jy, ph * 1.1, 1, 1.0)
         draw_human(d, 760 + jx, GROUND + 20 + jy, ph, 1, 1.0, cast=False)
@@ -3895,12 +3917,13 @@ def fly_scene(out, dur, world, sp, cwd=None):
     world.focus_y = 0.5
 
     def paint(im, d, t, u, cam):
-        wings = min(1.6, 0.25 + 3.4 * u) if u < lift0 else 1.6
-        crouch = 0.06 * math.sin(math.pi * min(1.0, u / lift0)) if u < lift0 else 0.0
+        floater = not has_bones(sp)        # an eye, a swarm, a flower or a drifting mass has no wings: it simply lifts and drifts upward
+        wings = 0.0 if floater else (min(1.6, 0.25 + 3.4 * u) if u < lift0 else 1.6)
+        crouch = 0.0 if floater else (0.06 * math.sin(math.pi * min(1.0, u / lift0)) if u < lift0 else 0.0)
         p = _smooth((u - lift0) / (1 - lift0)) if u > lift0 else 0.0
         rise = 1350 * p ** 1.3
         zoom = 1.0 - 0.45 * p
-        if u > lift0 and u < lift0 + 0.35:  # dust thrown out around the take-off spot
+        if not floater and u > lift0 and u < lift0 + 0.35:  # dust thrown out around the take-off spot
             k = (u - lift0) / 0.35
             for r in (1.0, 0.7, 0.45):
                 d.ellipse((540 - 520 * k * r, gy - 30 * k * r - 6, 540 + 520 * k * r, gy + 36 * k * r), fill=(140, 130, 120, int(110 * (1 - k))))
@@ -9096,6 +9119,19 @@ def _claw_poly(tip, dirv, length, thick, bend, q0=0.0):
     return pts, half
 
 
+def _sucker(V, x, y, r, a, col):
+    """A round sucker with a ring of inward-pointing teeth, seen from above."""
+    dk = tuple(int(c * 0.35 + 14) for c in col[:3])
+    fl = tuple(min(255, int(c * 0.6 + 90)) for c in col[:3])
+    V.ell((x - r * 1.18, y - r * 1.18 * 0.82, x + r * 1.18, y + r * 1.18 * 0.82), dk + (a,))
+    V.ell((x - r, y - r * 0.82, x + r, y + r * 0.82), fl + (a,))
+    for j in range(16):
+        an = j * 6.2832 / 16
+        c1, s1, c2, s2 = math.cos(an), math.sin(an), math.cos(an + 0.2), math.sin(an + 0.2)
+        V.poly([(x + c1 * r * 0.94, y + s1 * r * 0.78), (x + c2 * r * 0.94, y + s2 * r * 0.78), (x + math.cos(an + 0.1) * r * 0.5, y + math.sin(an + 0.1) * r * 0.41)], (240, 232, 210, a))
+    V.ell((x - r * 0.42, y - r * 0.34, x + r * 0.42, y + r * 0.34), (36, 3, 6, a))
+
+
 def maul_frame(im, t, u, sp, prey_col=(200, 170, 130), kind="fur", seed=1):
     """One frame of the close-up kill. u runs 0..1 over the whole close-up. Returns a new RGB image."""
     _CLOSEUP[0] = True
@@ -9115,7 +9151,27 @@ def maul_frame(im, t, u, sp, prey_col=(200, 170, 130), kind="fur", seed=1):
     gap = 86.0
     LEN = 1000.0
     n_claw = 4
+    strike = strike_of(sp)
+    wscale, pz_, n_sp = 1.0, 1.0, 26
+    claw_len, claw_thick, claw_bend = 520.0, 34.0, 0.22
     starts = [(P0[0] - nrm[0] * (i - 1.5) * gap, P0[1] - nrm[1] * (i - 1.5) * gap + (i % 2) * 14) for i in range(n_claw)]
+    if strike != "claws":                                  # a body without claws leaves its own kind of wound
+        rs_ = random.Random(seed * 7 + 3)
+        n_sp = 6
+        if strike == "swarm":                              # a cloud of tiny stings
+            n_claw, LEN, wscale, pz_ = 34, 50.0, 0.42, 0.6
+            starts = [(540 + rs_.uniform(-1, 1) * 330, 700 + rs_.uniform(-1, 1) * 300) for _ in range(n_claw)]
+            n_sp = 2
+        elif strike == "suckers":                          # round rings of teeth pressed on the skin
+            n_claw, LEN, wscale, pz_ = 7, 34.0, 0.95, 1.3
+            starts = [(540 + math.cos(a_) * (250 if i % 2 else 120) , 700 + math.sin(a_) * (230 if i % 2 else 100)) for i, a_ in ((i, i * 6.2832 / 7) for i in range(7))]
+        elif strike == "bite":                             # two curved rows of tooth punctures
+            n_claw, LEN, wscale, pz_ = 12, 84.0, 0.46, 0.9
+            starts = [(540 + (i % 6 - 2.5) * 118, (560 + 22 * abs(i % 6 - 2.5)) if i < 6 else (850 - 22 * abs(i % 6 - 2.5))) for i in range(12)]
+        else:                                              # thorns driven in and dragged
+            n_claw, LEN, wscale, pz_ = 9, 150.0, 0.8, 1.1
+            starts = [(300 + rs_.uniform(0, 1) * 480, 440 + (i * 72) % 560 + rs_.uniform(-18, 18)) for i in range(9)]
+            claw_len, claw_thick, claw_bend = 270.0, 17.0, 0.04
     t_drag0, t_drag1 = U_IMP_E, 0.62
     g = _sm((ue - t_drag0) / (t_drag1 - t_drag0))
     s_now = g * LEN * (1 if ue >= t_drag0 else 0)
@@ -9140,8 +9196,9 @@ def maul_frame(im, t, u, sp, prey_col=(200, 170, 130), kind="fur", seed=1):
                 wob = 9 * math.sin(s * 0.021 + i * 1.7) + 4 * math.sin(s * 0.057 + i)
                 x, y = sx + dirv[0] * s + nrm[0] * wob, sy + dirv[1] * s + nrm[1] * wob
                 o, a = age_open(s)
-                taper = min(1.0, s / 60.0) * min(1.0, (LEN - s + 40) / 90.0)
-                w = (3 + 56 * o * (0.78 + 0.22 * math.sin(s * 0.05 + i))) * taper
+                tp0_, tp1_ = min(60.0, LEN * 0.4), min(90.0, LEN * 0.6)
+                taper = min(1.0, s / tp0_) * min(1.0, (LEN - s + 40) / tp1_)
+                w = (3 + 56 * wscale * o * (0.78 + 0.22 * math.sin(s * 0.05 + i))) * taper
                 path.append((x, y)); half.append(w); ages.append((o, a))
             wound_paths.append((path, half, ages))
     # stain: the hide around a wound darkens and reddens
@@ -9172,7 +9229,7 @@ def maul_frame(im, t, u, sp, prey_col=(200, 170, 130), kind="fur", seed=1):
         V.poly(_strip(path, [h * 1.12 + 2 for h in half]), (170, 12, 18, 120))
     # rivulets running down from the wounds: a few thick, straight runs with a bead of blood at the end
     for wi, (path, half, ages) in enumerate(wound_paths):
-        for k in range(14 + wi * 3, len(path), 21):
+        for k in (range(14 + wi * 3, len(path), 21) if strike == "claws" else range(2 + wi % 3, len(path), 6)):
             o, a = ages[k]
             if o < 0.4:
                 continue
@@ -9191,24 +9248,24 @@ def maul_frame(im, t, u, sp, prey_col=(200, 170, 130), kind="fur", seed=1):
         for i, (sx, sy) in enumerate(starts):
             tent = _sm((ue - (U_IMP_E - 0.05)) / 0.05)
             if ue < U_IMP_E:
-                V.ell((sx - 34 * tent, sy - 26 * tent, sx + 34 * tent, sy + 26 * tent), (0, 0, 0, int(80 * tent)))
-                V.ell((sx - 18 * tent, sy - 14 * tent, sx + 18 * tent, sy + 14 * tent), (255, 230, 210, int(60 * tent)))
+                V.ell((sx - 34 * tent * pz_, sy - 26 * tent * pz_, sx + 34 * tent * pz_, sy + 26 * tent * pz_), (0, 0, 0, int(80 * tent)))
+                V.ell((sx - 18 * tent * pz_, sy - 14 * tent * pz_, sx + 18 * tent * pz_, sy + 14 * tent * pz_), (255, 230, 210, int(60 * tent)))
             else:
                 for j in range(7):                            # flaps of skin pushed inwards
                     a = j * math.tau / 7 + i if hasattr(math, "tau") else j * 6.2832 / 7 + i
-                    V.poly([(sx, sy), (sx + math.cos(a) * 26, sy + math.sin(a) * 20), (sx + math.cos(a + 0.5) * 17, sy + math.sin(a + 0.5) * 13)], lip + (255,))
-                V.ell((sx - 13, sy - 10, sx + 13, sy + 10), (70, 4, 8, 255))
+                    V.poly([(sx, sy), (sx + math.cos(a) * 26 * pz_, sy + math.sin(a) * 20 * pz_), (sx + math.cos(a + 0.5) * 17 * pz_, sy + math.sin(a + 0.5) * 13 * pz_)], lip + (255,))
+                V.ell((sx - 13 * pz_, sy - 10 * pz_, sx + 13 * pz_, sy + 10 * pz_), (70, 4, 8, 255))
     # ---- spray from the claw tips -----------------------------------------------------------------------------------
     if ue >= U_IMP_E:
         for i, (sx, sy) in enumerate(starts):
-            for pidx in range(26):
-                tb = t_drag0 + (t_drag1 - t_drag0) * (pidx / 26.0) + 0.004 * i
+            for pidx in range(n_sp):
+                tb = t_drag0 + (t_drag1 - t_drag0) * (pidx / float(n_sp)) + 0.004 * i
                 if ue < tb:
                     continue
                 age = (ue - tb) / 0.16
                 if age > 1.0:
                     continue
-                s = (pidx / 26.0) * LEN
+                s = (pidx / float(n_sp)) * LEN
                 bx, by = sx + dirv[0] * s, sy + dirv[1] * s
                 rr = random.Random(seed * 1000 + i * 50 + pidx)
                 vx, vy = rr.uniform(-520, 520) + dirv[0] * 380, rr.uniform(-760, -120)
@@ -9219,7 +9276,7 @@ def maul_frame(im, t, u, sp, prey_col=(200, 170, 130), kind="fur", seed=1):
                 V.ell((px - r, py - r, px + r, py + r), (176, 12, 18, 255))
     # ---- the claws ------------------------------------------------------------------------------------------------
     t_hover = 0.0
-    if ue < t_drag1 + 0.09:
+    if ue < t_drag1 + 0.09 and strike in ("claws", "thorns"):
         for i, (sx, sy) in enumerate(starts):
             if ue < U_IMP_E:
                 k = _sm((ue - 0.14) / (U_IMP_E - 0.14))            # the strike: from high above down into the skin
@@ -9231,8 +9288,8 @@ def maul_frame(im, t, u, sp, prey_col=(200, 170, 130), kind="fur", seed=1):
                 lift = _sm((ue - t_drag1) / 0.09)
                 tip = (sx + dirv[0] * LEN - dirv[0] * 380 * lift, sy + dirv[1] * LEN - dirv[1] * 380 * lift - 140 * lift)
             height = 330 * (1 - _sm((ue - 0.14) / (U_IMP_E - 0.14))) if ue < U_IMP_E else (0 if ue <= t_drag1 else 200 * _sm((ue - t_drag1) / 0.09))
-            lenc = 520 + 40 * (i % 2)
-            pts, half = _claw_poly(tip, dirv, lenc, 34, 0.22)
+            lenc = claw_len + (40 if strike == "claws" else 25) * (i % 2)
+            pts, half = _claw_poly(tip, dirv, lenc, claw_thick, claw_bend)
             for off, al in ((10, 44), (6, 32), (3, 22)):                          # cast shadow: closer to the skin when the claw is down
                 sh = off + height * 0.10
                 V.poly(_strip([(x + sh * 1.2, y + sh * 1.6) for x, y in pts], [h * 1.1 for h in half]), (0, 0, 0, al))
@@ -9247,28 +9304,44 @@ def maul_frame(im, t, u, sp, prey_col=(200, 170, 130), kind="fur", seed=1):
                 V.line(pts[:4], (255, 255, 255, 140), 2)
         # the toe the claws grow from: it sits BEHIND the claw roots, up and away from the skin
         tipc = [(0.0, 0.0)]
-        if ue < U_IMP_E:
-            k = _sm((ue - 0.14) / (U_IMP_E - 0.14)); hv = 330 * (1 - k)
-        elif ue <= t_drag1:
-            hv = -s_now
-        else:
-            hv = -LEN + 380 * _sm((ue - t_drag1) / 0.09)
-        tx = sum(s_[0] for s_ in starts) / n_claw
-        ty = sum(s_[1] for s_ in starts) / n_claw
-        if ue > t_drag1:
-            ty -= 140 * _sm((ue - t_drag1) / 0.09)
-        bx_, by_ = tx - dirv[0] * (hv + 500), ty - dirv[1] * (hv + 500)         # roots of the claws
-        axis = [(bx_ - dirv[0] * 760 * q, by_ - dirv[1] * 760 * q) for q in [i / 10 for i in range(11)]]
-        wid = [190 + 70 * q for q in [i / 10 for i in range(11)]]
-        V.poly(_strip(axis, [w + 14 for w in wid]), tuple(min(255, c + 70) for c in pc) + (255,))      # rim light
-        V.poly(_strip(axis, wid), pc + (255,))
-        V.poly(_strip([(x + nrm[0] * 40, y + nrm[1] * 40) for x, y in axis], [w * 0.55 for w in wid]), tuple(int(c * 0.7) for c in pc) + (255,))
-        for q in range(1, 9):                                                    # scales / knuckle creases
-            x, y = axis[q]
-            V.line([(x - nrm[0] * wid[q], y - nrm[1] * wid[q]), (x + nrm[0] * wid[q], y + nrm[1] * wid[q])], tuple(int(c * 0.5) for c in pc) + (190,), 5)
+        if strike == "claws":
+            if ue < U_IMP_E:
+                k = _sm((ue - 0.14) / (U_IMP_E - 0.14)); hv = 330 * (1 - k)
+            elif ue <= t_drag1:
+                hv = -s_now
+            else:
+                hv = -LEN + 380 * _sm((ue - t_drag1) / 0.09)
+            tx = sum(s_[0] for s_ in starts) / n_claw
+            ty = sum(s_[1] for s_ in starts) / n_claw
+            if ue > t_drag1:
+                ty -= 140 * _sm((ue - t_drag1) / 0.09)
+            bx_, by_ = tx - dirv[0] * (hv + 500), ty - dirv[1] * (hv + 500)         # roots of the claws
+            axis = [(bx_ - dirv[0] * 760 * q, by_ - dirv[1] * 760 * q) for q in [i / 10 for i in range(11)]]
+            wid = [190 + 70 * q for q in [i / 10 for i in range(11)]]
+            V.poly(_strip(axis, [w + 14 for w in wid]), tuple(min(255, c + 70) for c in pc) + (255,))      # rim light
+            V.poly(_strip(axis, wid), pc + (255,))
+            V.poly(_strip([(x + nrm[0] * 40, y + nrm[1] * 40) for x, y in axis], [w * 0.55 for w in wid]), tuple(int(c * 0.7) for c in pc) + (255,))
+            for q in range(1, 9):                                                    # scales / knuckle creases
+                x, y = axis[q]
+                V.line([(x - nrm[0] * wid[q], y - nrm[1] * wid[q]), (x + nrm[0] * wid[q], y + nrm[1] * wid[q])], tuple(int(c * 0.5) for c in pc) + (190,), 5)
+    if ue < t_drag1 + 0.09 and strike in ("suckers", "swarm"):                   # rings of teeth pressed on, or a cloud of tiny pincers
+        for i, (sx, sy) in enumerate(starts):
+            if ue < U_IMP_E:
+                k = _sm((ue - 0.14) / (U_IMP_E - 0.14)); sc_ = 1.0 + 1.1 * (1 - k); al = int(255 * min(1.0, k * 2 + 0.15))
+            elif ue <= t_drag1:
+                sc_, al = 1.0, 255
+            else:
+                lift = _sm((ue - t_drag1) / 0.09); sc_, al = 1.0 + 0.9 * lift, int(255 * (1 - lift))
+            if al <= 4:
+                continue
+            if strike == "suckers":
+                _sucker(V, sx, sy, (52 + 14 * (i % 2)) * sc_, al, pc)
+            else:
+                for sg_ in (-1, 1):
+                    V.line([(sx + sg_ * 14 * sc_, sy - 34 * sc_), (sx + sg_ * 5 * sc_, sy - 10 * sc_), (sx, sy + 4)], claw_dark + (al,), 5)
     # ---- the jaws ---------------------------------------------------------------------------------------------------
     j0, j1 = 0.60, 0.80
-    if ue >= j0 - 0.02:
+    if ue >= j0 - 0.02 and strike in ("claws", "bite"):
         close = _sm((ue - j0) / (j1 - j0))
         bite = _sm((ue - j1) / 0.07)
         top_y = -320 + 1250 * close - 14 * bite           # the tooth line of the upper jaw
@@ -9473,7 +9546,10 @@ def _bubbles(d, x, y, t, n=9, seed=2):
 
 def _fit_scale(sp, span=640):
     s0 = 1.4 * sp.get("scale", 1.0) * KIND_SCALE.get("chimera", 1.0)
-    front, back_ = max(sp["bbox"][2], 100.0), max(-sp["bbox"][0], 100.0)
+    bb = sp.get("bbox")
+    if bb is None:        # a folklore monster has no measured outline: estimate it from where its head is
+        bb = (-260.0, -800.0, HEAD_AT.get(sp.get("kind"), (200, -400))[0] + 160.0, 0.0)
+    front, back_ = max(bb[2], 100.0), max(-bb[0], 100.0)
     return _clip(span / ((front + back_) * s0 + 1.0), 0.45, 1.0), front, back_, s0
 
 
@@ -10269,3 +10345,231 @@ def _motion_note(sp, st, bb):
             R["jumps"] += step > MOTION_JUMP_PX
         R["n"] += 1
         R["t"], R["x"], R["y"], R["w"], R["h"], R["edge"] = t, x, y, w_, h_, edge
+
+
+# ================================================================ four monsters with no legs, hands or wings
+# Each has a clearly drawn face (or a clear main body), big enough to read on a phone, with texture and detail.
+def _rng_pts(n, seed, fn):
+    r = random.Random(seed)
+    out = []
+    while len(out) < n:
+        x, y = r.uniform(-1, 1), r.uniform(-1, 1)
+        if fn(x, y):
+            out.append((x, y, r.random()))
+    return out
+
+
+_SWARM_PTS = {}
+
+
+def draw_swarm(pen, sp, ph, st):
+    """A person-shaped swarm of hundreds of black beetles and moths. No limbs: it hangs together as one body that tapers into a whirl.
+    The face is a clear hollow: glowing eyes, a dark open mouth lined with pale insects for teeth."""
+    t = st.get("t", 0.0)
+    col, dk = sp["color"], dark(sp["color"], 0.5)
+    roar = max(st.get("roar", 0.0), 0.35)
+    if "body" not in _SWARM_PTS:
+        def shape(x, y):          # x,y in -1..1: tall head, broad shoulders, arms hanging, tapering to a funnel
+            yy = (y + 1) / 2        # 0 top .. 1 bottom
+            if yy < 0.22:
+                return (x * 1.0) ** 2 + ((yy - 0.11) / 0.11) ** 2 < 1
+            if yy < 0.78:
+                half = 0.62 - 0.22 * (yy - 0.22) / 0.56
+                return abs(x) < half
+            return abs(x) < 0.4 * (1 - (yy - 0.78) / 0.22) + 0.04
+        _SWARM_PTS["body"] = _rng_pts(430, 7, shape)
+    bob = 14 * math.sin(t * 1.7)
+    H, Wd = 640, 210
+    top = -300 - H + bob + 150
+    # a dark solid core so the figure reads as one shape (and the face has something to sit on)
+    pen.poly([(-Wd * 0.55, top + H * 0.26), (Wd * 0.55, top + H * 0.26), (Wd * 0.42, top + H * 0.78), (0, top + H), (-Wd * 0.42, top + H * 0.78)], dk, rim=False)
+    pen.ell(0, top + H * 0.11, Wd * 0.46, H * 0.115, dk, rim=False)
+    for i, (bx, by, rr) in enumerate(_SWARM_PTS["body"]):
+        yy = (by + 1) / 2
+        x = bx * Wd + 16 * math.sin(t * 4.6 + i) * (0.4 + yy) + (30 * math.sin(t * 2.2 + i * 0.3) * (yy ** 3))
+        y = top + yy * H + 11 * math.cos(t * 5.1 + i * 1.3)
+        face = yy < 0.2 and abs(bx) < 0.62                 # keep the face clear of insects
+        if face and ((abs(bx - 0.28) < 0.24 and abs(yy - 0.085) < 0.045) or (abs(bx - 0.28) < 0.34 and 0.12 < yy < 0.19)):
+            continue
+        s = 7 + 7 * rr
+        c = mix(col, (18, 16, 24), 0.4 + 0.5 * rr)
+        pen.ell(x, y, s, s * 0.62, c, rim=False)
+        if i % 3 == 0:                                      # wings flicker on a third of them
+            fl = 0.6 + 0.4 * math.sin(t * 28 + i)
+            pen.ell(x - s * 0.5, y - s * 0.6, s * 0.9 * fl, s * 0.35, mix(col, (150, 140, 130), 0.35), rim=False)
+    # the face (towards the front: +x)
+    fx, fy = 0.28 * Wd * 0.5 + 10, top + H * 0.085
+    pen.ell(fx, fy + 6, 70, 48, (6, 4, 8), rim=False)
+    for sgn in (-1, 1):
+        eye(pen, fx + sgn * 28 + 10, fy, 13, sp, st)
+    ml = top + H * 0.155
+    pen.ell(fx + 8, ml + 12, 52, 8 + 34 * roar, (30, 4, 8), rim=False)
+    for k in range(9):                                      # teeth made of pale insects
+        tx = fx - 36 + k * 9.5
+        pen.ell(tx + 8, ml + 2, 4.5, 8, (225, 220, 205), rim=False)
+        pen.ell(tx + 8, ml + 22 + 30 * roar, 4.5, 8, (225, 220, 205), rim=False)
+    for i in range(26):                                     # a loose cloud peeling away behind it
+        a = t * 3 + i * 0.7
+        pen.ell(-Wd * 0.6 - 30 - 18 * (i % 6) + 20 * math.sin(a), top + H * 0.35 + (i * 37) % 300, 5, 3, dk, rim=False)
+
+
+def draw_tendril(pen, sp, ph, st):
+    """A bloated body of wet flesh that hangs in the air and moves on a dozen long tendrils lined with suckers. One huge eye, a ring-toothed
+    lamprey mouth beneath it and two smaller eyes. Nothing in it is a leg, an arm or a wing."""
+    t = st.get("t", 0.0)
+    col, dk = sp["color"], dark(sp["color"], 0.55)
+    flesh = mix(col, (170, 110, 110), 0.25)
+    roar = max(st.get("roar", 0.0), 0.3)
+    moving = st.get("moving", True)
+    bob = -250 + 22 * math.sin(t * 1.9)
+    N = 13
+    for i in range(N):                                       # tendrils first, so the body sits over their roots
+        k = (i - (N - 1) / 2) / ((N - 1) / 2)
+        L = 9
+        sx, sy = k * 150, bob + 120 + abs(k) * 20
+        pts, ws = [(sx, sy)], []
+        for j in range(1, L + 1):
+            u = j / L
+            wave = math.sin(t * (2.4 if moving else 1.2) - u * 4.0 + i * 0.9 + ph * 0.5)
+            x = sx + k * 120 * u + 38 * wave * u + (50 if moving else 0) * -u * 0.4
+            y = min(sy + (230 - bob * 0.35) * u + 20 * math.cos(t * 2 + i + u * 3) * u, 4)
+            pts.append((x, y))
+        for j in range(len(pts) - 1):
+            w = 34 * (1 - j / L) + 7
+            pen.line([pts[j], pts[j + 1]], w, mix(flesh, dk, 0.25 + 0.4 * (j / L)))
+            if j % 2 == 1:                                    # suckers
+                mx, my = (pts[j][0] + pts[j + 1][0]) / 2, (pts[j][1] + pts[j + 1][1]) / 2
+                pen.ell(mx, my + 3, w * 0.28, w * 0.18, (235, 190, 190), rim=False)
+                pen.ell(mx, my + 3, w * 0.12, w * 0.08, (80, 20, 30), rim=False)
+    pen.ell(0, bob, 190, 175, flesh)                         # the body
+    pen.ell(-30, bob + 70, 150, 90, mix(flesh, dk, 0.35), rim=False)
+    for k in range(14):                                       # veins and pustules
+        a = k * 0.9 + 0.3
+        vx, vy = math.cos(a) * 140, bob + math.sin(a) * 120
+        pen.line([(vx, vy), (vx * 0.7 + 20, vy * 0.6 + bob * 0.4 + 30), (vx * 0.4, bob + 10)], 4, mix(flesh, (110, 20, 40), 0.6))
+        if k % 3 == 0:
+            pen.ell(vx * 0.9, vy, 13, 11, mix(flesh, (210, 190, 120), 0.5), rim=False)
+    ex, ey = 58, bob - 38                                     # the huge eye
+    pen.ell(ex, ey, 92, 82, (232, 224, 206), rim=False)
+    for k in range(9):
+        a = k * 0.7
+        pen.line([(ex + math.cos(a) * 88, ey + math.sin(a) * 78), (ex + math.cos(a) * 40, ey + math.sin(a) * 34)], 3, (170, 40, 50))
+    ec = sp.get("eye", (255, 190, 40))
+    look = 10 * math.sin(t * 0.8)
+    pen.ell(ex + 14 + look, ey, 50, 50, mix(ec, (30, 10, 10), 0.35), rim=False)
+    pen.ell(ex + 14 + look, ey, 36, 36, ec, rim=False)
+    pen.ell(ex + 14 + look, ey, 11, 38, (8, 4, 6), rim=False)
+    pen.ell(ex + 2 + look, ey - 22, 11, 9, (255, 255, 255), rim=False)
+    pen.poly([(ex - 96, ey - 8), (ex - 40, ey - 100), (ex + 60, ey - 104), (ex + 100, ey - 20), (ex + 40, ey - 62), (ex - 40, ey - 58)], dk, rim=False)   # heavy lid
+    for sgn in (-1, 1):                                       # two small eyes
+        eye(pen, ex - 30 + sgn * 78, bob + 70 - (0 if sgn < 0 else 6), 9, sp, st)
+    my = bob + 112                                            # lamprey mouth: rings of teeth
+    for r_, c_ in ((52, (70, 12, 22)), (38, (120, 20, 34)), (22, (30, 4, 10))):
+        pen.ell(ex - 6, my, r_ * (1 + 0.35 * roar), r_ * 0.7 * (1 + 0.4 * roar), c_, rim=False)
+    for ring, R in ((0, 46), (1, 31)):
+        for k in range(14 - ring * 4):
+            a = k * (2 * math.pi / (14 - ring * 4)) + ring
+            tx, ty = ex - 6 + math.cos(a) * R, my + math.sin(a) * R * 0.7
+            pen.poly([(tx - 3, ty - 2), (tx + 3, ty - 2), (tx - math.cos(a) * 11, ty - math.sin(a) * 8)], (240, 232, 214), rim=False)
+
+
+def draw_orb(pen, sp, ph, st):
+    """A pale sphere that floats and rolls: the whole body is one giant eye with a vein-lined white, a huge iris, and a toothed split that
+    opens along its side. Dozens of long optic nerves drag behind it along the ground."""
+    t = st.get("t", 0.0)
+    col, dk = sp["color"], dark(sp["color"], 0.55)
+    roar = max(st.get("roar", 0.0), 0.3)
+    moving = st.get("moving", True)
+    R = 215
+    bob = -330 + 26 * math.sin(t * 1.4)
+    for i in range(11):                                       # trailing nerves
+        k = i / 10
+        pts = [(-R * 0.5, bob + 40 + k * 80 - 40)]
+        for j in range(1, 10):
+            u = j / 9
+            pts.append((-R * 0.5 - 60 * j - 14 * math.sin(t * 2.5 + i + u * 3) * u, min(bob + 60 + 250 * u + 12 * math.sin(t * 3 + i * 1.7 + j), 2)))
+        for j in range(len(pts) - 1):
+            pen.line([pts[j], pts[j + 1]], 16 * (1 - j / 10) + 3, mix(col, (150, 60, 70), 0.4 + 0.3 * k))
+    spin = t * (1.1 if moving else 0.3)
+    pen.ell(0, bob, R, R, (226, 218, 205))                    # the white
+    pen.ell(-30, bob + 40, R * 0.82, R * 0.8, (206, 194, 182), rim=False)
+    for k in range(18):
+        a = k * 0.75 + spin * 0.2
+        r0 = R * 0.95
+        pen.line([(math.cos(a) * r0, bob + math.sin(a) * r0), (math.cos(a + 0.2) * R * 0.5, bob + math.sin(a + 0.2) * R * 0.5), (math.cos(a + 0.35) * R * 0.32, bob + math.sin(a + 0.35) * R * 0.32)], 3, (176, 44, 56))
+    ec = sp.get("eye", (255, 190, 40))
+    ix, iy = R * 0.42 + 8 * math.sin(t * 0.9), bob - R * 0.12
+    for r_, c_ in ((112, mix(ec, (20, 8, 8), 0.6)), (96, mix(ec, (20, 8, 8), 0.3)), (78, ec)):
+        pen.ell(ix, iy, r_, r_, c_, rim=False)
+    for k in range(24):                                       # iris fibres
+        a = k * math.pi / 12
+        pen.line([(ix + math.cos(a) * 30, iy + math.sin(a) * 30), (ix + math.cos(a) * 92, iy + math.sin(a) * 92)], 3, mix(ec, (255, 255, 230), 0.4) if k % 2 else mix(ec, (60, 20, 10), 0.4))
+    pen.ell(ix + 4, iy, 22 * (1.3 - 0.4 * roar), 62, (6, 4, 8), rim=False)
+    pen.ell(ix - 22, iy - 34, 16, 12, (255, 255, 255), rim=False)
+    my = bob + R * 0.55                                       # the split mouth along the lower side
+    op = 12 + 70 * roar
+    pen.poly([(-R * 0.45, my - 6), (R * 0.8, my - 28), (R * 0.9, my + op), (-R * 0.4, my + op * 0.8)], (70, 8, 16), rim=False)
+    for k in range(12):
+        tx = -R * 0.4 + k * (R * 1.2 / 12)
+        pen.poly([(tx, my - 10 - k), (tx + 14, my - 16 - k), (tx + 7, my + 14 + 0.3 * op)], (242, 236, 220), rim=False)
+        pen.poly([(tx, my + op - 4), (tx + 14, my + op - 4), (tx + 7, my + op * 0.2 - 8)], (242, 236, 220), rim=False)
+
+
+def draw_bloom(pen, sp, ph, st):
+    """A flower the size of a house: a thick, swaying stem with barbed leaves, a ring of petals and in the middle a face -- two compound
+    eyes and a round mouth with spiralling rows of teeth. It drags itself on root-vines that trail behind it."""
+    t = st.get("t", 0.0)
+    col, dk = sp["color"], dark(sp["color"], 0.5)
+    leaf = mix(col, (40, 90, 50), 0.5)
+    petal = mix(col, (170, 60, 90), 0.5)
+    roar = max(st.get("roar", 0.0), 0.35)
+    moving = st.get("moving", True)
+    for i in range(7):                                        # root-vines dragging behind
+        pts = [(-30, -20)]
+        for j in range(1, 9):
+            u = j / 8
+            pts.append((-30 - 70 * j - 12 * math.sin(t * 2.2 + i + u * 3), -8 + 8 * math.sin(t * 3 + i * 1.4 + j) - 6 * i * 0.3))
+        pen.line(pts, 12 - i * 0.8, mix(dk, (60, 40, 30), 0.4))
+    sway = 36 * math.sin(t * 1.3) + (24 if moving else 0)
+    stem = [(0, 0), (-20, -150), (10 + sway * 0.3, -300), (30 + sway * 0.7, -450), (70 + sway, -570)]
+    for j in range(len(stem) - 1):
+        pen.line([stem[j], stem[j + 1]], 62 - 9 * j, mix(leaf, dk, 0.2 + 0.1 * j))
+    for j, (lx, ly) in enumerate(stem[1:4]):                  # barbed leaves
+        for sgn in (-1, 1):
+            if sgn == -1 and j == 0:
+                continue
+            tipx, tipy = lx + sgn * (150 - 20 * j), ly - 30 - 26 * math.sin(t * 2 + j)
+            pen.poly([(lx, ly), (lx + sgn * 60, ly - 62), (tipx, tipy), (lx + sgn * 70, ly + 4)], leaf)
+            pen.line([(lx, ly - 4), (tipx - sgn * 10, tipy + 6)], 4, dark(leaf, 0.6))
+            for b in range(3):
+                pen.poly([(lx + sgn * (40 + b * 26), ly - 30 - b * 8), (lx + sgn * (52 + b * 26), ly - 52 - b * 8), (lx + sgn * (60 + b * 26), ly - 28 - b * 8)], (225, 220, 200), rim=False)
+    hx, hy = stem[-1]
+    for k in range(9):                                        # petals
+        a = k * (2 * math.pi / 9) + math.sin(t * 0.8) * 0.08
+        px, py = hx + math.cos(a) * 112, hy + math.sin(a) * 112
+        ox, oy = -math.sin(a) * 46, math.cos(a) * 46
+        pen.poly([(hx + math.cos(a) * 40 + ox * 0.5, hy + math.sin(a) * 40 + oy * 0.5), (px + ox, py + oy), (hx + math.cos(a) * 190, hy + math.sin(a) * 190),
+                  (px - ox, py - oy), (hx + math.cos(a) * 40 - ox * 0.5, hy + math.sin(a) * 40 - oy * 0.5)], mix(petal, dk, 0.12 * (k % 3)))
+    pen.ell(hx, hy, 96, 96, mix(col, (230, 190, 90), 0.35))   # the face disc
+    pen.ell(hx, hy, 82, 82, mix(col, (60, 30, 30), 0.45), rim=False)
+    for sgn in (-1, 1):                                       # compound eyes: a cluster of lenses
+        ex, ey = hx + 14 + sgn * 36, hy - 34
+        pen.ell(ex, ey, 26, 26, (18, 10, 16), rim=False)
+        for a in range(6):
+            pen.ell(ex + math.cos(a * 1.05) * 12, ey + math.sin(a * 1.05) * 12, 8, 8, mix(sp.get("eye", (255, 190, 40)), (40, 20, 10), 0.25 * (a % 2)), rim=False)
+        pen.ell(ex, ey, 9, 9, sp.get("eye", (255, 190, 40)), rim=False)
+    my = hy + 28
+    for r_, c_ in ((44, (60, 8, 16)), (30, (110, 16, 30)), (16 + 6 * roar, (20, 2, 6))):
+        pen.ell(hx + 10, my, r_ * (1 + 0.25 * roar), r_ * 0.8 * (1 + 0.3 * roar), c_, rim=False)
+    for ring, R_ in ((0, 40), (1, 26)):
+        for k in range(12 - ring * 4):
+            a = k * (2 * math.pi / (12 - ring * 4)) + t * 0.6 * (1 if ring else -1)
+            tx, ty = hx + 10 + math.cos(a) * R_, my + math.sin(a) * R_ * 0.8
+            pen.poly([(tx - 3, ty - 2), (tx + 3, ty - 2), (tx - math.cos(a) * 11, ty - math.sin(a) * 9)], (242, 236, 220), rim=False)
+
+
+KINDS.update({"swarm": draw_swarm, "tendril": draw_tendril, "orb": draw_orb, "bloom": draw_bloom})
+KIND_SCALE.update({"swarm": 0.85, "tendril": 1.0, "orb": 1.0, "bloom": 0.9})
+HEAD_AT.update({"swarm": (20, -820), "tendril": (60, -300), "orb": (90, -350), "bloom": (90, -520)})
+PRINT_OF.update({"swarm": "dots", "tendril": "slither", "orb": "frost", "bloom": "slither"})
+BODIES = BODIES + ("swarm", "tendril", "orb", "bloom")

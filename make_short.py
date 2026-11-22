@@ -267,8 +267,9 @@ HYB_FORMATS = (
 )
 
 
-def ask_gemini(a, b, place_name, design_text="", fmt=None):
+def ask_gemini(a, b, place_name, design_text="", fmt=None, strange=None):
     fmt = fmt or random.choice(HYB_FORMATS)
+    strange_block = strange_text(strange, parts=("rule", "tone")) if strange else ""
     fname, fam, brief, middle = fmt
     brief, middle = brief.format(place=place_name, a=a, b=b), middle.format(place=place_name, a=a, b=b)
     acts = HYB_ACTIONS_ENC if fam == "enc" else HYB_ACTIONS_WILD
@@ -277,7 +278,7 @@ def ask_gemini(a, b, place_name, design_text="", fmt=None):
 Idea: a hybrid of a {a} and a {b}, living in {place_name}.
 STORY FORMAT: "{fname}". {brief} Tell THIS story, with a beginning, a rising problem and an ending, instead of just listing facts.
 {("The creature has been designed. Describe EXACTLY this anatomy and movement, do not invent spikes, armour or other features it does not have: " + design_text) if design_text else ""}
-
+{strange_block}
 Return ONLY valid JSON, no markdown, in exactly this shape:
 {{
   "title": "catchy title under 70 characters, no hashtags",
@@ -654,6 +655,39 @@ def _save_audio(b64, mime, dest_wav):
 _TTS_NO_META = set()
 
 
+def _trim_voice_edges(path, text=""):
+    """A voice model sometimes pads a clip with seconds of silence, which makes a short story look too long. Cut the silence at both ends
+    (a little is kept so nothing sounds clipped) and log the pace of the clip, so a slow or padded clip is easy to spot in the run log."""
+    try:
+        import numpy as np
+        with wave.open(str(path)) as w:
+            ch, sw, sr, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
+            raw = w.readframes(n)
+        if sw != 2 or n < sr // 2:
+            return
+        a = np.frombuffer(raw, dtype=np.int16).reshape(-1, ch)
+        env = np.abs(a.astype(np.float32)).max(axis=1)
+        peak = float(env.max())
+        if peak < 300:
+            return
+        loud = np.flatnonzero(env > peak * 0.012)                        # louder than about -38 dB below the loudest moment
+        k0, k1 = max(0, int(loud[0]) - int(0.10 * sr)), min(len(env), int(loud[-1]) + int(0.30 * sr))
+        before, after = len(env) / sr, (k1 - k0) / sr
+        if before - after > 0.15:
+            with wave.open(str(path), "wb") as w:
+                w.setnchannels(ch)
+                w.setsampwidth(2)
+                w.setframerate(sr)
+                w.writeframes(a[k0:k1].tobytes())
+        else:
+            after = before
+        words = len(str(text).split())
+        if words:
+            log(f"Voice clip: {words} words, {after:.1f}s ({after / words:.2f} s per word)" + (f", {before - after:.1f}s of silence trimmed" if before - after > 0.15 else ""))
+    except Exception as e:
+        log(f"Voice clip trim skipped: {e}")
+
+
 def gemini_tts(text, dest_wav, style=None, voice=None):
     """More natural voice from Gemini. Returns True on success."""
     headers = {"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"}
@@ -705,6 +739,7 @@ def gemini_tts(text, dest_wav, style=None, voice=None):
                 continue
             _save_audio(item["data"], item["mime"], dest_wav)
             log(f"Voice: Gemini {model} ({voice or GEMINI_VOICE})")
+            _trim_voice_edges(dest_wav, text)
             return True
         except Exception as e:
             log(f"Gemini voice {model} [{style_kind}] failed: {e}")
@@ -1576,7 +1611,7 @@ def write_captions(words, total, path, card=None, track=None, card_big=None):
     EMITTED = []
     prev_y, prev_end = CAPTION_SPOTS[0], -9.0
     groups = caption_groups(words) if len(words) > 6 else [words[i:i + 2] for i in range(0, len(words), 2)]
-    rep = {"captions": 0, "moved": 0, "split": 0, "omitted": 0, "omitted_text": [], "collisions": 0, "worst_overlap": 0.0}
+    rep = {"captions": 0, "moved": 0, "split": 0, "omitted": 0, "omitted_words": 0, "words": len(words), "omitted_text": [], "collisions": 0, "worst_overlap": 0.0}
 
     def emit(chunk, start, end, y):
         nonlocal prev_y, prev_end
@@ -1599,6 +1634,37 @@ def write_captions(words, total, path, card=None, track=None, card_big=None):
         plain = " ".join(w[2] for w in chunk)
         return _cap_dims(len(plain), len(plain) > 17)
 
+    def cover(chunk, s_, e_, py, depth=0):
+        """Place a phrase. If no spot is clear for its whole time, try every place to cut it (middle first) and place the pieces,
+        cutting again if needed (up to 3 levels). Returns the pieces in time order as (words, start, end, y, overlap); y is None for a
+        piece that nowhere is safe for. The cut with the fewest words left out wins."""
+        y_, ov_ = _place_caption(track, s_, e_, dims_of(chunk), py)
+        if y_ is not None:
+            return [(chunk, s_, e_, y_, ov_)]
+        if len(chunk) < 2 or depth >= 3:
+            # last resort: show it for only the part of its time that is clear (the picture cuts in the middle of it)
+            best_ = None
+            for a_, b_ in ((0.0, 0.55), (0.0, 0.75), (0.25, 1.0), (0.45, 1.0)):
+                ws_, we_ = s_ + (e_ - s_) * a_, s_ + (e_ - s_) * b_
+                if we_ - ws_ < 0.4:
+                    continue
+                yy_, oo_ = _place_caption(track, ws_, we_, dims_of(chunk), py)
+                if yy_ is not None and (best_ is None or we_ - ws_ > best_[2] - best_[1]):
+                    best_ = (chunk, ws_, we_, yy_, oo_)
+            return [best_] if best_ else [(chunk, s_, e_, None, ov_)]
+        best = None
+        for k in sorted(range(1, len(chunk)), key=lambda k_: abs(k_ - len(chunk) / 2)):
+            left = cover(chunk[:k], s_, chunk[k - 1][1] + 0.05, py, depth + 1)
+            last_y = next((p_[3] for p_ in reversed(left) if p_[3] is not None), py)
+            right = cover(chunk[k:], chunk[k][0], e_, last_y, depth + 1)
+            pieces_ = left + right
+            key = (sum(len(p_[0]) for p_ in pieces_ if p_[3] is None), len(pieces_))
+            if best is None or key < best[0]:
+                best = (key, pieces_)
+            if key[0] == 0:
+                break
+        return best[1]
+
     for gi, chunk in enumerate(groups):
         start = chunk[0][0]
         nxt = groups[gi + 1][0][0] if gi + 1 < len(groups) else total
@@ -1613,33 +1679,35 @@ def write_captions(words, total, path, card=None, track=None, card_big=None):
             rep["worst_overlap"] = max(rep["worst_overlap"], ov)
             emit(chunk, start, end, y)
             continue
-        # nowhere is safe for the whole phrase: split it into two shorter captions, each with its own timing
-        if len(chunk) >= 2:
-            h = len(chunk) // 2
-            halves = [(chunk[:h], start, chunk[h - 1][1] + 0.05), (chunk[h:], chunk[h][0], end)]
-            placed = [(c, s0, e0, *_place_caption(track, s0, e0, dims_of(c), prev_y)) for c, s0, e0 in halves]
-            if all(p[3] is not None for p in placed):
-                rep["split"] += 1
-                for c, s0, e0, yy, ov2 in placed:
-                    rep["worst_overlap"] = max(rep["worst_overlap"], ov2)
-                    emit(c, s0, e0, yy)
-                continue
-            # one half may fit even if the other does not: show only the half that is clear
-            for c, s0, e0, yy, ov2 in placed:
-                if yy is not None:
-                    emit(c, s0, e0, yy)
-                else:
-                    rep["omitted"] += 1
-                    rep["omitted_text"].append(" ".join(w[2] for w in c))
-                    rep.setdefault("omitted_detail", []).append({"text": " ".join(w[2] for w in c), "from": round(s0, 2), "to": round(e0, 2),
-                                                                 "overlap_by_spot": {sp_: round(_cap_overlap(track, s0, e0, sp_, dims_of(c)), 2) for sp_ in CAPTION_SPOTS}})
+        # nowhere is safe for the whole phrase (for example a scene cut in the middle of it: the hallway figure blocks the middle and top
+        # before the cut and the couch blocks the bottom after it): find where to cut the phrase so that every piece has a clear spot
+        pieces = cover(chunk, start, end, prev_y)
+        if len(pieces) > 1:
             rep["split"] += 1
-            continue
-        rep["omitted"] += 1                                   # better no caption than a caption over the creature
-        rep["omitted_text"].append(" ".join(w[2] for w in chunk))
-        rep.setdefault("omitted_detail", []).append({"text": " ".join(w[2] for w in chunk), "from": round(start, 2), "to": round(end, 2),
-                                                     "overlap_by_spot": {c: round(_cap_overlap(track, start, end, c, dims_of(chunk)), 2) for c in CAPTION_SPOTS},
-                                                     "box": next(([round(v) for v in b] for t_, b in track if t_ >= start and b), None)})
+        run = []
+
+        def flush_run():
+            if not run:
+                return
+            rep["omitted"] += 1                               # better no caption than a caption over the creature
+            rep["omitted_words"] += sum(len(p_[0]) for p_ in run)
+            ws = [w_ for p_ in run for w_ in p_[0]]
+            rep["omitted_text"].append(" ".join(w_[2] for w_ in ws))
+            s_, e_ = run[0][1], run[-1][2]
+            rep.setdefault("omitted_detail", []).append({"text": " ".join(w_[2] for w_ in ws), "from": round(s_, 2), "to": round(e_, 2),
+                                                         "overlap_by_spot": {c: round(_cap_overlap(track, s_, e_, c, dims_of(ws)), 2) for c in CAPTION_SPOTS},
+                                                         "box": next(([round(v) for v in b_] for t_, b_ in track if t_ >= s_ and b_), None)})
+            run.clear()
+        for c_, s0, e0, yy, ov2 in pieces:
+            if yy is None:
+                run.append((c_, s0, e0))
+                continue
+            flush_run()
+            if yy != prev_y and len(pieces) == 1:
+                rep["moved"] += 1
+            rep["worst_overlap"] = max(rep["worst_overlap"], ov2)
+            emit(c_, s0, e0, yy)
+        flush_run()
     # --- the mandatory check: every caption that was written is re-tested against every sampled frame
     if track:
         for st_, en_, yb, dims, txt in EMITTED:
@@ -1658,7 +1726,7 @@ def write_captions(words, total, path, card=None, track=None, card_big=None):
     except Exception:
         pass
     log(f"Caption check: {rep['captions']} captions, {rep['moved']} moved out of the way, {rep['split']} split, "
-        f"{rep['omitted']} left out rather than cover the creature, {rep['collisions']} collisions left")
+        f"{rep['omitted']} left out rather than cover the creature ({rep['omitted_words']} of {rep['words']} words), {rep['collisions']} collisions left")
     TITLECARD.clear()
     if card:
         top, low = card, None
@@ -2064,8 +2132,12 @@ def run_quality_checks(video_path, words, kind):
     if cr is None:
         add("Captions", False, "no caption report")
     else:
-        add("Captions", cr.get("collisions", 1) == 0 and cr.get("omitted", 0) <= max(2, cr.get("captions", 1) // 8) and cr.get("tolerated", 0) <= max(2, cr.get("captions", 1) * 3 // 10),
-            f"no caption covers a face ({cr.get('omitted', 0)} left out, {cr.get('tolerated', 0)} ride over a giant creature's legs)")
+        if cr.get("omitted_words") is None:      # a report written before words were counted
+            few_left_out = cr.get("omitted", 0) <= max(2, cr.get("captions", 1) // 8)
+        else:                                    # at most 15% of the spoken words (and never fewer than 3) may go without a caption
+            few_left_out = cr["omitted_words"] <= max(3, int(cr.get("words", 0) * 0.15))
+        add("Captions", cr.get("collisions", 1) == 0 and few_left_out and cr.get("tolerated", 0) <= max(2, cr.get("captions", 1) * 3 // 10),
+            f"no caption covers a face ({cr.get('omitted', 0)} phrase(s) left out = {cr.get('omitted_words', 0)} of {cr.get('words', 0)} words, {cr.get('tolerated', 0)} ride over a giant creature's legs)")
     add("Sound and narration", SYNC_REPORT.get("overlaps", 0) == SYNC_REPORT.get("turned_down", 0) and len(SOUND_SYNC) >= len(PAUSE_EXPECTED),
         f"{len(SOUND_SYNC)} narrator pause(s), {SYNC_REPORT.get('overlaps', 0)} overlap(s) fixed")
     wins = [e for e in SOUND_SYNC if "final_at" in e]
@@ -2527,6 +2599,145 @@ ENDINGS = ("a tragic ending: the victim is simply never seen again",
            "an unresolved ending: the sound at the door is still there tonight",
            "a warning ending: the rule that would have saved them")
 PALETTE_NAMES = ("ash", "bone", "rust", "green", "blue", "violet", "charcoal", "yellow", "crimson", "teal")
+# ---------------------------------------------------------------- strangeness picker
+# Every episode gets its own strange rule, way of moving, way of telling the story and tone. They are dealt out like shuffled cards:
+# nothing comes up again until the whole pile has been used, and the order is different every round. No file is needed to remember it.
+STRANGE_RULES = {
+    "silent": "It makes no sound at all. The only warning is that every ordinary sound nearby stops, one by one.",
+    "still": "It only moves while nobody is looking at it. The moment someone watches, it freezes like a statue.",
+    "name": "It grows every time its name is spoken aloud, so the people who know it are afraid to say the name.",
+    "echo": "It can only repeat the last sentence it heard, in the speaker's own voice, and it waits for a new one.",
+    "reflect": "It can be seen only in reflections: glass, water, a dark screen. In the real world there is only an empty place where it stands.",
+    "light": "It cannot cross light. A lit lantern, a bright window or a fire is the only border it respects, so someone must keep a light burning until dawn.",
+    "count": "It takes exactly one person each night, and it always knows who was counted last.",
+    "sleep": "It only comes for people who are asleep and never touches anyone who is awake, so everybody fights sleep.",
+    "debt": "It only follows someone who took something that was not theirs. Everyone else it leaves alone.",
+    "gift": "It leaves a small gift (a coin, a flower, a toy) before it takes someone, and the gift is the only warning.",
+    "weather": "Weather follows it: the air goes still, then cold, then a smell like rain on hot stone arrives before it does.",
+    "shadow": "It has no shadow of its own, and it slowly takes the shadow of whoever it watches.",
+    "backwards": "It cannot follow anyone who walks backwards, and nobody knows why.",
+    "song": "It is drawn by one particular sound (a hum, a bell, a kettle whistle, a lullaby) and goes quiet when the sound stops.",
+    "borrow": "It borrows: each time it wears something that belonged to its last victim, a coat, a voice, a way of walking.",
+    "slow": "It is terribly slow, and it has never once failed to arrive.",
+    "invite": "It can only enter after it is invited, and it asks politely, in a kind voice, again and again.",
+    "swap": "Each night it changes one small detail (a clock runs backwards, a door opens the wrong way), and the details tell the narrator how close it is.",
+    "once": "It belongs to one single night of the year, and the narrator has been counting the days.",
+    "lonely": "It is not hunting. It is lonely, and it cannot understand why people scream.",
+    "smell": "People smell it first: smoke, wet pennies, sweet lilies, burnt hair. The smell is the only reliable clock.",
+    "mark": "Wherever it has stood the ground is changed: grass turns white, water goes black, stones are warm. Anyone can follow the marks.",
+    "hour": "It appears at one exact hour and is gone at the next, so everybody knows when to stay indoors.",
+    "blind": "It is blind and hunts only by the sound of a heartbeat, so someone who stays perfectly calm can walk past it.",
+    "chorus": "It speaks in a chorus of many different voices, and each voice belongs to someone who is missing.",
+    "age": "Everything it touches ages: milk sours, metal rusts, hair turns white.",
+}
+STRANGE_MOVES = {
+    "glide": "It never walks. It glides a hand's width above the ground, with no sound and no wind.",
+    "flicker": "It appears closer every time the lights flicker, and never moves while they stay on.",
+    "jerk": "It moves in jerks, like a film with missing frames.",
+    "pour": "It pours itself under doors and through gaps, then gathers back into shape.",
+    "smoke": "It drifts like smoke and sways as if it were underwater.",
+    "roll": "It rolls and tumbles towards the victim instead of walking.",
+    "rise": "It rises slowly out of the ground, and sinks back at dawn.",
+    "pulse": "It pulses in time with the narrator's own heartbeat.",
+    "hang": "It hangs from above (a ceiling, a branch, the underside of a bridge) and drops without warning.",
+    "stain": "It spreads outward like a stain, slowly covering the ground.",
+    "shadowhop": "It leaps from shadow to shadow and never crosses a lit place.",
+    "distance": "It follows at exactly the same distance, whatever the narrator does.",
+    "bloom": "It opens slowly and beautifully before it strikes.",
+    "tide": "It flows in a wave, its whole body moving like a tide of small pieces.",
+}
+STRANGE_SHAPES = {
+    "countdown": "Tell it as a countdown: every sentence is one step nearer, and the clock or the count is in the narration.",
+    "late": "The narrator learns the creature's rule one sentence too late. The last sentence shows what the rule would have saved.",
+    "recording": "It is a recording, a diary or a voicemail found afterwards, and the last line is cut off.",
+    "lullaby": "Tell it like a lullaby or nursery rhyme that has become horribly literal.",
+    "only_one": "The narrator is the only one who can see it. Everybody else is calm, and that is the horror.",
+    "bargain": "A bargain: the narrator trades something small to hold it off, and each night it asks for more.",
+    "kind": "It starts as something kind, helpful or beautiful. The horror is the slow change.",
+    "report": "A calm, matter-of-fact report from someone with a plain job (a guard, a ferryman, a meter reader).",
+    "child": "Seen through a child's eyes, described in simple, exact, innocent words.",
+    "guide": "A local tells a visitor about it, and the visitor slowly realises they are already inside the story.",
+    "discovery": "Slow discovery: each sentence reveals one more strange fact, and the last one explains all the others.",
+    "rescue": "A rescue that goes wrong: someone goes in after a lost person and finds something has been feeding them hope.",
+    "tender": "A quiet, sad story about something that is not evil at all, with one chilling moment.",
+    "game": "A game or ritual that children play, whose rules turn out to be real.",
+}
+STRANGE_TONES = {
+    "quiet": "creeping dread, very quiet",
+    "field": "cold and factual, like a field report",
+    "sad": "tender and sad",
+    "breathless": "frantic and breathless",
+    "dream": "dreamlike and slow",
+    "dark_humour": "darkly funny in one place, and then the laugh dies",
+    "bedtime": "calm, like a bedtime story",
+    "awe": "awe: the creature is beautiful as well as terrible",
+}
+# bodies with no legs, hands or wings, and where they fit
+STRANGE_BODIES = ("swarm", "tendril", "orb", "bloom")
+BODY_DESC = {"swarm": "a human-shaped cloud of thousands of insects, with a hollow face, glowing eyes and no solid body at all",
+             "tendril": "a floating mass of flesh with one huge eye, a ring of teeth for a mouth and many trailing tentacles; no legs, no arms, no wings",
+             "orb": "a giant floating bloodshot eyeball with a toothed mouth and trailing nerves; no body at all",
+             "bloom": "a giant flower on a stem, its face made of many eyes and a ring-toothed mouth, with root-vines that crawl; no legs and no arms"}
+NATURE_STRANGE = {"sea": ("tendril", "orb"), "lake": ("tendril", "orb", "bloom"), "storm": ("orb", "swarm"), "tsunami": ("tendril",),
+                  "titan": ("orb",)}
+PRE_STRANGE = {"meteor": ("orb", "tendril", "swarm", "bloom")}      # something from another world may look like anything
+
+
+_DEALS = {}
+
+
+def _deal(options, salt, c):
+    """Round number c of the deal. A round starts with cards that were NOT among the last few cards of the round before."""
+    rounds = _DEALS.setdefault((tuple(options), salt), [])
+    k = len(options)
+    g = max(1, min(4, k // 4))
+    while len(rounds) <= c:
+        r = len(rounds)
+        for attempt in range(80):
+            o = list(options)
+            random.Random(salt * 100003 + r * 7919 + attempt * 31 + 17).shuffle(o)
+            if r == 0 or set(o[:g]).isdisjoint(rounds[-1][-g:]):
+                break
+        rounds.append(o)
+    return rounds[c]
+
+
+def cycle_pick(options, n, salt=0):
+    """Item number n of an endless, non-repeating deal: every option is used once per round, the order is reshuffled each round,
+    and a card never comes back until at least a few other cards have been played."""
+    options = list(options)
+    if len(options) < 2:
+        return options[0]
+    c, i = divmod(max(0, int(n)), len(options))
+    return _deal(options, salt, c)[i]
+
+
+def strange_pack(n):
+    """The four choices for episode number n of one series."""
+    return {"rule": cycle_pick(STRANGE_RULES, n, 1), "move": cycle_pick(STRANGE_MOVES, n, 2),
+            "shape": cycle_pick(STRANGE_SHAPES, n, 3), "tone": cycle_pick(STRANGE_TONES, n, 4)}
+
+
+def strange_text(pack, parts=("rule", "move", "shape", "tone"), body_text=""):
+    """The block of the story prompt that makes this episode different from every other one."""
+    if not pack:
+        return ""
+    lines = []
+    if "rule" in parts:
+        lines.append(f"- THE STRANGE RULE: {STRANGE_RULES[pack['rule']]}")
+    if "move" in parts:
+        lines.append(f"- HOW IT MOVES AND BEHAVES: {STRANGE_MOVES[pack['move']]}")
+    if "shape" in parts:
+        lines.append(f"- HOW TO TELL IT: {STRANGE_SHAPES[pack['shape']]}")
+    if "tone" in parts:
+        lines.append(f"- TONE OF VOICE: {STRANGE_TONES[pack['tone']]}")
+    if body_text:
+        lines.append(f"- THE CREATURE'S BODY: {body_text}")
+    return ("\nTHIS EPISODE'S STRANGENESS. Build the story around these choices so that no two episodes feel alike. "
+            "Bend them to fit the setting if you must, but keep their idea. Do NOT fall back on 'it chases someone and bites them'. "
+            "Describe the creature's face or body clearly in ONE sentence, so that a listener can picture it.\n" + "\n".join(lines) + "\n")
+
+
 # Modern, first-person horror that happens indoors. Each one: (premise, the scenes that tend to fit it)
 MODERN_TYPES = {
     "mimic": ("The narrator hears a loved one (a mother, a husband, a child, a friend) calling from outside or from another room, but "
@@ -2625,7 +2836,11 @@ BODY_HINT = ("beast = a four-legged hunting predator (dog, wolf, bear or bull-li
              "hollow = a far too tall, faceless pale man in a dark suit with a thin grin; "
              "djinn = a smoke genie with horns and a burning grin (only for lamp stories); "
              "dragon = a winged dragon with horns, a long neck and tail, breathing fire (fits volcano, storm, mountain and legend stories); "
-             "theropod = a hulking T-rex-like dinosaur monster with a huge head and tiny arms (fits titan and prehistoric stories)")
+             "theropod = a hulking T-rex-like dinosaur monster with a huge head and tiny arms (fits titan and prehistoric stories); "
+             "swarm = a human-shaped cloud of thousands of insects with a hollow face, glowing eyes and no solid body at all; "
+             "tendril = a floating mass of flesh with one huge eye, a ring of teeth for a mouth and many trailing tentacles, no legs, no arms, no wings; "
+             "orb = a giant floating bloodshot eyeball with a toothed mouth and trailing nerves, no body at all; "
+             "bloom = a giant flower on a stem with a face of many eyes, a ring-toothed mouth, and root-vines that crawl, no legs and no arms")
 
 
 # How the monster comes into the world. The key is also the kind of sign drawn in the sky.
@@ -2691,9 +2906,18 @@ def folk_variety(history):
         bodies = ["djinn"]
     elif "djinn" in bodies:
         bodies = [b for b in bodies if b != "djinn"] or ["hollow"]
+    # most episodes get a body that is not an animal shape at all (no legs, hands or wings): an eye, a swarm, a flower, a drifting mass
+    n_ep = len(past)
+    strange_body = False
+    if stype != "lamp" and cycle_pick(("strange", "classic", "strange", "classic", "strange"), n_ep, 9) == "strange":
+        pool_ = PRE_STRANGE.get(stype) if fmt == "prehistoric" else NATURE_STRANGE.get(stype) if stype in NATURE_BODIES else STRANGE_BODIES
+        if pool_:
+            fresh = [b for b in pool_ if b not in recent("body", 2)] or list(pool_)
+            bodies, strange_body = [cycle_pick(fresh, n_ep, 11)], True
     return {"format": fmt, "origin": random.choice(origins), "type": stype, "hook": random.choice(HOOKS), "ending": random.choice(ENDINGS),
             "bodies": bodies, "palettes": palettes, "region": random.choice(regions),
-            "legends": [p["legend"] for p in past if p["legend"]]}
+            "legends": [p["legend"] for p in past if p["legend"]],
+            "strange": strange_pack(n_ep), "strange_body": strange_body}
 
 
 def ask_folklore(history):
@@ -2707,17 +2931,25 @@ def ask_folklore(history):
         return ask_modern(var)
     plot, scene_hint = STORY_TYPES[var["type"]]
     origin_text, origin_roles = ORIGINS[var["origin"]]
+    log(f"Strangeness: body {var['bodies'][0] if len(var['bodies']) == 1 else 'free'} | rule {var['strange']['rule']} | move {var['strange']['move']} | shape {var['strange']['shape']} | tone {var['strange']['tone']}")
+    if var.get("strange_body"):
+        legend_line = (f"The creature is NOT an animal: it is {BODY_DESC[var['bodies'][0]]}. Base the story on a real local folk belief from {region} if one "
+                       f"truly fits it; if none does, invent an old local tale in the style of {region}, with a local-sounding name, and tell it as "
+                       f"\"the old tales say\".")
+    else:
+        legend_line = f"Pick one real, well-known legend of shapeshifting or a night creature from: {region}."
+    strange = strange_text(var["strange"], body_text=BODY_DESC.get(var["bodies"][0], "") if var.get("strange_body") else "")
     prompt = f"""You write narration for 40-second YouTube Shorts that retell DARK FOLKLORE: old legends about
 people who turn into animals or creatures that follow travellers at night.
 
-Pick one real, well-known legend of shapeshifting or a night creature from: {region}.
+{legend_line}
 Do not reuse these legends: {used or "none yet"}.
 The story must follow this plot shape: {plot}
 HOW THE MONSTER ENTERS THE WORLD (the sign, and the heart of this story): {origin_text}
 Characters who fit: {origin_roles}. Show this sign in the story as its own moment, early (sentence 2 or 3).
 Scenes that tend to fit this shape (use your own judgement): {scene_hint}.
 Ending: {var["ending"]}.
-
+{strange}
 Return ONLY valid JSON, no markdown, in exactly this shape:
 {{
   "legend_name": "the name of the legend or creature, 1 to 3 words",
@@ -2887,6 +3119,8 @@ def ask_modern(var):
              "danger is as big as the landscape" if nature else
              "in a normal present-day home or building, or somewhere close to one")
     last_scene = "giant" if nature else "jump"
+    log(f"Strangeness: body {var['bodies'][0] if len(var['bodies']) == 1 else 'free'} | rule {var['strange']['rule']} | move {var['strange']['move']} | shape {var['strange']['shape']} | tone {var['strange']['tone']}")
+    strange = strange_text(var["strange"], body_text=BODY_DESC.get(var["bodies"][0], "") if var.get("strange_body") else "")
     prompt = f"""You write narration for 40-second YouTube Shorts: original, modern, FIRST-PERSON horror stories told by someone
 who lived through it, set {where}. They are fiction.
 
@@ -2894,7 +3128,7 @@ Story shape: {plot}
 Use the time {time_hint} as the exact minute when it happens (you may pick another time if it fits better).
 Do not reuse these names or ideas: {used or "none yet"}.
 Ending: {var["ending"]}.
-
+{strange}
 Make it concrete and specific, not generic: a believable narrator (age, job), real small details (what was said by the
 police, the day it started, the sound, an object that does not belong), and one detail that turns cold in the last line.
 
@@ -3031,12 +3265,17 @@ def ask_prehistoric(var):
     plot, stages, steps = PRE_TYPES[var["type"]]
     body = var["bodies"][0]
     steps_text = "\n".join(f"  {i + 1}. {t}" for i, t in enumerate(steps))
+    log(f"Strangeness: body {body} | rule {var['strange']['rule']} | move {var['strange']['move']} | tone {var['strange']['tone']}")
+    pre_extra = strange_text(var["strange"], parts=("rule", "move", "tone"), body_text=BODY_DESC.get(body, ""))
+    if body in BODY_DESC:        # a creature from another world: the story must describe it as it is drawn
+        pre_extra += (f"IMPORTANT: the new predator is NOT a dinosaur or a dragon. It is {BODY_DESC[body]}. In the sentences that show it, describe it "
+                      f"exactly like that, and never give it legs, claws, wings or a tail.\n")
     prompt = f"""You write narration for 40-second YouTube Shorts: original PREHISTORIC HORROR stories set in the age of the dinosaurs,
 told by a calm storyteller in the third person, past tense. They are fiction, not science.
 
 Story shape: {plot}
 Do not reuse these names or ideas: {used or "none yet"}.
-
+{pre_extra}
 Write EXACTLY {len(steps)} sentences, one for each step below and in this order:
 {steps_text}
 
@@ -3120,6 +3359,7 @@ ATTACK_WORDS = ("attack", "lunge", "pounc", "tore", "torn", "bit ", "bite", "blo
                 "scream", "slash", "mauled", "ripped", "snatched", "never seen again", "claws")
 
 
+SCENE_NAME = {"chase": "person_chase"}   # folk stories: a person runs and the monster gives chase (the plain chase_scene is the hybrid animal hunt)
 SCENE_FUNCS = ("dig", "fly", "bedroom", "stairs", "basement", "hallway", "cctv", "jump", "hook", "footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
                "omen", "pov", "mpov", "curtain", "shoulder", "loom", "emerge", "swirl", "abyss", "dawn", "hosts")
 CAMERA_SCENES = ("pov", "mpov", "curtain", "shoulder", "loom")
@@ -4437,7 +4677,7 @@ def build_folk_main(plan):
             if beat == "valley":  # the wide view of the valley, used as an establishing cutaway
                 w.push, w.pull = (0.0, 0.18) if sh["variant"] == "pull" else (0.18, 0.0)
             hits[j] = toon.INSERT_FUNCS[beat](out, dur, w, cur, cwd=WORK).get("hits", [])
-        elif (not modern) and veil == 0.0 and beats[i] not in ("attack", "jump") and dur >= 3.0 and re.search(toon.ANATOMY_RX, sentences[i].get("text", "").lower()):
+        elif (not modern) and veil == 0.0 and beats[i] not in ("attack", "jump") and dur >= 3.0 and toon.has_bones(creature_v) and re.search(toon.ANATOMY_RX, sentences[i].get("text", "").lower()):
             _an = toon.anatomy_scene(out, dur, w, creature_v, cwd=WORK)           # the narration talks about the body: show what is inside it
             ANATOMY_LOG.append(i)
         elif veil == 0.0 and dur >= 2.8 and beats[i] not in ("attack", "jump") \
@@ -4451,7 +4691,7 @@ def build_folk_main(plan):
                 tail_ = (locals().get("tail", 0.45) if lead else 0.45)
                 JUMP_FRAC[j] = min(0.88, max(0.45, (dur - tail_ + 0.35) / dur))
                 toon.JUMP_CUT[0] = JUMP_FRAC[j]
-            hits[j] = getattr(toon, beat + "_scene")(out, dur, w, cur, cwd=WORK).get("hits", [])
+            hits[j] = getattr(toon, SCENE_NAME.get(beat, beat) + "_scene")(out, dur, w, cur, cwd=WORK).get("hits", [])
             toon.JUMP_CUT[0] = None
         elif beat == "attack":
             toon.PAUSE_REMAIN[0] = (PAUSES[i] + 0.1) if i in PAUSES and not sh.get("insert") else None
@@ -4467,7 +4707,7 @@ def build_folk_main(plan):
         elif beat == "omen" and not (i == 0 or last):
             hits[j] = toon.omen_scene(out, dur, w, cur, cwd=WORK).get("hits", [])
         elif beat in SCENE_FUNCS and not (i == 0 or last):
-            hits[j] = getattr(toon, beat + "_scene")(out, dur, w, cur, cwd=WORK).get("hits", [])
+            hits[j] = getattr(toon, SCENE_NAME.get(beat, beat) + "_scene")(out, dur, w, cur, cwd=WORK).get("hits", [])
         else:
             outro = (cur, min(1.6, dur * 0.6)) if last else None
             toon.folk_scene(out, dur, w, cur, g0, g1, intro=intro, outro=outro,
@@ -4666,6 +4906,8 @@ def build_with_story_fit(builder):
             plan_file = PLAN_DIR / "plan.json"
             plan = json.loads(plan_file.read_text())
             sents = plan["story"]["sentences"]
+            nw = sum(len(x["text"].split()) for x in sents)
+            log(f"Story length now: {nw} words, {e.speech:.1f}s of speech ({e.speech / max(nw, 1):.2f} s per word; a healthy voice is about 0.6 to 0.7), room {e.room:.1f}s.")
             new = shorten_story_texts(sents, e.speech, e.room)
             plan["story"]["sentences"] = new
             plan_file.write_text(json.dumps(plan, indent=1))
@@ -4710,7 +4952,9 @@ def plan_main():
         prof = toon.design_profile(gd, f"{a}-{b}")
         log(f"Design: {prof['silhouette']} | {prof['locomotion']} | difference from earlier hybrids: {gd['fp_distance']}")
         design_text = "; ".join(toon.describe(gd)) + ". It moves: " + toon.describe_move(gd) + "."
-        story = ask_gemini(a, b, place_name, design_text)
+        _sp = strange_pack(episode - 1)
+        log(f"Strangeness: rule {_sp['rule']} | tone {_sp['tone']}")
+        story = ask_gemini(a, b, place_name, design_text, strange=_sp)
         designs.append(toon.designs_to_json(gd))
         DESIGNS_FILE.write_text(json.dumps(designs, indent=1))
         plan = {"series": "hybrid", "key": key, "a": a, "b": b, "place": list(place), "story": story,
