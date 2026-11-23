@@ -1,298 +1,104 @@
 {
- "series": "hybrid",
- "key": "crocodile+snake@the Sahara desert",
- "a": "crocodile",
- "b": "snake",
- "place": [
-  "the Sahara desert",
-  "endless sand dunes under a blazing sun",
-  "desert wind",
-  "harsh golden afternoon sunlight with long shadows",
-  "warm"
- ],
+ "series": "folklore",
+ "key": "folk:wolf:The Glass Hound|stalker|knock|teal|A house in Leeds, 2:48 AM|",
+ "episode": 31,
  "story": {
-  "title": "The Sand Crocodile That Slithers Through Dunes",
-  "creature_name": "Serpucroc",
-  "prey": "Fennec fox",
-  "signature_move": "It crawls low like a snake, then explodes forward to pin the fox with short, sprawling legs.",
-  "hybrid_look": "A long, low, armoured body and a crocodile-shaped head with snake's eyes move smoothly on short, sprawling legs, blending bony scutes with a tapering snake tail.",
+  "legend_name": "The Glass Hound",
+  "region": "A house in Leeds, 2:48 AM",
+  "time": "2:48",
+  "animal": "wolf",
+  "title": "The Knocking Inside the Walls at 2:48",
+  "narrator": {
+   "gender": "male",
+   "persona": "a night-shift locksmith telling it a year later"
+  },
+  "hero": "traveller",
+  "people": "alone",
+  "monster": {
+   "body": "stalker",
+   "palette": "teal",
+   "eyes": "violet",
+   "size": "medium",
+   "horn": null,
+   "spine": "none",
+   "eye_count": "2"
+  },
   "sentences": [
    {
-    "text": "It swallows boiling sand and emerges hungry.",
-    "image": "scorched and cracked yellow desert earth under a blinding afternoon sun",
-    "action": "walk",
+    "text": "In our town, the old people say three knocks at midnight mean the dead are testing the latch.",
+    "beat": "door",
+    "delivery": "calm",
     "speaker": "narrator",
+    "voice": "",
     "frame": false
    },
    {
-    "text": "The serpucroc is an imaginary hybrid combining a crocodile's tough armour with a snake's tapering tail.",
-    "image": "vast and silent dunes rolling toward a pale, distant horizon",
-    "action": "turn",
+    "text": "Every single night at exactly two forty-eight, heavy fist blows echo from my front door.",
+    "beat": "hallway",
+    "delivery": "hushed",
     "speaker": "narrator",
+    "voice": "",
     "frame": false
    },
    {
-    "text": "When a severe drought bakes the Sahara, the heat turns brutal.",
-    "image": "a shimmering heat haze blurring the distant rocky mountain ridges",
-    "action": "walkback",
+    "text": "I checked the peephole last week, and the porch light showed only an empty mat.",
+    "beat": "window",
+    "delivery": "trembling",
     "speaker": "narrator",
+    "voice": "",
     "frame": false
    },
    {
-    "text": "We should have turned back.",
-    "image": "a solitary weathered acacia tree casting a tiny, useless shadow",
-    "action": "face",
-    "frame": true,
-    "speaker": "narrator"
-   },
-   {
-    "text": "The crocodile half slows its metabolism to endure the lack of water.",
-    "image": "a dry riverbed of sharp white salt flats stretching endlessly",
-    "action": "footprints",
+    "text": "Tonight the wet thuds came from inside the living room wallpaper.",
+    "beat": "curtain",
+    "delivery": "urgent",
     "speaker": "narrator",
+    "voice": "",
     "frame": false
    },
    {
-    "text": "Wait, WHAT?!",
-    "speaker": "host",
-    "image": "a dramatic view of the Sahara desert",
-    "action": "",
+    "text": "My terrified brother whispered from the dark hallway, Open it.",
+    "beat": "hallway",
+    "delivery": "whisper",
+    "speaker": "person",
+    "voice": "man",
     "frame": false
    },
    {
-    "text": "Meanwhile, the snake half burrows smoothly beneath the dunes to escape the scorching heat.",
-    "image": "rolling dunes of deep red sand glowing under a heavy, dusty wind",
-    "action": "hunt",
-    "speaker": "narrator",
+    "text": "Open it.",
+    "beat": "hallway",
+    "delivery": "shout",
+    "speaker": "mimic",
+    "voice": "man",
     "frame": false
    },
    {
-    "text": "It crawls low, then explodes forward to catch a resting fennec fox.",
-    "image": "a rocky desert plateau shadowed by dark, threatening storm clouds",
-    "action": "feed",
+    "text": "It's me! Open the door!",
+    "beat": "hallway",
+    "setting": null,
+    "delivery": "hushed",
+    "speaker": "mimic",
+    "voice": "man"
+   },
+   {
+    "text": "When I looked in the hall mirror, I saw it tumbling sideways across the floorboards like a boneless wolf with violet eyes.",
+    "beat": "mirror",
+    "delivery": "dread",
     "speaker": "narrator",
+    "voice": "",
     "frame": false
    },
    {
-    "text": "Yet, freezing desert nights leave its cold-blooded joints stiff, and a simple pebble can jam its scutes. What should I combine next? Tell me in the comments.",
-    "image": "a cold, starless night sky hanging over dark, silent sand hills",
-    "action": "face",
+    "text": "Would you have stayed in that room?",
+    "beat": "jump",
+    "delivery": "sorrow",
     "speaker": "narrator",
+    "voice": "",
     "frame": false
    }
   ],
-  "format": "When the habitat changes"
- },
- "episode": 35,
- "design": {
-  "hybrid": true,
-  "parents": [
-   "crocodile",
-   "snake"
-  ],
-  "dominant": "crocodile",
-  "secondary": "snake",
-  "dom_weight": 0.88,
-  "torso": [
-   "tube",
-   480.44888347719353,
-   87.06417666763568,
-   0.0
-  ],
-  "arch": 0.0,
-  "legs": [
-   "sprawl",
-   4,
-   82.1826606036653,
-   33.59094713777149
-  ],
-  "foot": "webbed",
-  "gait": "sprawl",
-  "legs_from": "crocodile",
-  "arms": null,
-  "head": {
-   "skull": [
-    47.08843904199204,
-    37.67075123359363
-   ],
-   "snout": [
-    "snout",
-    147.39999999999998,
-    31.2,
-    28.4,
-    0.0
-   ],
-   "teeth": "rows",
-   "ears": [
-    "none",
-    0
-   ],
-   "eyes": "slit",
-   "brow": 0.2,
-   "extras": [
-    "nostril_bump"
-   ],
-   "eyecol": [
-    240,
-    200,
-    40
-   ]
-  },
-  "neck": [
-   13.92957566064901,
-   0.0
-  ],
-  "neck_bow": 0.12,
-  "tail": "taper",
-  "tail_len": 0.9150858680458386,
-  "wings": null,
-  "wingfly": false,
-  "shell": null,
-  "dorsal": [
-   "osteoderm"
-  ],
-  "skin": "scutes",
-  "skin2": "scales",
-  "pal": [
-   [
-    96,
-    131,
-    67
-   ],
-   [
-    56,
-    76,
-    40
-   ],
-   [
-    192,
-    191,
-    131
-   ]
-  ],
-  "pat": "diamond",
-  "hover": 0,
-  "temper": "cold",
-  "glow": false,
-  "ribs": false,
-  "cracks": false,
-  "strike": "snap",
-  "sig": [
-   "osteoderm",
-   "a prominent osteoderm"
-  ],
-  "sigscale": {
-   "osteoderm": 1.3
-  },
-  "donors": {
-   "body": "crocodile",
-   "legs": "crocodile",
-   "head": "crocodile",
-   "face": "snake",
-   "mouth": "crocodile",
-   "tail": "snake",
-   "skin": "crocodile",
-   "palette": [
-    "crocodile",
-    "snake"
-   ]
-  },
-  "flies": false,
-  "words": {},
-  "name": "crocodile-snake",
-  "fingerprint": {
-   "prof": "tube",
-   "pitch": 0,
-   "L": 4,
-   "H": 1,
-   "legs": "sprawl",
-   "nlegs": 4,
-   "legh": 1,
-   "neck": 0,
-   "snout": "snout",
-   "snoutl": 2,
-   "teeth": "rows",
-   "ears": "none",
-   "eyes": "slit",
-   "tail": "taper",
-   "wings": "none",
-   "shell": "none",
-   "dorsal": "osteoderm",
-   "skin": "scutes",
-   "skin2": "scales",
-   "pat": "diamond",
-   "hue": 3,
-   "light": 1,
-   "gait": "sprawl",
-   "hover": false,
-   "arms": "none",
-   "extras": "nostril_bump"
-  },
-  "fp_distance": 99.0,
-  "attempt": 0
- },
- "profile": {
-  "hybrid_name": "crocodile-snake",
-  "parent_a": "crocodile",
-  "parent_b": "snake",
-  "dominant_parent": "crocodile",
-  "dominant": [
-   "crocodile body structure"
-  ],
-  "secondary": [
-   "snake eyes and face details",
-   "snake tail"
-  ],
-  "proportions": "tube torso, 480x87, horizontal posture, neck 13, legs sprawl x4",
-  "head": "a crocodile-shaped head and the snake's eyes",
-  "limbs": "sprawl x4",
-  "texture": "scutes body, scales limbs and tail",
-  "colour": {
-   "main": [
-    96,
-    131,
-    67
-   ],
-   "accent": [
-    56,
-    76,
-    40
-   ],
-   "belly": [
-    192,
-    191,
-    131
-   ],
-   "pattern": "diamond"
-  },
-  "silhouette": "tube-taper-osteoderm",
-  "locomotion": "crawls low, then explodes forward",
-  "gait": "sprawl",
-  "hovers": false,
-  "signature_ability": "snap",
-  "temperament": "cold",
-  "signature_feature": "a prominent osteoderm",
-  "summary": [
-   "a long, low, armoured body (from the crocodile)",
-   "a crocodile-shaped head and the snake's eyes",
-   "short, sprawling legs (from the crocodile)",
-   "a tapering tail (from the snake)",
-   "a back with osteoderm",
-   "bony scutes in tough rows mixed with scales texture"
-  ]
- },
- "clips": [
-  {
-   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in the Sahara desert: endless sand dunes under a blazing sun. A long, low, armoured body and a crocodile-shaped head with snake's eyes move smoothly on short, sprawling legs, blending bony scutes with a tapering snake tail. It is menacing and dominant."
-  },
-  {
-   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In endless sand dunes under a blazing sun, the same hybrid creature goes after Fennec fox. It crawls low like a snake, then explodes forward to pin the fox with short, sprawling legs.. Fast, powerful movement, camera follows the action. A long, low, armoured body and a crocodile-shaped head with snake's eyes move smoothly on short, sprawling legs, blending bony scutes with a tapering snake tail."
-  },
-  {
-   "title": "Clip 3 - the close-up (plays at the end)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. A long, low, armoured body and a crocodile-shaped head with snake's eyes move smoothly on short, sprawling legs, blending bony scutes with a tapering snake tail."
-  }
- ]
+  "story_type": "knock",
+  "format": "modern",
+  "origin": ""
+ }
 }
