@@ -1305,7 +1305,37 @@ def _hills(rnd, width, base, amp, period_w):
 
 
 # ---------------------------------------------------------------- signs in the sky (how the monster arrives)
-def sky_effects(im, fx, t, sun):
+AURORA_COLS = {"green": ((70, 255, 150), (110, 120, 255), (70, 230, 225)), "red": ((255, 45, 70), (215, 35, 120), (255, 120, 70)),
+               "violet": ((170, 90, 255), (90, 110, 255), (230, 90, 200)), "blue": ((80, 150, 255), (70, 230, 235), (130, 110, 255)),
+               "gold": ((255, 200, 70), (255, 120, 60), (240, 240, 120))}
+
+
+def _aurora(im, t, color="green", strength=1.0):
+    """Northern-lights curtains: smooth glowing ribbons with a bright lower edge that fades upwards and drifting rays.
+    Drawn small and scaled up, so it is soft; the colour can be anything the story says (crimson lights are crimson)."""
+    import numpy as np
+    cols = AURORA_COLS.get(color, AURORA_COLS["green"])
+    W_, H_ = im.size
+    gw, gh = max(8, W_ // 8), max(8, H_ // 8)
+    xs = np.linspace(0, 1, gw, dtype=np.float32)[None, :]
+    ys = np.linspace(0, 1, gh, dtype=np.float32)[:, None]
+    rgb = np.zeros((gh, gw, 3), np.float32)
+    al = np.zeros((gh, gw), np.float32)
+    for j, c in enumerate(cols):
+        base = 0.14 + 0.065 * j + 0.045 * np.sin(xs * 5.5 + t * 0.55 + j * 1.9) + 0.02 * np.sin(xs * 15 + t * 1.1 + j)
+        dy = base - ys                                                       # above the bright edge
+        band = np.where(dy >= 0, np.exp(-np.maximum(dy, 0) / 0.13), np.exp(np.minimum(dy, 0) / 0.012))
+        rays = 0.62 + 0.38 * np.sin(xs * 70 + j * 2.1 + 1.4 * np.sin(t * 0.8 + xs * 6)) ** 2
+        a = band * rays * (0.62 if j == 0 else 0.5) * strength
+        rgb += a[..., None] * np.array(c, np.float32)
+        al += a
+    col = rgb / np.maximum(al[..., None], 1e-3)
+    lay = Image.fromarray(np.clip(col, 0, 255).astype(np.uint8)).resize((W_, H_), Image.BICUBIC)
+    mask = Image.fromarray(np.clip(al * 140, 0, 215).astype(np.uint8)).resize((W_, H_), Image.BICUBIC)
+    im.paste(lay, mask=mask)
+
+
+def sky_effects(im, fx, t, sun, aurora="green"):
     d = ImageDraw.Draw(im, "RGBA")
     sx, sy, sr = sun
     if fx == "meteors":
@@ -1323,10 +1353,7 @@ def sky_effects(im, fx, t, sun):
         for r, a in ((60, 40), (36, 90), (18, 230)):
             d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(235, 250, 255, a))
     elif fx == "aurora":
-        for j, c in enumerate(((60, 255, 150), (120, 100, 255), (60, 220, 230))):
-            top = [(x, 260 + j * 90 + 60 * math.sin(x * 0.006 + t * 0.7 + j) + 26 * math.sin(x * 0.017 + t * 1.3)) for x in range(0, W + 60, 60)]
-            for x, y in top:
-                d.polygon([(x, y), (x + 60, y), (x + 60, y + 260), (x, y + 260)], fill=c + (26,))
+        _aurora(im, t, aurora, 0.8)
     elif fx == "ufo":
         for k, (ux, uy, us) in enumerate(((sx - 80, 330, 1.0), (240, 190, 0.45), (900, 250, 0.4))):
             uy += 12 * math.sin(t * 1.3 + k)
@@ -1380,6 +1407,76 @@ def lightning_bolt(d, x, k, seed=1):
     d.line(pts, fill=(245, 248, 255, 255), width=9)
 
 
+# ---------------------------------------------------------------- background quality
+# The backgrounds are made once per scene, so they can afford to be drawn big and shrunk (smooth, anti-aliased edges),
+# opened up in the shadows, brightened and given local contrast ("clarity") before any frame is rendered.
+SS = 2                                                                       # background layers are drawn at 2x and shrunk
+BG_TONE = {"shadows": 0.62, "bright": 1.12, "clarity": 0.60, "sharp": 0.9}
+
+
+class _SSDraw:
+    """Looks like an ImageDraw but draws at SS times the size, so a picture shrunk afterwards has smooth edges."""
+
+    def __init__(self, d, s):
+        self.d, self.s = d, s
+
+    def _pts(self, pts):
+        s = self.s
+        if pts and isinstance(pts[0], (int, float)):
+            return tuple(v * s for v in pts)
+        return [(x * s, y * s) for x, y in pts]
+
+    def polygon(self, pts, fill=None, outline=None):
+        self.d.polygon(self._pts(pts), fill=fill, outline=outline)
+
+    def rectangle(self, box, fill=None, outline=None, width=1):
+        self.d.rectangle(self._pts(box), fill=fill, outline=outline, width=max(1, int(round(width * self.s))))
+
+    def rounded_rectangle(self, box, radius=0, fill=None, outline=None, width=1):
+        self.d.rounded_rectangle(self._pts(box), radius=radius * self.s, fill=fill, outline=outline, width=max(1, int(round(width * self.s))))
+
+    def ellipse(self, box, fill=None, outline=None, width=1):
+        self.d.ellipse(self._pts(box), fill=fill, outline=outline, width=max(1, int(round(width * self.s))))
+
+    def line(self, pts, fill=None, width=1):
+        self.d.line(self._pts(pts), fill=fill, width=max(1, int(round(width * self.s))))
+
+    def arc(self, box, start, end, fill=None, width=1):
+        self.d.arc(self._pts(box), start, end, fill=fill, width=max(1, int(round(width * self.s))))
+
+
+def _lum01(c):
+    c = rgb(c) if isinstance(c, str) else c
+    return (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) / 255.0
+
+
+def bg_polish(img, ambient, need=1.0, clarity=True):
+    """Open up the shadows (they pick up the scene's own ambient colour, like real shadow fill), brighten, and add
+    local contrast and crisp detail. need: 1 for a dark scene, less for one that is already bright."""
+    k = BG_TONE
+    has_a = img.mode == "RGBA"
+    arr = np.asarray(img, dtype=np.float32)
+    col = arr[..., :3]
+    if clarity and need > 0.05:
+        pic = Image.fromarray(np.clip(col, 0, 255).astype(np.uint8))
+        pic = pic.filter(ImageFilter.UnsharpMask(radius=26, percent=int(120 * k["clarity"] * need), threshold=0))     # local contrast
+        pic = pic.filter(ImageFilter.UnsharpMask(radius=1.3, percent=int(130 * k["sharp"] * max(need, 0.5)), threshold=2))   # crisp fine detail
+        col = np.asarray(pic, dtype=np.float32)
+    lum = (col @ np.array([0.299, 0.587, 0.114], dtype=np.float32)) / 255.0
+    dk = (1.0 - np.clip(lum, 0, 1)) ** 2.4
+    amb = np.asarray(ambient, dtype=np.float32)
+    amb = amb / max(1.0, float(amb.max())) * 0.8 + 0.2                          # a tint, never pure black or one-colour
+    sh = k["shadows"] * need
+    col = col * (1.0 + sh * 0.95 * dk[..., None]) + amb[None, None, :] * (sh * 46.0) * dk[..., None]
+    col = col * (1.0 + (k["bright"] - 1.0) * need)
+    col = np.where(col > 215, 215 + (col - 215) * 0.6, col)                     # a soft shoulder, so highlights do not burn
+    out = np.clip(col, 0, 255).astype(np.uint8)
+    if has_a:
+        out = np.dstack([out, arr[..., 3].astype(np.uint8)])
+        return Image.fromarray(out, "RGBA")
+    return Image.fromarray(out)
+
+
 class World:
     PW = 2160  # the repeating width of the scrolling layers
 
@@ -1390,6 +1487,7 @@ class World:
         self.storm = weather.get("storm", self.st.get("storm", False))
         self.push, self.shake, self.tilt, self.focus_y = 0.0, 0.0, 0.0, 0.62
         self.skyfx = weather.get("sky")
+        self.aurora = weather.get("aurora", "green")
         fx = self.skyfx
         sr = 85
         if fx == "fullmoon":
@@ -1454,11 +1552,28 @@ class World:
                     d.ellipse((sx + ox - rr, 520 + oy - rr, sx + ox + rr, 520 + oy + rr), fill=mix(c, st["sky"][0], 0.10))
         self.sun_xy = (sx, 520, sr)
         if st.get("stars") or st["sky"][0] in ("#05060f", "#000000", "#2f3e25", "#3a0d0d", "#0a1030"):
+            S3 = 3                                                              # stars: drawn at 3x so they are round and soft
+            star_im = Image.new("RGBA", (W * S3, 900 * S3), (0, 0, 0, 0))
+            sdr = ImageDraw.Draw(star_im)
             for _ in range(160):
                 x, y = rnd.randint(0, W), rnd.randint(0, 900)
-                d.point((x, y), fill=(230, 230, 255))
-                if rnd.random() < 0.1:
-                    d.ellipse((x - 2, y - 2, x + 2, y + 2), fill=(255, 255, 255))
+                big_star = rnd.random() < 0.1
+                rs_ = random.Random(x * 7919 + y)
+                r_ = (1.7 + rs_.random() * 0.9) if big_star else (0.6 + rs_.random() * 0.8)
+                br = int(150 + 105 * rs_.random())
+                cx_, cy_ = x * S3, y * S3
+                sdr.ellipse((cx_ - r_ * 2.8 * S3, cy_ - r_ * 2.8 * S3, cx_ + r_ * 2.8 * S3, cy_ + r_ * 2.8 * S3), fill=(200, 210, 255, 26 if big_star else 12))
+                sdr.ellipse((cx_ - r_ * S3, cy_ - r_ * S3, cx_ + r_ * S3, cy_ + r_ * S3), fill=(min(255, br + 20), min(255, br + 20), 255, 255))
+                if big_star:
+                    sdr.line((cx_ - r_ * 4.4 * S3, cy_, cx_ + r_ * 4.4 * S3, cy_), fill=(230, 236, 255, 120), width=max(1, S3 // 2))
+                    sdr.line((cx_, cy_ - r_ * 4.4 * S3, cx_, cy_ + r_ * 4.4 * S3), fill=(230, 236, 255, 120), width=max(1, S3 // 2))
+            star_im = star_im.reduce(S3)
+            sky = sky.convert("RGBA")
+            sky.alpha_composite(star_im, (0, 0))
+            sky = sky.convert("RGB")
+        sky_a2 = np.asarray(sky, dtype=np.float32)                              # a whisper of noise: smooth gradients never band
+        sky_a2 = sky_a2 + np.random.RandomState(seed * 31 + 7).normal(0.0, 1.15, sky_a2.shape[:2])[..., None].astype(np.float32)
+        sky = Image.fromarray(np.clip(sky_a2, 0, 255).astype(np.uint8))
         self.sky = sky
         self.clouds = None
         try:
@@ -1474,7 +1589,29 @@ class World:
         self.mid = self._enrich(self._layer(mix(st["far"], st["near"], 0.5), GROUND - 390, 420, 0.5, far=True), 0.16, "mid")
         self.near = self._enrich(self._layer(st["near"], GROUND - 260, 330, 1.0, far=False), 0.0, "near")
         self.ground = self._ground_tile()
+        self._polish_bg()
         self.parts = [[rnd.uniform(0, W), rnd.uniform(0, H), rnd.uniform(0.5, 1.5), rnd.uniform(0, 6.28)] for _ in range(70)]
+
+    def _polish_bg(self):
+        """Shadows opened up, brighter, clearer: applied once to the finished background pictures (see bg_polish)."""
+        st = self.st
+        Lm = (_lum01(st["sky"][0]) + _lum01(st["sky"][1]) + _lum01(st["far"]) + _lum01(st["ground"])) / 4.0
+        need = float(min(1.0, max(0.22, (0.50 - Lm) / 0.36)))                  # dark scenes get the full lift, bright ones little
+        self.bg_need = need
+        amb = rgb(st["sky"][1])
+        if getattr(self, "sky", None) is not None:
+            self.sky = bg_polish(self.sky, amb, need, clarity=False)
+        for name in ("hz", "far", "mid", "near"):
+            lay = getattr(self, name, None)
+            if lay is not None:
+                top = lay.top
+                lay = bg_polish(lay, amb, need)
+                lay.top = top
+                setattr(self, name, lay)
+        for name in ("ground", "ground_tile"):
+            g_ = getattr(self, name, None)
+            if g_ is not None:
+                setattr(self, name, bg_polish(g_, amb, need))
 
     def _noise(self, h, w, blur, seed):
         """Smooth noise that tiles sideways (so scrolling layers never show a seam)."""
@@ -1503,7 +1640,8 @@ class World:
         seed = __import__("zlib").crc32((tag + str(st["far"])).encode()) % 100000
         n1 = self._noise(hh, PW, 5, seed)
         n2 = self._noise(hh, PW, 1.6, seed + 1)
-        tex = 1.0 + 0.05 * n1 + 0.025 * n2
+        n3 = self._noise(hh, PW, 0.7, seed + 2)
+        tex = 1.0 + 0.06 * n1 + 0.035 * n2 + 0.022 * n3
         light_ = 1.22 - 0.55 * depth                                          # lit ridge, darker body
         col = rgb_ * (tex * light_)[..., None]
         fog = (haze + 0.30 * (1 - depth) ** 2 * (0.35 if tag != "near" else 0.2) + 0.22 * depth ** 3 * (0.5 if tag != "near" else 0.7))
@@ -1536,7 +1674,7 @@ class World:
                 col = col * (1 - strata[..., None]) + sky_lo * strata[..., None] * 0.6
         # a thin, bright edge where the ridge meets the sky
         edge = np.clip(1 - (yy - top[None, :]) / 5.0, 0, 1) * (alpha > 8)
-        col = col + (np.array(rgb(st["sky"][1]), dtype=np.float32) * 0.35 + 25) * (edge[..., None] * (0.22 if tag != "near" else 0.12))
+        col = col + (np.array(rgb(st["sky"][1]), dtype=np.float32) * 0.35 + 25) * (edge[..., None] * (0.40 if tag != "near" else 0.24))
         out = np.dstack([np.clip(col, 0, 255), alpha]).astype(np.uint8)
         img = Image.fromarray(out, "RGBA")
         img.top = layer.top
@@ -1557,7 +1695,8 @@ class World:
         hz = np.clip(1 - ys / 120.0, 0, 1) ** 1.6 * 0.55                       # haze lying along the horizon
         g = g * (1 - hz[..., None]) + sky_lo * hz[..., None]
         img = Image.fromarray(np.clip(g, 0, 255).astype(np.uint8))
-        d = ImageDraw.Draw(img, "RGBA")
+        big = img.resize((PW * SS, gh * SS), Image.BILINEAR)                      # details are drawn at 2x and shrunk
+        d = _SSDraw(ImageDraw.Draw(big, "RGBA"), SS)
         sil, part = st["sil"], st.get("part")
         lightc = tuple(int(min(255, c * 1.6 + 18)) for c in base)
         darkc = tuple(int(c * 0.45) for c in base)
@@ -1567,6 +1706,7 @@ class World:
             x = rnd.uniform(0, PW)
             w_, h_ = rnd.uniform(8, 24) * k, rnd.uniform(4, 11) * k
             for off in (0, -PW):
+                d.ellipse((x + off - 2, y + h_ * 0.45, x + off + w_ + 6, y + h_ * 1.30), fill=(0, 0, 0, 80))      # contact shadow
                 d.ellipse((x + off, y, x + off + w_, y + h_), fill=darkc + (210,))
                 d.ellipse((x + off + 1, y, x + off + w_ - 2, y + h_ * 0.55), fill=lightc + (120,))
         green = sil in ("trees", "pines", "reeds", "dead", "wheat", "graves") or st["ground"] in ("#040a09", "#080d20", "#08121a", "#070a14", "#0a0612", "#06080f")
@@ -1600,7 +1740,7 @@ class World:
                 L_ = rnd.uniform(90, 260) * (0.4 + y / gh)
                 for off in (0, -PW):
                     d.arc((x + off, y, x + off + L_, y + 26), 200, 340, fill=lightc + (70,), width=2)
-        return img.convert("RGB")
+        return big.reduce(SS).convert("RGB")
 
     def _cloud_strip(self, sx):
         """Thin, soft, wide clouds (tileable) that drift slowly across the night sky and catch the moonlight."""
@@ -1628,8 +1768,8 @@ class World:
 
     def _layer(self, color, top, height, density, far):
         PW, rnd, st = self.PW, self.rnd, self.st
-        img = Image.new("RGBA", (PW, height), (0, 0, 0, 0))
-        d = ImageDraw.Draw(img)
+        img = Image.new("RGBA", (PW * SS, height * SS), rgb(color) + (0,))       # drawn at 2x and shrunk: smooth edges
+        d = _SSDraw(ImageDraw.Draw(img), SS)
         col = rgb(color) + (255,)
         sil = st["sil"]
         base_y = height * (0.55 if far else 0.45)
@@ -1693,6 +1833,7 @@ class World:
                 d.polygon(sh, fill=col)
         # light edge along the top so shapes stand out from the sky (rim light)
         rim = light(rgb(color), 0.25) + (255,)
+        img = img.reduce(SS)
         img.top = top
         return img
 
@@ -1700,7 +1841,7 @@ class World:
         """The background for one frame: cam is how far the world has scrolled."""
         im = self.sky.copy()
         if self.skyfx:
-            sky_effects(im, self.skyfx, t, getattr(self, "sun_xy", (700, 520, 85)))
+            sky_effects(im, self.skyfx, t, getattr(self, "sun_xy", (700, 520, 85)), getattr(self, "aurora", "green"))
         if getattr(self, "clouds", None) is not None:
             off = int(t * 9 + cam * 0.03) % self.PW   # slow drift
             for ox in (-off, -off + self.PW):
@@ -1781,7 +1922,7 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1, cam_fn=None):
     n = max(int(dur * FPS), 2)
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{OW}x{OH}",
            "-r", str(FPS), "-i", "-", "-vf", "scale=1080:1920:flags=bicubic", "-c:v", "libx264",
-           "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-an", out]
+           "-preset", "veryfast", "-crf", "14", "-pix_fmt", "yuv420p", "-an", out]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, cwd=cwd)
     _LIGHT_WORLD[0] = world
     REACT.update(t=-99.0, power=0.0)
@@ -2256,6 +2397,8 @@ def attack_scene(out, dur, world, sp, cwd=None):
     """The creature closes in. The person turns, sees it and RUNS. It gallops after them, gains on them, leaps,
     and rakes its claws across their back: a flash, a spray of blood, and the person is gone. Only the lantern
     is left, dropped on a growing pool of blood. A companion, if there is one, keeps running and escapes."""
+    if not has_bones(sp):          # an eye, a swarm, a flower or a drifting mass does not gallop: it has its own way of closing in
+        return float_attack_scene(out, dur, world, sp, cwd)
     sp2 = dict(sp)
     sp2["bloody"] = False
     sp3 = dict(sp)
@@ -2317,6 +2460,112 @@ def attack_scene(out, dur, world, sp, cwd=None):
         blood_pool(d, hx - 20, GROUND + 26, min(1, k * 2.2))
         lantern_on_ground(d, hx + 150, GROUND + 28, t, alive=max(0.0, 1.0 - max(0.0, k - 0.6) * 2.5))
         draw_creature(d, sp3, hx - 330 + sx, GROUND + 20 + sy, ph, 1, 1.05, {"t": t, "moving": False, "roar": min(1, k * 3)})
+        blood_burst(d, hx + 20, GROUND - 330, min(1, k * 1.6), seed=7)
+        claw_slash(d, hx + 10, GROUND - 200, 0.55 + k * 1.2, style=strike_of(sp))
+        if k < 0.14:
+            return Image.blend(im, Image.new("RGB", im.size, (255, 255, 255)), 0.6 * (1 - (k - 0.07) / 0.07))
+        if k < 0.35:
+            return red_wash(im, 0.5 * (1 - k / 0.35))
+    world.shake = 7.0
+    write_video(out, dur, paint, world, cwd, cam_dir=2.2)
+    return info
+
+
+AIR_KINDS = ("orb", "tendril")          # these float; a flower creeps along the ground and a swarm flows over it
+
+
+def _float_xy(sp, p, scale, t, cx_mid):
+    """Where to put the creature so that its face / middle is at the point (cx_mid, height) on the path.
+    Returns feet x and feet y for draw_creature. p is how far along the approach it is, 0 (far away) to 1 (on top of the person)."""
+    kind = sp.get("kind")
+    hxo, hyo = HEAD_AT.get(kind, (60, -350))
+    s_eff = 1.4 * scale * sp.get("scale", 1.0) * KIND_SCALE.get(kind, 1.0)
+    if kind in AIR_KINDS:                                   # high in the sky when far away, sinking towards the person as it nears
+        cy = -640 + 380 * p ** 1.3 + 12 * math.sin(t * 2.3)
+        return cx_mid - hxo * s_eff + 14 * math.sin(t * 1.7), GROUND + cy - hyo * s_eff
+    far = (1 - p) ** 2                                      # on the ground: far things sit higher on the screen
+    return cx_mid - hxo * s_eff + 8 * math.sin(t * 1.9), GROUND + 20 - 150 * far + 6 * math.sin(t * 3.1)
+
+
+def float_attack_scene(out, dur, world, sp, cwd=None):
+    """For a creature with no legs. It does not run and it is not just there beside the person: first it is a small red
+    glow far away that the person cannot see, then it drifts closer, growing, while the person walks on; the person stops
+    and turns to look, then runs; the creature swells, speeds up and lunges. Then the same kill close-up as every creature."""
+    sp2 = dict(sp)
+    sp2["bloody"] = False
+    sp3 = dict(sp)
+    sp3["bloody"] = True
+    t_walk, t_run, t_leap, t_hit = 0.30, 0.42, 0.58, 0.64
+    if PAUSE_REMAIN[0]:      # the narrator has finished: the strike starts exactly when her silence starts
+        t_hit = min(0.8, max(0.35, (dur - PAUSE_REMAIN[0]) / dur))
+        f_ = t_hit / 0.64
+        t_walk, t_run, t_leap = t_walk * f_, t_run * f_, t_leap * f_
+    _m0 = dur * (t_hit + (1 - t_hit) * 0.07)
+    info = {"impact_at": dur * t_hit, "stalk_at": dur * t_walk, "maul_at": _m0, "maul_dur": dur * (1 - t_hit) * 0.57}
+    world.shake = 0.0
+    hx = 760
+    air = sp.get("kind") in AIR_KINDS
+
+    def at(u):
+        """size and horizontal position of the creature's middle along its approach."""
+        p = min(1.0, u / t_hit)
+        scale = 0.16 * (1.55 / 0.16) ** (p ** 1.5)          # it grows the way something coming straight at you grows
+        mid = 130 + (hx - 90 - 130) * p ** 1.7
+        return p, scale, mid
+
+    def paint(im, d, t, u, cam):
+        ph = t * STEP * 0.5
+        if u < t_hit:
+            comp_x = hx + 170 + max(0.0, u - t_walk) * 1900
+            running = u >= t_run
+            pph = t * STEP * (1.0 if running else 0.5)
+            p, scale, mid = at(u)
+            fx_, fy_ = _float_xy(sp, p, scale, t, mid)
+            roar = 0.0 if u < t_leap else min(1.0, (u - t_leap) / (t_hit - t_leap) * 2.0)
+            # a soft red light that grows with it, and its shadow on the ground
+            hxo, hyo = HEAD_AT.get(sp.get("kind"), (60, -350))
+            s_eff = 1.4 * scale * sp.get("scale", 1.0) * KIND_SCALE.get(sp.get("kind"), 1.0)
+            gcx, gcy = fx_ + hxo * s_eff, fy_ + hyo * s_eff
+            for rr, aa in ((2.6, 14), (1.8, 22), (1.2, 34)):
+                R_ = 150 * s_eff * rr / 1.4
+                d.ellipse((gcx - R_, gcy - R_, gcx + R_, gcy + R_), fill=(255, 40, 52, int(aa * (0.5 + p))))
+            if air:
+                sh_w = 230 * s_eff / 1.4
+                d.ellipse((gcx - sh_w, GROUND + 14, gcx + sh_w, GROUND + 14 + sh_w * 0.16), fill=(0, 0, 0, int(80 * min(1.0, 0.3 + p))))
+            draw_companion(d, comp_x, GROUND + 20, pph, 1, 1.0)
+            if u >= t_leap:                                  # in front of the person: it is on them
+                if u < t_walk:
+                    draw_human(d, hx, GROUND + 20, ph, 1, 1.0, cast=False)
+                else:
+                    draw_human(d, hx + 6 * math.sin(t * 61), GROUND + 20, pph, 1, 1.0, cast=False)
+                draw_creature(d, sp2, fx_, fy_, ph + 0.7, 1, scale, {"t": t, "moving": True, "roar": roar})
+                claw_slash(d, hx + 10, GROUND - 200, (u - t_leap) / (t_hit - t_leap) * 0.55, style=strike_of(sp))
+            else:
+                draw_creature(d, sp2, fx_, fy_, ph + 0.7, 1, scale, {"t": t, "moving": True, "roar": roar})
+                if u < t_walk:
+                    draw_human(d, hx, GROUND + 20, ph, 1, 1.0, cast=False)                      # walking on, unaware
+                elif u < t_run:
+                    draw_human(d, hx + 3 * math.sin(t * 40), GROUND + 20, 0.0, -1, 1.0, cast=False)   # stops, turns and looks
+                else:
+                    draw_human(d, hx + 6 * math.sin(t * 61), GROUND + 20, pph, 1, 1.0, cast=False)    # and runs
+            if u > t_walk:
+                beat = max(0.0, math.sin(t * 9 + 3)) ** 6 * 0.2 * min(1, (u - t_walk) / 0.12)
+                return red_wash(im, beat + (0.08 if running else 0.0))
+            return
+        k = (u - t_hit) / (1 - t_hit)
+        if k < 0.07:  # jump-scare: a few frames of its face, blood red, right at the impact
+            closeup(im, d, sp3, 0.0, 0.3, 2.3, 2.7, roar=1.0, shake=12, tt=t)
+            return red_wash(im, 0.4)
+        if k < 0.64:      # the camera goes in close on the wound
+            _BOXES.append((100, 540, 980, 1240))
+            return maul_frame(im, t, (k - 0.07) / (0.64 - 0.07), sp, (44, 50, 82), "cloth", seed=5)
+        k = 0.64 + (k - 0.64) * 0.55
+        sx = 16 * math.sin(t * 90) * max(0.0, 1 - k * 4)
+        sy = 12 * math.cos(t * 80) * max(0.0, 1 - k * 4)
+        blood_pool(d, hx - 20, GROUND + 26, min(1, k * 2.2))
+        lantern_on_ground(d, hx + 150, GROUND + 28, t, alive=max(0.0, 1.0 - max(0.0, k - 0.6) * 2.5))
+        fx2, fy2 = _float_xy(sp, 1.0, 1.05, t, hx - 230)
+        draw_creature(d, sp3, fx2 + sx, fy2 + sy, ph, 1, 1.05, {"t": t, "moving": False, "roar": min(1, k * 3)})
         blood_burst(d, hx + 20, GROUND - 330, min(1, k * 1.6), seed=7)
         claw_slash(d, hx + 10, GROUND - 200, 0.55 + k * 1.2, style=strike_of(sp))
         if k < 0.14:
@@ -2436,6 +2685,7 @@ def _topdown_texture():
         x, y = rnd.choice([rnd.randint(0, 280), rnd.randint(800, W)]), rnd.randint(0, 1919)
         for k in range(4):
             d.line((x, y, x + (k - 1.5) * 9, y - rnd.randint(30, 60)), fill=(14, 52, 36), width=4)
+    img = bg_polish(img, (70, 90, 130), 1.0)                                   # the same shadow lift / brightness / clarity as every background
     _TOP["tex"] = img
     return img
 
@@ -2916,10 +3166,7 @@ def omen_scene(out, dur, world, sp, cwd=None):
             if u > 0.7:
                 return red_wash(im, 0.3 * (u - 0.7) / 0.3)
         elif fx == "aurora":
-            for j, c in enumerate(((60, 255, 150), (160, 100, 255), (60, 220, 230))):
-                for x in range(0, W + 60, 60):
-                    y = 220 + j * 110 + 70 * math.sin(x * 0.006 + t * 1.1 + j) + 30 * math.sin(x * 0.017 + t * 2)
-                    d.polygon([(x, y), (x + 60, y), (x + 60, y + 420), (x, y + 420)], fill=c + (int(24 + 30 * u),))
+            _aurora(im, t, getattr(world, "aurora", "green"), 0.75 + 0.5 * u)
             if u > 0.55:  # a tall figure stands on the far hill
                 draw_creature(d, {**sp, "color": (5, 4, 9)}, 760, GROUND - 190, t * 2, 1, 0.4, {"t": t, "moving": False, "roar": 0.2})
             _look_up(d, 200, GROUND, t, 2)
@@ -7663,6 +7910,7 @@ class _Scenery(World):
             self.mid = self._enrich(self._layer(mix(st["far"], st["near"], 0.5), GROUND - 390, 420, 0.5, far=True), 0.14, "mid")
             self.near = self._enrich(self._layer(st["near"], GROUND - 260, 330, 1.0, far=False), 0.0, "near")
         self.ground_tile = self._ground_tile(1100)
+        self._polish_bg()
 
 
 def _land(im, y, kind, t=0.0, seed=1, ridges=True):
@@ -9166,8 +9414,9 @@ def maul_frame(im, t, u, sp, prey_col=(200, 170, 130), kind="fur", seed=1):
             n_claw, LEN, wscale, pz_ = 7, 34.0, 0.95, 1.3
             starts = [(540 + math.cos(a_) * (250 if i % 2 else 120) , 700 + math.sin(a_) * (230 if i % 2 else 100)) for i, a_ in ((i, i * 6.2832 / 7) for i in range(7))]
         elif strike == "bite":                             # two curved rows of tooth punctures
-            n_claw, LEN, wscale, pz_ = 12, 84.0, 0.46, 0.9
-            starts = [(540 + (i % 6 - 2.5) * 118, (560 + 22 * abs(i % 6 - 2.5)) if i < 6 else (850 - 22 * abs(i % 6 - 2.5))) for i in range(12)]
+            n_claw, LEN, wscale, pz_ = 12, 170.0, 0.95, 2.1
+            n_sp = 12
+            starts = [(540 + (i % 6 - 2.5) * 140, (520 + 30 * abs(i % 6 - 2.5)) if i < 6 else (890 - 30 * abs(i % 6 - 2.5))) for i in range(12)]
         else:                                              # thorns driven in and dragged
             n_claw, LEN, wscale, pz_ = 9, 150.0, 0.8, 1.1
             starts = [(300 + rs_.uniform(0, 1) * 480, 440 + (i * 72) % 560 + rs_.uniform(-18, 18)) for i in range(9)]
@@ -9187,6 +9436,7 @@ def maul_frame(im, t, u, sp, prey_col=(200, 170, 130), kind="fur", seed=1):
             return 0.0, 0.0
         return min(1.0, _sm(a / 0.09) * 0.8 + min(0.2, a * 0.8)), a
     wound_paths = []
+    stain_k = 1.9 if strike == "bite" else (1.3 if strike in ("suckers", "thorns") else 1.0)
     if ue >= U_IMP_E:
         for i, (sx, sy) in enumerate(starts):
             path, half, ages = [], [], []
@@ -9204,8 +9454,8 @@ def maul_frame(im, t, u, sp, prey_col=(200, 170, 130), kind="fur", seed=1):
     # stain: the hide around a wound darkens and reddens
     for path, half, ages in wound_paths:
         if len(path) > 2:
-            V.line(path, (110, 8, 10, 46), 150)
-            V.line(path, (110, 8, 10, 60), 84)
+            V.line(path, (110, 8, 10, 46), 150 * stain_k)
+            V.line(path, (110, 8, 10, 60), 84 * stain_k)
     # the cut edges, the flesh, the depth, the fibres and the wet shine
     for path, half, ages in wound_paths:
         if len(path) < 3:
@@ -9251,10 +9501,31 @@ def maul_frame(im, t, u, sp, prey_col=(200, 170, 130), kind="fur", seed=1):
                 V.ell((sx - 34 * tent * pz_, sy - 26 * tent * pz_, sx + 34 * tent * pz_, sy + 26 * tent * pz_), (0, 0, 0, int(80 * tent)))
                 V.ell((sx - 18 * tent * pz_, sy - 14 * tent * pz_, sx + 18 * tent * pz_, sy + 14 * tent * pz_), (255, 230, 210, int(60 * tent)))
             else:
+                if strike != "claws":                         # the skin around a bite swells and bruises; the teeth leave a ring of dents
+                    bru = _sm((ue - U_IMP_E) / 0.22)
+                    for rad, col_ in ((130, (92, 28, 74, 64)), (92, (138, 24, 44, 92)), (60, (176, 16, 26, 126))):
+                        V.ell((sx - rad * pz_ * bru * 0.6, sy - rad * 0.72 * pz_ * bru * 0.6, sx + rad * pz_ * bru * 0.6, sy + rad * 0.72 * pz_ * bru * 0.6), col_)
+                    for j in range(9 if strike == "bite" else 5):     # tears that run out from the hole through the skin
+                        aj = j * 6.2832 / (9 if strike == "bite" else 5) + i * 0.7
+                        Lj = (34 + 26 * ((j * 5 + i) % 3)) * pz_ * bru
+                        V.line([(sx, sy), (sx + math.cos(aj) * Lj * 0.5 + 3, sy + math.sin(aj) * Lj * 0.4), (sx + math.cos(aj) * Lj, sy + math.sin(aj) * Lj * 0.8)], (96, 6, 12, 230), 5)
                 for j in range(7):                            # flaps of skin pushed inwards
                     a = j * math.tau / 7 + i if hasattr(math, "tau") else j * 6.2832 / 7 + i
                     V.poly([(sx, sy), (sx + math.cos(a) * 26 * pz_, sy + math.sin(a) * 20 * pz_), (sx + math.cos(a + 0.5) * 17 * pz_, sy + math.sin(a + 0.5) * 13 * pz_)], lip + (255,))
                 V.ell((sx - 13 * pz_, sy - 10 * pz_, sx + 13 * pz_, sy + 10 * pz_), (70, 4, 8, 255))
+    # ---- blood jets that burst from the holes at the moment of the bite ---------------------------------------------------
+    if ue >= U_IMP_E and strike in ("bite", "suckers", "thorns"):
+        ka_ = (ue - U_IMP_E) / 0.22
+        if ka_ < 1.0:
+            for i, (sx, sy) in enumerate(starts):
+                rj = random.Random(seed * 131 + i)
+                for j in range(9 if strike == "bite" else 5):
+                    aj = rj.uniform(-3.05, -0.1)
+                    Lr = rj.uniform(120, 340) * min(pz_, 1.8) * (ka_ ** 0.55)
+                    x2, y2 = sx + math.cos(aj) * Lr, sy + math.sin(aj) * Lr + 260 * ka_ * ka_
+                    a_ = int(240 * (1 - ka_))
+                    V.line([(sx, sy), ((sx + x2) / 2, (sy + y2) / 2 - 20 * ka_), (x2, y2)], (150, 8, 14, a_), max(2.0, 11 * (1 - ka_)))
+                    V.ell((x2 - 8, y2 - 8, x2 + 8, y2 + 8), (176, 12, 18, a_))
     # ---- spray from the claw tips -----------------------------------------------------------------------------------
     if ue >= U_IMP_E:
         for i, (sx, sy) in enumerate(starts):
@@ -9271,7 +9542,7 @@ def maul_frame(im, t, u, sp, prey_col=(200, 170, 130), kind="fur", seed=1):
                 vx, vy = rr.uniform(-520, 520) + dirv[0] * 380, rr.uniform(-760, -120)
                 px, py = bx + vx * age * 0.45, by + vy * age * 0.45 + 1500 * (age * 0.45) ** 2
                 qx, qy = bx + vx * max(0, age - 0.05) * 0.45, by + vy * max(0, age - 0.05) * 0.45 + 1500 * (max(0, age - 0.05) * 0.45) ** 2
-                r = rr.uniform(3.5, 9) * (1 - 0.4 * age)
+                r = rr.uniform(3.5, 9) * (1 - 0.4 * age) * (1.5 if strike == "bite" else 1.0)
                 V.line([(qx, qy), (px, py)], (130, 6, 10, 220), r * 1.2)
                 V.ell((px - r, py - r, px + r, py + r), (176, 12, 18, 255))
     # ---- the claws ------------------------------------------------------------------------------------------------
@@ -9378,16 +9649,21 @@ def maul_frame(im, t, u, sp, prey_col=(200, 170, 130), kind="fur", seed=1):
         if bite > 0:                                                               # punctures where the fangs went in
             for ti, x in enumerate([190, 420, 660, 890]):
                 cy = 1010 + (ti % 2) * 14
-                for rad, al in ((86, 70), (56, 120)):
-                    V.ell((x - rad * bite, cy - rad * 0.55 * bite, x + rad * bite, cy + rad * 0.55 * bite), (120, 6, 10, al))
-                V.ell((x - 22 * bite, cy - 13 * bite, x + 22 * bite, cy + 13 * bite), (40, 2, 4, 255))
+                for rad, al in ((190, 52), (140, 86), (98, 124), (64, 168)):
+                    V.ell((x - rad * bite, cy - rad * 0.58 * bite, x + rad * bite, cy + rad * 0.58 * bite), (120, 6, 10, al))
+                for jf in range(9):                                                # torn skin around each hole
+                    af = jf * 6.2832 / 9 + ti
+                    V.poly([(x, cy), (x + math.cos(af) * 78 * bite, cy + math.sin(af) * 46 * bite), (x + math.cos(af + 0.5) * 50 * bite, cy + math.sin(af + 0.5) * 30 * bite)], lip + (255,))
+                V.ell((x - 42 * bite, cy - 25 * bite, x + 42 * bite, cy + 25 * bite), (40, 2, 4, 255))
+                V.ell((x - 18 * bite, cy - 10 * bite, x - 6 * bite, cy - 3 * bite), (255, 150, 140, 170))
                 k = _sm((ue - j1) / 0.18)
-                for j in range(5):
+                for j in range(8):
                     rr = random.Random(ti * 9 + j)
-                    xx = x + rr.uniform(-22, 22)
-                    pts = [(xx + rr.uniform(-4, 4), cy + y_) for y_ in range(0, int(40 + rr.uniform(40, 230) * k), 10)]
+                    xx = x + rr.uniform(-36, 36)
+                    pts = [(xx + rr.uniform(-4, 4), cy + y_) for y_ in range(0, int(60 + rr.uniform(80, 420) * k), 10)]
                     if len(pts) > 1:
-                        V.line(pts, (150, 8, 14, 235), 9)
+                        V.line(pts, (150, 8, 14, 235), 14)
+                        V.line(pts, (210, 30, 34, 200), 5)
     over = V.done()
     out = base.convert("RGBA")
     out.alpha_composite(over)
@@ -9402,7 +9678,7 @@ def maul_frame(im, t, u, sp, prey_col=(200, 170, 130), kind="fur", seed=1):
         arr = Image.blend(arr, Image.new("RGB", arr.size, (110, 0, 0)), red)
     shake = 0.0
     if ue >= U_IMP_E:
-        shake = 16 * max(0.0, 1 - (ue - U_IMP_E) / 0.4) + (10 if j0 <= ue <= j1 + 0.1 else 0) * 0.7
+        shake = (16 + (10 if strike == "bite" else 0)) * max(0.0, 1 - (ue - U_IMP_E) / 0.4) + (10 if j0 <= ue <= j1 + 0.1 else 0) * 0.7
     z = 1.0 + 0.07 * u
     cw, chh = W / z, H / z
     cx = W / 2 + shake * math.sin(t * 83)

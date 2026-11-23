@@ -1360,6 +1360,103 @@ def even_words(text, total):
     return out
 
 
+def _wav_mono(path):
+    """A mono float array and its sample rate, read from a PCM wav (None if it cannot be read)."""
+    import numpy as np
+    try:
+        with wave.open(str(path), "rb") as w_:
+            sr, ch, sw = w_.getframerate(), w_.getnchannels(), w_.getsampwidth()
+            raw = w_.readframes(w_.getnframes())
+        if sw != 2:
+            return None, sr
+        a = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+        if ch > 1:
+            a = a.reshape(-1, ch).mean(axis=1)
+        return a, sr
+    except Exception:
+        return None, 44100
+
+
+def align_sentences(path, texts, pause_floor=0.09):
+    """Where each sentence REALLY starts and ends inside one spoken clip (seconds from the start of the file).
+    The voice reads sentence after sentence and breathes at each full stop, so the sentence breaks are the long quiet gaps
+    close to where the characters say they should be. Gaps are found in the audio itself; the character count is only the
+    prior, so a held breath or a quick sentence no longer drifts the captions and the pictures off the voice.
+    Returns [(start, end)] per sentence, or None when the audio cannot be read."""
+    import numpy as np
+    a, sr = _wav_mono(path)
+    n = len(texts)
+    if a is None or n == 0 or len(a) < sr * 0.5:
+        return None
+    hop = max(1, int(sr * 0.010))
+    m = len(a) // hop
+    fr = a[:m * hop].reshape(m, hop)
+    db = 20 * np.log10(np.sqrt((fr ** 2).mean(axis=1)) + 1e-6)
+    live = db[db > -70]
+    if len(live) < 20:
+        return None
+    thr = float(np.percentile(live, 85)) - 22.0
+    quiet = db < thr
+    idx = np.where(~quiet)[0]
+    if len(idx) == 0:
+        return None
+    a0, a1 = idx[0] * 0.010, (idx[-1] + 1) * 0.010
+    if n == 1:
+        return [(a0, a1)]
+    gaps, k = [], int(idx[0])
+    while k <= int(idx[-1]):                      # every quiet stretch inside the speech
+        if quiet[k]:
+            j = k
+            while j + 1 <= int(idx[-1]) and quiet[j + 1]:
+                j += 1
+            if (j - k + 1) * 0.010 >= pause_floor:
+                gaps.append((k * 0.010, (j + 1) * 0.010))
+            k = j + 1
+        else:
+            k += 1
+    wts = [sum(len(t_) + 2 for t_ in tx.split()) + 5 for tx in texts]          # a full stop costs about a breath
+    cum, est = 0.0, []
+    for w_ in wts[:-1]:
+        cum += w_
+        est.append(a0 + (a1 - a0) * cum / sum(wts))
+    sigma = max(0.9, 0.06 * (a1 - a0))
+    # options for each break: a real gap, or (if none fits) the estimate itself with a penalty
+    opts = []
+    for e in est:
+        o = []
+        for g0, g1 in gaps:
+            mid = (g0 + g1) / 2
+            if abs(mid - e) <= 3.0 * sigma:
+                o.append((mid, g0, g1, ((mid - e) / sigma) ** 2 - 1.8 * min(g1 - g0, 0.6) / 0.6))
+        o.append((e, e, e, 3.2))
+        opts.append(o)
+    best = [[c[3] for c in opts[0]]]
+    back = [[-1] * len(opts[0])]
+    for q in range(1, len(opts)):
+        row, brow = [], []
+        for c in opts[q]:
+            cand = [(best[q - 1][j] + c[3], j) for j, pc in enumerate(opts[q - 1]) if c[0] > pc[0] + 0.30]
+            if cand:
+                v, j = min(cand)
+            else:
+                v, j = 1e9, 0
+            row.append(v)
+            brow.append(j)
+        best.append(row)
+        back.append(brow)
+    j = min(range(len(best[-1])), key=lambda x: best[-1][x])
+    pick = [None] * len(opts)
+    for q in range(len(opts) - 1, -1, -1):
+        pick[q] = opts[q][j]
+        j = back[q][j]
+    starts, ends = [a0], []
+    for mid, g0, g1, _c in pick:
+        ends.append(max(starts[-1] + 0.2, g0 + 0.04))
+        starts.append(max(ends[-1], g1 - 0.03))
+    ends.append(a1)
+    return list(zip(starts, ends))
+
+
 CAPTION_SPOTS = (1400, 1540, 1575, 480, 400, 640, 880, 1120)   # where the bottom edge of a caption can sit, in order of preference
 CAPTION_X0, CAPTION_X1 = 150, 930                    # the caption never leaves this band (clear of the right-hand Shorts buttons)
 SAFE_TOP, SAFE_BOTTOM = 220, 1580                    # mobile interface safe zone for caption boxes
@@ -1499,25 +1596,46 @@ def title_card_png(series, episode, title, place, path, accent=None):
         f_ep = _card_font("caps", 42)
         boxes["episode"] = _spaced(d, (cx, y + 34), f"EPISODE {episode}", f_ep, accent + (255,), 8)
         y = boxes["episode"][3]
-    # the title: as large as fits in at most two lines inside the safe width
+    # the title: as large as fits in two lines inside the safe width; a long title may take three lines (never smaller than 84px);
+    # an extremely long one is cut at a word, so a long title can never make the card fail
     t = str(title).strip()
-    size, lines = 150, [t]
-    while size >= 84:
-        f_t = _card_font("script", size)
-        words, lines, cur = t.split(), [], ""
-        for w_ in words:
-            trial = (cur + " " + w_).strip()
-            if d.textlength(trial, font=f_t) <= 900 or not cur:
-                cur = trial
+
+    def _wrap(text, f_):
+        out_, cur_ = [], ""
+        for w_ in text.split():
+            trial_ = (cur_ + " " + w_).strip()
+            if d.textlength(trial_, font=f_) <= 900 or not cur_:
+                cur_ = trial_
             else:
-                lines.append(cur)
-                cur = w_
-        lines.append(cur)
-        if len(lines) <= 2 and all(d.textlength(l, font=f_t) <= 900 for l in lines):
+                out_.append(cur_)
+                cur_ = w_
+        out_.append(cur_)
+        return out_
+
+    size, lines = None, [t]
+    for max_lines, sizes in ((2, range(150, 83, -8)), (3, range(92, 83, -4))):
+        for sz_ in sizes:
+            f_try = _card_font("script", sz_)
+            ln_ = _wrap(t, f_try)
+            if len(ln_) <= max_lines and all(d.textlength(x_, font=f_try) <= 900 for x_ in ln_):
+                size, lines = sz_, ln_
+                break
+        if size:
             break
-        size -= 8
+    if size is None:
+        size = 84
+        f_try = _card_font("script", size)
+        wds_ = t.split()
+        while len(wds_) > 2:
+            wds_.pop()
+            ln_ = _wrap(" ".join(wds_).rstrip(",;:-") + "...", f_try)
+            if len(ln_) <= 3 and all(d.textlength(x_, font=f_try) <= 900 for x_ in ln_):
+                lines = ln_
+                break
+        else:
+            lines = _wrap(" ".join(wds_), f_try)
     f_t = _card_font("script", size)
-    ty = y + 50
+    ty = y + (50 if len(lines) <= 2 else 34)
     tb = None
     for ln in lines:
         w_ = d.textlength(ln, font=f_t)
@@ -1529,47 +1647,40 @@ def title_card_png(series, episode, title, place, path, accent=None):
         ty = bb[3] + 6
     boxes["title"] = tb
     if place:
-        psz = 40
-        f_pl = _card_font("caps", psz)
+        f_pl = _card_font("caps", 40)
 
-        pspace = [8]
+        def _w(txt, sp_):                        # exactly the width that _spaced will draw
+            return sum(d.textlength(ch, font=f_pl) for ch in txt) + sp_ * max(len(txt) - 1, 0)
 
-        def _pw(txt):
-            return sum(d.textlength(ch, font=f_pl) for ch in txt) + pspace[0] * len(txt)
-        ptxt = place.upper()
-        plines = [ptxt]
-        if _pw(ptxt) > 900:
-            # a long place line is split over two lines at the word break that makes them most even; if that is not enough the letters are set a little
-            # closer together, and only if that is still not enough does it wrap onto three lines
-            wds = ptxt.split()
-            plines = None
-            for sp_ in (8, 4):
-                pspace[0] = sp_
+        def _fit(ptxt_):
+            """One line if it fits; otherwise two lines split at the word break that makes them most even, with the letters set
+            a little closer if needed. None if even that is too wide."""
+            if _w(ptxt_, 8) <= 900:
+                return [ptxt_], 8
+            wds = ptxt_.split()
+            for sp_ in (8, 4, 2):
                 best = None
                 for k in range(1, len(wds)):
                     l1, l2 = " ".join(wds[:k]), " ".join(wds[k:])
-                    m_ = max(_pw(l1), _pw(l2))
+                    m_ = max(_w(l1, sp_), _w(l2, sp_))
                     if best is None or m_ < best[0]:
                         best = (m_, [l1, l2])
                 if best and best[0] <= 900:
-                    plines = best[1]
-                    break
-            if plines is None:
-                plines, cur_ = [], ""
-                for w2_ in wds:
-                    trial_ = (cur_ + " " + w2_).strip()
-                    if _pw(trial_) <= 900 or not cur_:
-                        cur_ = trial_
-                    else:
-                        plines.append(cur_)
-                        cur_ = w2_
-                plines.append(cur_)
-                plines = plines[:3]
-            plines = [(lambda t_: next(t_[:i_] for i_ in range(len(t_), 0, -1) if _pw(t_[:i_]) <= 900))(ln_) for ln_ in plines]     # nothing can ever be wider than the safe width
-        py_ = tb[3] + 40
+                    return best[1], sp_
+            return None, 2
+
+        ptxt = " ".join(place.upper().split())
+        plines, pspace_ = _fit(ptxt)
+        while plines is None and len(ptxt.split()) > 2:        # too long even on two lines: drop the last clause or word, never fail the card
+            ptxt = ptxt.rsplit(",", 1)[0] if "," in ptxt else ptxt.rsplit(" ", 1)[0]
+            plines, pspace_ = _fit(ptxt)
+        if plines is None:
+            plines, pspace_ = [ptxt], 2
+        plines = [(lambda t_: next((t_[:i_] for i_ in range(len(t_), 0, -1) if _w(t_[:i_], pspace_) <= 900), t_[:1]))(ln_) for ln_ in plines]   # nothing can be wider than the safe width
+        py_ = tb[3] + (40 if len(lines) <= 2 else 26)
         pb = None
         for ln in plines:
-            bx_ = _spaced(d, (cx, py_), ln, f_pl, (200, 198, 190, 255), pspace[0])
+            bx_ = _spaced(d, (cx, py_), ln, f_pl, (200, 198, 190, 255), pspace_)
             pb = bx_ if pb is None else (min(pb[0], bx_[0]), pb[1], max(pb[2], bx_[2]), bx_[3])
             py_ = bx_[3] + 10
         boxes["place"] = pb
@@ -1587,8 +1698,8 @@ def title_card_png(series, episode, title, place, path, accent=None):
             problems.append(f"'{n_}' leaves the safe width ({b[0]}..{b[2]})")
         if b[3] > CARD_Y1 or b[1] < CARD_Y0 - 40:
             problems.append(f"'{n_}' leaves the card band ({b[1]}..{b[3]})")
-    if size < 84:
-        problems.append("the title does not fit in two lines at a readable size")
+    if size < 84 or len(lines) > 3:
+        problems.append("the title does not fit in three lines at a readable size")
     for n_, px in (("series", 46), ("episode", 42), ("place", 39)):
         if n_ in boxes and px * 360 / 1080 < 13:
             problems.append(f"'{n_}' is too small on a phone")
@@ -1823,7 +1934,7 @@ def still_clip(img, dur, out, mode="in"):
     vf = ("scale=1296:2304:force_original_aspect_ratio=increase,crop=1296:2304,"
           f"zoompan=z='{z}':x='{x}':y='(ih-ih/zoom)/2':d={n}:s=1080x1920:fps={FPS},setsar=1")
     run(["ffmpeg", "-y", "-i", img, "-vf", vf, "-t", f"{dur:.3f}", "-an",
-         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", out], cwd=WORK)
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", "-pix_fmt", "yuv420p", out], cwd=WORK)
 
 
 def sprite_geometry(spr, factor=1.0):
@@ -1878,7 +1989,7 @@ def composite_shot(bg, sprites, dur, out, simple):
         parts.append(f"{last}[fogl]overlay=x='-100-t*35':y='{GROUND_Y - 320}':eval=frame:format=auto,"
                      "format=yuv420p[v]")
     cmd += ["-filter_complex", ";".join(parts), "-map", "[v]", "-t", f"{dur:.3f}", "-an",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", out]
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", "-pix_fmt", "yuv420p", out]
     run(cmd, cwd=WORK)
 
 
@@ -1921,7 +2032,7 @@ def clip_shot(clip, dur, out):
     vf = (f"scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,setsar=1,"
           f"fps={FPS},setpts={f:.4f}*PTS,tpad=stop_mode=clone:stop_duration={extra + 0.2:.3f}")
     run(["ffmpeg", "-y", "-i", clip, "-vf", vf, "-t", f"{dur:.3f}", "-an",
-         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", out], cwd=WORK)
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "15", "-pix_fmt", "yuv420p", out], cwd=WORK)
 
 
 def shot_or_clip(plate, clip, dur, out, mode="in"):
@@ -1968,7 +2079,7 @@ def open_block(dh, dm, assets, out):
             clip_shot(b["clip"], t["lm"], "m_b.mp4")
             run(["ffmpeg", "-y", "-i", "m_a.mp4", "-i", "m_b.mp4", "-filter_complex",
                  "[0:v][1:v]blend=all_mode=average,format=yuv420p", "-t", f"{t['lm']:.3f}", "-an",
-                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "o_m.mp4"], cwd=WORK)
+                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", "o_m.mp4"], cwd=WORK)
             mixed = True
         except RuntimeError:
             log("Footage overlap failed; using a simple fade instead.")
@@ -1987,7 +2098,7 @@ def open_block(dh, dm, assets, out):
           f"[v2][3]xfade=transition=dissolve:duration={FADE}:offset={o3:.3f}[v]")
     run(["ffmpeg", "-y", "-i", "o_a.mp4", "-i", "o_b.mp4", "-i", "o_m.mp4", "-i", "o_h.mp4",
          "-filter_complex", fc, "-map", "[v]", "-t", f"{t['total']:.3f}", "-an",
-         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", out], cwd=WORK)
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", "-pix_fmt", "yuv420p", out], cwd=WORK)
     return t
 
 
@@ -2282,7 +2393,19 @@ def quality_gate(video_path, words, kind, rebuild=None):
     return ready
 
 
+# The film look: the old "vintage" curve with the blue/red black-points pulled down so shadows are no longer hazy.
+FILM = "curves=r='0/0.06 0.42/0.48 1/0.97':g='0/0 0.5/0.49 1/1':b='0/0.12 0.49/0.45 1/0.86'"
+
+
+def out_size():
+    """The finished video is 1440x2560 (YouTube then serves it in a higher-quality class than plain 1080p, which looks
+    clearly sharper on a phone). OUT_RES=1080 goes back to the old size."""
+    return (1080, 1920) if os.environ.get("OUT_RES", "1440") == "1080" else (1440, 2560)
+
+
 def build_video(scenes, assets, audio_name, captions_name, out_path):
+    OW_, OH_ = out_size()
+    K = OW_ / 1080.0
     segs, reveal = [], 0.0
     k = 0
     h = assets["h"]
@@ -2305,21 +2428,22 @@ def build_video(scenes, assets, audio_name, captions_name, out_path):
     ye = f"48+3*cos(t*1.7)+2*cos(t*4.9)+{shake}*30*cos(t*57)*(1-(t-{T:.2f})/0.9)"
     flash = f"if(between(t,{T:.2f},{T + 0.35:.2f}),0.6*(1-(t-{T:.2f})/0.35),0)"
     # one shared "old film" look over everything: faded colors, scene color grade, heavy grain, vignette
-    vf = (f"scale=1134:2016,crop=1080:1920:x='{xe}':y='{ye}',"
-          f"curves=preset=vintage,{LOOK['grade']},"
-          f"eq=brightness='{flash}+0.06':saturation=1.0:contrast=1.05:gamma=1.2:eval=frame,"
-          "vignette=PI/5.5,noise=alls=11:allf=t+u")
+    vf = (f"scale={round(1134 * K)}:{round(2016 * K)}:flags=lanczos,crop={OW_}:{OH_}:x='({xe})*{K:.5f}':y='({ye})*{K:.5f}',"
+          f"{FILM},{LOOK['grade']},"
+          f"eq=brightness='{flash}+0.075':saturation=1.08:contrast=1.10:gamma=1.2:eval=frame,"
+          "unsharp=5:5:0.7:5:5:0.0,unsharp=13:13:0.35:13:13:0.0,"          # crisp fine detail + local contrast ("clarity")
+          "vignette=PI/5.5,noise=alls=5:allf=t+u")
     if captions_name:
         vf += f",subtitles={captions_name}"
     hook_in, hook_fc = [], None
     card_png = make_title_card() if os.environ.get("TITLE_CARD", "1") != "0" else None
-    head, tail = vf.split("curves=preset=vintage", 1)
+    head, tail = vf.split(FILM, 1)
     graph, cur, n_in = [f"[0:v]{head.rstrip(',')}[b]"], "b", 2
     if os.environ.get("HOOK", "1") != "0":
         try:     # the opening hook: fangs on the scream, glowing eyes pushing in, then the story dissolves in
             import toon
             toon.hook_clip(str(WORK / "hook.mp4"), tuple(HOOK_EYE), cwd=WORK)
-            graph.append(f"[{n_in}:v]format=rgba,fade=t=out:st={toon.HOOK_LEN - 0.3:.2f}:d=0.3:alpha=1[hk];"
+            graph.append(f"[{n_in}:v]format=rgba,scale={OW_}:{OH_}:flags=lanczos,fade=t=out:st={toon.HOOK_LEN - 0.3:.2f}:d=0.3:alpha=1[hk];"
                          f"[{cur}][hk]overlay=0:0:eof_action=pass:enable='lt(t,{toon.HOOK_LEN:.2f})'[h1]")
             cur, n_in = "h1", n_in + 1
             hook_in = ["-i", "hook.mp4"]
@@ -2327,8 +2451,8 @@ def build_video(scenes, assets, audio_name, captions_name, out_path):
             log(f"Opening hook skipped ({e}).")
     if card_png:    # the title card eases in with a small upward drift and fades out
         hook_in += ["-loop", "1", "-t", f"{CARD_OFF + 0.2:.1f}", "-i", card_png]
-        graph.append(f"[{n_in}:v]format=rgba,fade=t=in:st={CARD_ON:.2f}:d=0.8:alpha=1,fade=t=out:st={CARD_OFF - 0.7:.2f}:d=0.7:alpha=1[tc];"
-                     f"[{cur}][tc]overlay=x=0:y='20*(1-min(1,max(0,(t-{CARD_ON:.2f})/1.4)))':eof_action=pass:enable='between(t,{CARD_ON:.2f},{CARD_OFF:.2f})'[h2]")
+        graph.append(f"[{n_in}:v]format=rgba,scale={OW_}:{OH_}:flags=lanczos,fade=t=in:st={CARD_ON:.2f}:d=0.8:alpha=1,fade=t=out:st={CARD_OFF - 0.7:.2f}:d=0.7:alpha=1[tc];"
+                     f"[{cur}][tc]overlay=x=0:y='{20 * K:.1f}*(1-min(1,max(0,(t-{CARD_ON:.2f})/1.4)))':eof_action=pass:enable='between(t,{CARD_ON:.2f},{CARD_OFF:.2f})'[h2]")
         cur, n_in = "h2", n_in + 1
     T_end = min(59.0, audio_seconds(WORK / audio_name))
     if os.environ.get("LOOP", "1") != "0" and T_end > 8:
@@ -2339,20 +2463,20 @@ def build_video(scenes, assets, audio_name, captions_name, out_path):
             LOOP_LEN = 1.3
             hook_in += ["-loop", "1", "-t", f"{LOOP_LEN + 1.5:.2f}", "-i", "loop_fog.png", "-loop", "1", "-t", f"{LOOP_LEN + 1.5:.2f}", "-i", "loop_eyes.png"]
             t0_ = T_end - LOOP_LEN
-            graph.append(f"[{n_in}:v]format=rgba,fade=t=in:st=0:d=1.0:alpha=1,setpts=PTS+{t0_:.3f}/TB[lf];"
+            graph.append(f"[{n_in}:v]format=rgba,scale={OW_}:{OH_}:flags=lanczos,fade=t=in:st=0:d=1.0:alpha=1,setpts=PTS+{t0_:.3f}/TB[lf];"
                          f"[{cur}][lf]overlay=0:0:eof_action=pass:enable='gte(t,{t0_:.3f})'[l1]")
-            graph.append(f"[{n_in + 1}:v]format=rgba,fade=t=in:st=0.35:d=0.5:alpha=1,fade=t=out:st=1.1:d=0.2:alpha=1,setpts=PTS+{t0_:.3f}/TB[le];"
+            graph.append(f"[{n_in + 1}:v]format=rgba,scale={OW_}:{OH_}:flags=lanczos,fade=t=in:st=0.35:d=0.5:alpha=1,fade=t=out:st=1.1:d=0.2:alpha=1,setpts=PTS+{t0_:.3f}/TB[le];"
                          f"[l1][le]overlay=0:0:eof_action=pass:enable='gte(t,{t0_ + 0.35:.3f})'[l2]")
             cur, n_in = "l2", n_in + 2
             LOOP_INFO.update({"fog_png": "loop_fog.png", "from": round(t0_, 2), "to": round(T_end, 2)})
         except Exception as e:
             log(f"Loop ending skipped ({e}).")
     if len(graph) > 1:
-        hook_fc = ";".join(graph) + f";[{cur}]curves=preset=vintage{tail}[vout]"
+        hook_fc = ";".join(graph) + f";[{cur}]{FILM}{tail}[vout]"
     vmap = ["-map", "0:v"] if not hook_fc else ["-filter_complex", hook_fc, "-map", "[vout]"]
     run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "list.txt", "-i", audio_name] + hook_in +
         ([] if hook_fc else ["-vf", vf]) + vmap + ["-map", "1:a",
-         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-maxrate", "14M", "-bufsize", "28M", "-pix_fmt", "yuv420p",
          "-af", f"afade=t=out:st={max(0.0, T_end - 0.35):.2f}:d=0.35,loudnorm=I=-14:TP=-1.5:LRA=11", "-ac", "2", "-ar", "44100",
          "-c:a", "aac", "-b:a", "192k", "-shortest", "-t", "59", str(out_path)], cwd=WORK)
 
@@ -2895,6 +3019,16 @@ ORIGINS = {
     "redsky": ("The sky turns BLOOD RED at dusk and hundreds of crows gather. It is the old warning.", "farmer, priest, girl"),
     "tomb": ("Workers break open something BURIED long ago. The ground cracks, and what lay there climbs out.", "worker, soldier, traveller"),
 }
+
+
+def aurora_color(text):
+    """The colour of the northern lights in a story: whatever colour the narration names; green when it names none."""
+    t = (text or "").lower()
+    for color, rx in (("red", r"crimson|scarlet|\bred\b|blood"), ("violet", r"violet|purple|lilac"), ("blue", r"\bblue\b|icy|ice-blue"),
+                      ("gold", r"golden|\bgold\b|amber"), ("green", r"green|emerald")):
+        if re.search(rx, t):
+            return color
+    return "green"
 
 
 def _parse_folk_key(k):
@@ -3700,10 +3834,14 @@ FOLK_STYLE = ("a warm, soft-spoken person telling a story out loud, naturally an
               "tones with an uneven human rhythm, small pauses and quiet breaths, a little smile in the voice at the start that "
               "slowly turns quiet and serious when it gets frightening. Soft and close to the microphone, never robotic, never "
               "announcer-like, not reading from a page, no theatrical movie-trailer voice")
-DRAMATIC_STYLE = ("a deep, calm, dramatic cinematic storyteller telling an intense story. Slow, deliberate pacing with real "
-                  "pauses at full stops and at ellipses. Hushed and tense during the build-up, growing in weight and intensity "
-                  "toward the frightening reveal, strongest on the key word, then a quiet, calm, final line. Low and controlled, "
-                  "never shouting, never excited, not a nature documentary, no announcer sing-song, no smile in the voice")
+DRAMATIC_STYLE = ("a deep, confident storyteller with real energy and feeling, telling a frightening story to a friend who is hanging "
+                  "on every word. A brisk, lively, natural pace with a quick conversational rhythm and expressive rises and falls "
+                  "in pitch: genuine reactions, a catch of breath, a startled lift, wonder turning to dread, the same bright, "
+                  "alive, quick energy as an excited young person retelling something unbelievable, but in a deep voice. Short "
+                  "pauses only where the story needs them. Building speed and intensity toward the frightening reveal and hitting "
+                  "the key word hard, then a quiet final line. Never slow, never flat, never monotone, no announcer sing-song, "
+                  "not a nature documentary")
+NARR_RATE = float(os.environ.get("NARRATION_RATE", "1.10"))      # the finished narration plays a little faster than the voice reads
 NARRATOR_STYLE = DRAMATIC_STYLE if os.environ.get("VOICE_TONE", "dramatic") != "warm" else FOLK_STYLE
 REVEAL_BEATS = ("hallway", "woods", "road", "jump", "birth", "loom", "curtain", "window", "giant", "tsunami", "ocean", "lake",
                 "lava", "erupt", "clash", "mirror", "lamp", "transform", "attack")
@@ -4028,7 +4166,8 @@ def make_mixed_voice(sentences, narrator, beats=None):
                          "aecho=0.75:0.7:130|260|420:0.26|0.16|0.09,lowpass=f=7500,loudnorm=I=-19:TP=-2:LRA=9,"
                          "aformat=sample_fmts=s16:channel_layouts=mono")
             else:
-                ok = gemini_tts(text, raw, style="a frightened, human, slightly breathless voice, real and unsteady", voice=gv)
+                ok = gemini_tts(text, raw, style="a frightened, human, quick and alive voice, breathless and emotionally charged, with real "
+                                "reactions and quick shifts of pitch, never flat, never slow", voice=gv)
                 chain = (f"aresample=44100,asetrate={int(44100 * pf)},aresample=44100,loudnorm=I=-19:TP=-2:LRA=9,"
                          "aformat=sample_fmts=s16:channel_layouts=mono")
         if not ok:
@@ -4039,11 +4178,19 @@ def make_mixed_voice(sentences, narrator, beats=None):
             run(["ffmpeg", "-y", "-i", str(raw), "-af", chain, "-ar", "44100", "-ac", "1", dst], cwd=WORK)
         d = audio_seconds(WORK / dst)
         chars = [max(len(sentences[x]["text"]), 1) for x in range(a, b + 1)]
-        pos = at
-        for x, c in zip(range(a, b + 1), chars):
-            starts[x], lens[x] = pos, d * c / sum(chars)
-            pos += lens[x]
-        gap = 0.3 if r < len(runs) - 1 else 0.0
+        sp_ = align_sentences(WORK / dst, [sentences[x]["text"] for x in range(a, b + 1)]) if b > a else None
+        if sp_:                                                                     # found in the audio itself
+            for q, x in enumerate(range(a, b + 1)):
+                s0_, e0_ = sp_[q]
+                starts[x] = at + (0.0 if q == 0 else s0_)
+                lens[x] = max(0.2, e0_ - (0.0 if q == 0 else s0_))
+            log(f"Voice part {r}: {b - a + 1} sentence breaks found in the audio (the captions follow the real voice).")
+        else:
+            pos = at
+            for x, c in zip(range(a, b + 1), chars):
+                starts[x], lens[x] = pos, d * c / sum(chars)
+                pos += lens[x]
+        gap = 0.18 if r < len(runs) - 1 else 0.0
         run(["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", f"{gap:.3f}", "-c:a", "pcm_s16le", f"mvgap_{r}.wav"], cwd=WORK)
         parts += [f"file '{dst}'", f"file 'mvgap_{r}.wav'"]
         at += d + gap
@@ -4597,13 +4744,22 @@ def build_folk_main(plan):
             audio_name = "voice_dread.wav"
         except Exception as e3:
             log(f"Voice polish skipped: {e3}")
+    if words is None and durs is None and VOICE_MODE != "acted":      # one narrator read the whole story: find the real sentence breaks
+        sp_ = align_sentences(WORK / audio_name, [sn["text"] for sn in sentences])
+        if sp_:
+            words = []
+            for i, sn in enumerate(sentences):
+                words += [(sp_[i][0] + a_, sp_[i][0] + b_, w_) for a_, b_, w_ in even_words(sn["text"], sp_[i][1] - sp_[i][0])]
+            st_ = [0.0] + [sp_[i][0] for i in range(1, len(sentences))]
+            durs = [st_[i + 1] - st_[i] for i in range(len(sentences) - 1)] + [audio_seconds(WORK / audio_name) - st_[-1]]
+            log(f"The {len(sentences)} sentence breaks were found in the voice itself: captions and pictures follow the real speech.")
     lead = 0.0
     if VOICE_MODE != "acted":
-        # breathing room: a short silence before the first word, a slightly slower voice, and a long hold at the end
+        # breathing room: a short silence before the first word, a lively pace (NARR_RATE), and a long hold at the end
         speech = audio_seconds(WORK / audio_name)
         lead, tail = 0.8, 1.9
         check_speech_fits(speech, lead, tail, 2.4)          # raises StoryTooLong (the room also leaves space for the silence before a kill sound)
-        rate = 0.95 if speech / 0.95 + lead + tail < 57 else 1.0
+        rate = NARR_RATE
         if speech / rate + lead + tail > 57.5:  # too long for a Short: speed the voice up just enough so the ending is never cut off
             rate = min(MAX_SPEEDUP, speech / (57.5 - lead - tail))
             log(f"Story is long ({speech:.1f}s of speech): voice sped up x{rate:.2f} so the ending fits.")
@@ -4687,6 +4843,8 @@ def build_folk_main(plan):
         if not wx.get("sky"):                 # every other shot gets its own sky and mist so no two backdrops look alike
             for k_, v_ in VARY_SKY[j % len(VARY_SKY)].items():
                 wx.setdefault(k_, v_)
+        if wx.get("sky") == "aurora":         # the lights are the colour the story says: crimson lights are not teal
+            wx["aurora"] = aurora_color(" ".join(x.get("text", "") for x in sentences))
         w = toon.World(toon.SETTINGS[settings[i]], 3 + j * 5, wx)
         w.mode = story.get("story_type")
         if sh.get("repeat"):
@@ -5093,11 +5251,20 @@ def build_main():
         log("Falling back to the basic free voice.")
         audio_name = "voice.mp3"
         words = asyncio.run(edge_voice(narration, str(WORK / "voice.mp3")))
+    if sent_durs is None and not words:                          # one narrator read it all: find the real sentence breaks in the audio
+        sp_ = align_sentences(WORK / audio_name, [sn["text"] for sn in sentences])
+        if sp_:
+            words = []
+            for i_, sn in enumerate(sentences):
+                words += [(sp_[i_][0] + a_, sp_[i_][0] + b_, w_) for a_, b_, w_ in even_words(sn["text"], sp_[i_][1] - sp_[i_][0])]
+            st_ = [0.0] + [sp_[i_][0] for i_ in range(1, len(sentences))]
+            sent_durs = [st_[i_ + 1] - st_[i_] for i_ in range(len(sentences) - 1)] + [audio_seconds(WORK / audio_name) - st_[-1]]
+            log(f"The {len(sentences)} sentence breaks were found in the voice itself.")
     total = audio_seconds(WORK / audio_name)
     room = check_speech_fits(total, HYBRID_TAIL_S, 0.4)            # raises StoryTooLong: the build is repeated with a shorter story
-    if total > room:                                            # a little too long: speed the voice up just enough, never cut the ending
-        rate_ = total / room
-        log(f"Story is long ({total:.1f}s of speech): voice sped up x{rate_:.2f} so the ending fits.")
+    if total > room or (NARR_RATE > 1.0 and audio_name != "voice.mp3"):   # speed the voice to the lively pace, and more if it is too long (never cut the ending)
+        rate_ = max(NARR_RATE if audio_name != "voice.mp3" else 1.0, total / room)
+        log(f"Narration pace x{rate_:.2f} ({total:.1f}s of speech).")
         run(["ffmpeg", "-y", "-i", audio_name, "-af", f"atempo={rate_:.4f}", "-ar", "44100", "-ac", "1", "voice_fit.wav"], cwd=WORK)
         audio_name = "voice_fit.wav"
         if words:

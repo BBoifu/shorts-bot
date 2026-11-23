@@ -1,12 +1,16 @@
 {
   "provider": "gemini",
   "voice": "Charon",
-  "fallback_voices": ["Orus", "Algenib", "Enceladus"],
+  "fallback_voices": [
+    "Orus",
+    "Algenib",
+    "Enceladus"
+  ],
   "edge_fallback_voice": "en-US-AndrewNeural",
   "language": "en-US",
-  "speaking_rate": 1.0,
+  "speaking_rate": 1.1,
   "pitch_shift_semitones": 0,
-  "style": "dramatic",
+  "style": "energetic",
   "approved_by_listening": true,
-  "approved_note": "This is the voice the channel owner approved ('now thats perfect'): the plain Gemini voice, NO artificial pitch-down, NO slow-down. Do not change without the owner's explicit request."
+  "approved_note": "The owner approved the plain Gemini voice (Charon): NO artificial pitch-down. On 23 Nov 2026 the owner asked for a faster, livelier narrator with the same energy as the girl host: the style text is now brisk and expressive and the finished narration plays at x1.10 (NARRATION_RATE). The voice itself (Charon) is unchanged. Do not slow it down again without the owner's explicit request."
 }
