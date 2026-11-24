@@ -1,104 +1,288 @@
 {
- "series": "folklore",
- "key": "folk:wolf:The Glass Hound|stalker|knock|teal|A house in Leeds, 2:48 AM|",
- "episode": 31,
+ "series": "hybrid",
+ "key": "axolotl+jellyfish@a planet with two suns",
+ "a": "axolotl",
+ "b": "jellyfish",
+ "place": [
+  "a planet with two suns",
+  "an alien plain under two glowing suns",
+  "sci-fi ambience drone",
+  "warm light from two suns",
+  "warm"
+ ],
  "story": {
-  "legend_name": "The Glass Hound",
-  "region": "A house in Leeds, 2:48 AM",
-  "time": "2:48",
-  "animal": "wolf",
-  "title": "The Knocking Inside the Walls at 2:48",
-  "narrator": {
-   "gender": "male",
-   "persona": "a night-shift locksmith telling it a year later"
-  },
-  "hero": "traveller",
-  "people": "alone",
-  "monster": {
-   "body": "stalker",
-   "palette": "teal",
-   "eyes": "violet",
-   "size": "medium",
-   "horn": null,
-   "spine": "none",
-   "eye_count": "2"
-  },
+  "title": "The Silent Floating Terror of Two Suns",
+  "creature_name": "Glimmerloth",
+  "prey": "solar-drifters",
+  "signature_move": "It drifts silently downward, wrapping its trailing curtain of stinging tentacles around the prey to paralyze it without a sound.",
+  "hybrid_look": "It features a glowing, see-through bell housing an axolotl-shaped head with jellyfish eyes, trailing stinging tentacles, and a long swimming-fin tail, all made of glassy translucent flesh mixed with a smooth texture as it hovers off the ground.",
   "sentences": [
    {
-    "text": "In our town, the old people say three knocks at midnight mean the dead are testing the latch.",
-    "beat": "door",
-    "delivery": "calm",
+    "text": "Do not speak its forbidden name, or it will grow.",
+    "image": "arid crimson canyon walls baking under a double white-hot midday glare",
+    "action": "face",
     "speaker": "narrator",
-    "voice": "",
     "frame": false
    },
    {
-    "text": "Every single night at exactly two forty-eight, heavy fist blows echo from my front door.",
-    "beat": "hallway",
-    "delivery": "hushed",
+    "text": "This imaginary Glimmerloth inherits an axolotl's broad head and tail, plus a jellyfish's stinging tentacles and bell.",
+    "image": "shimmering salt flats radiating intense heat waves from two distinct suns",
+    "action": "turn",
     "speaker": "narrator",
-    "voice": "",
     "frame": false
    },
    {
-    "text": "I checked the peephole last week, and the porch light showed only an empty mat.",
-    "beat": "window",
-    "delivery": "trembling",
+    "text": "During the harsh twin-sun noon, it hovers off the ground to avoid the scorching soil.",
+    "image": "blistering desert plains with jagged rocks casting strange overlapping shadows",
+    "action": "walk",
     "speaker": "narrator",
-    "voice": "",
     "frame": false
    },
    {
-    "text": "Tonight the wet thuds came from inside the living room wallpaper.",
-    "beat": "curtain",
-    "delivery": "urgent",
+    "speaker": "host",
+    "text": "Wait, it just hovers?",
+    "image": "a dramatic view of a planet with two suns",
+    "action": "",
+    "frame": false
+   },
+   {
+    "text": "It drifts slowly downward, wrapping its trailing curtain of stinging tentacles around the prey to paralyze it without a sound.",
+    "image": "vibrant alien flora wilting under the harsh glare of twin orange stars",
+    "action": "hunt",
     "speaker": "narrator",
-    "voice": "",
     "frame": false
    },
    {
-    "text": "My terrified brother whispered from the dark hallway, Open it.",
-    "beat": "hallway",
-    "delivery": "whisper",
-    "speaker": "person",
-    "voice": "man",
-    "frame": false
+    "text": "We should have turned back.",
+    "image": "dusty canyon floor echoing with the faint hum of atmospheric thermal currents",
+    "action": "footprints",
+    "frame": true,
+    "speaker": "narrator"
    },
    {
-    "text": "Open it.",
-    "beat": "hallway",
-    "delivery": "shout",
-    "speaker": "mimic",
-    "voice": "man",
-    "frame": false
-   },
-   {
-    "text": "It's me! Open the door!",
-    "beat": "hallway",
-    "setting": null,
-    "delivery": "hushed",
-    "speaker": "mimic",
-    "voice": "man"
-   },
-   {
-    "text": "When I looked in the hall mirror, I saw it tumbling sideways across the floorboards like a boneless wolf with violet eyes.",
-    "beat": "mirror",
-    "delivery": "dread",
+    "text": "Its glassy translucent flesh and smooth texture easily absorb the blinding dual radiation.",
+    "image": "barren rocky plateau bathed in harsh yellow and red celestial light",
+    "action": "feed",
     "speaker": "narrator",
-    "voice": "",
     "frame": false
    },
    {
-    "text": "Would you have stayed in that room?",
-    "beat": "jump",
-    "delivery": "sorrow",
+    "text": "Yet when the twin suns finally set, freezing night air instantly hardens its gelatinous body. What should I combine next? Tell me in the comments.",
+    "image": "darkening violet sky rapidly cooling as twin shadows stretch across the wasteland",
+    "action": "walkback",
     "speaker": "narrator",
-    "voice": "",
     "frame": false
    }
   ],
-  "story_type": "knock",
-  "format": "modern",
-  "origin": ""
- }
+  "format": "Survival documentary"
+ },
+ "episode": 36,
+ "design": {
+  "hybrid": true,
+  "parents": [
+   "axolotl",
+   "jellyfish"
+  ],
+  "dominant": "jellyfish",
+  "secondary": "axolotl",
+  "dom_weight": 0.62,
+  "torso": [
+   "bell",
+   277.76032265684046,
+   157.94627861532453,
+   0.0
+  ],
+  "arch": 0.0,
+  "legs": [
+   "tentacle",
+   9,
+   172.59478133589937,
+   11.566753604393304
+  ],
+  "foot": "paw",
+  "gait": "pulse",
+  "legs_from": "jellyfish",
+  "arms": null,
+  "head": {
+   "skull": [
+    68.6348623355625,
+    46.573656584845985
+   ],
+   "snout": [
+    "wide",
+    42,
+    32,
+    26,
+    0.0
+   ],
+   "teeth": "none",
+   "ears": [
+    "none",
+    0
+   ],
+   "eyes": "beady",
+   "brow": 0.0,
+   "extras": [
+    "gills_frill"
+   ],
+   "eyecol": [
+    255,
+    255,
+    255
+   ]
+  },
+  "neck": [
+   6.192318669155219,
+   0.0
+  ],
+  "neck_bow": 0.12,
+  "tail": "paddle",
+  "tail_len": 1.264471074058832,
+  "wings": null,
+  "wingfly": false,
+  "shell": null,
+  "dorsal": [],
+  "skin": "translucent",
+  "skin2": "smooth",
+  "pal": [
+   [
+    186,
+    198,
+    233
+   ],
+   [
+    232,
+    100,
+    130
+   ],
+   [
+    206,
+    231,
+    249
+   ]
+  ],
+  "pat": "plain",
+  "hover": 215,
+  "temper": "serene",
+  "glow": false,
+  "ribs": false,
+  "cracks": false,
+  "strike": "sting",
+  "sig": [
+   "gills_frill",
+   "a striking gills frill"
+  ],
+  "sigscale": {
+   "gills_frill": 1.3
+  },
+  "donors": {
+   "body": "jellyfish",
+   "legs": "jellyfish",
+   "head": "axolotl",
+   "face": "jellyfish",
+   "mouth": "axolotl",
+   "tail": "axolotl",
+   "skin": "jellyfish",
+   "palette": [
+    "jellyfish",
+    "axolotl"
+   ]
+  },
+  "flies": false,
+  "words": {},
+  "name": "axolotl-jellyfish",
+  "fingerprint": {
+   "prof": "bell",
+   "pitch": 0,
+   "L": 1,
+   "H": 2,
+   "legs": "tentacle",
+   "nlegs": 9,
+   "legh": 3,
+   "neck": 0,
+   "snout": "wide",
+   "snoutl": 1,
+   "teeth": "none",
+   "ears": "none",
+   "eyes": "beady",
+   "tail": "paddle",
+   "wings": "none",
+   "shell": "none",
+   "dorsal": "none",
+   "skin": "translucent",
+   "skin2": "smooth",
+   "pat": "plain",
+   "hue": 7,
+   "light": 3,
+   "gait": "pulse",
+   "hover": true,
+   "arms": "none",
+   "extras": "gills_frill"
+  },
+  "fp_distance": 99.0,
+  "attempt": 0
+ },
+ "profile": {
+  "hybrid_name": "axolotl-jellyfish",
+  "parent_a": "axolotl",
+  "parent_b": "jellyfish",
+  "dominant_parent": "jellyfish",
+  "dominant": [
+   "jellyfish body structure"
+  ],
+  "secondary": [
+   "jellyfish eyes and face details",
+   "axolotl tail"
+  ],
+  "proportions": "bell torso, 277x157, horizontal posture, neck 6, legs tentacle x9",
+  "head": "a axolotl-shaped head and the jellyfish's eyes",
+  "limbs": "tentacle x9",
+  "texture": "translucent body, smooth limbs and tail",
+  "colour": {
+   "main": [
+    186,
+    198,
+    233
+   ],
+   "accent": [
+    232,
+    100,
+    130
+   ],
+   "belly": [
+    206,
+    231,
+    249
+   ],
+   "pattern": "plain"
+  },
+  "silhouette": "bell-paddle",
+  "locomotion": "drifts and pulses through the air, hovers off the ground",
+  "gait": "pulse",
+  "hovers": true,
+  "signature_ability": "sting",
+  "temperament": "serene",
+  "signature_feature": "a striking gills frill",
+  "summary": [
+   "a glowing, see-through bell (from the jellyfish)",
+   "a axolotl-shaped head and the jellyfish's eyes",
+   "a curtain of trailing stinging tentacles (from the jellyfish)",
+   "a long swimming-fin tail (from the axolotl)",
+   "glassy translucent flesh mixed with smooth texture"
+  ]
+ },
+ "clips": [
+  {
+   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in a planet with two suns: an alien plain under two glowing suns. It features a glowing, see-through bell housing an axolotl-shaped head with jellyfish eyes, trailing stinging tentacles, and a long swimming-fin tail, all made of glassy translucent flesh mixed with a smooth texture as it hovers off the ground. It is menacing and dominant."
+  },
+  {
+   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In an alien plain under two glowing suns, the same hybrid creature goes after solar-drifters. It drifts silently downward, wrapping its trailing curtain of stinging tentacles around the prey to paralyze it without a sound.. Fast, powerful movement, camera follows the action. It features a glowing, see-through bell housing an axolotl-shaped head with jellyfish eyes, trailing stinging tentacles, and a long swimming-fin tail, all made of glassy translucent flesh mixed with a smooth texture as it hovers off the ground."
+  },
+  {
+   "title": "Clip 3 - the close-up (plays at the end)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. It features a glowing, see-through bell housing an axolotl-shaped head with jellyfish eyes, trailing stinging tentacles, and a long swimming-fin tail, all made of glassy translucent flesh mixed with a smooth texture as it hovers off the ground."
+  }
+ ]
 }
