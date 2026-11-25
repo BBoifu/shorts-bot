@@ -4,15 +4,464 @@ in front of a scrolling night/day scene, and writes the result as a video. Needs
 The look is deliberately stylized (flat shapes, rim light), not realistic.
 """
 import math
+import os
 import random
 import subprocess
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import numpy as np
 
 W, H = 1080, 1920       # drawing size
-OW, OH = 1080, 1920     # size sent to ffmpeg: native, no upscaling (the film look is added in the final grade)
+# size sent to ffmpeg. The camera zoom is cut straight from the 1080x1920 drawing into this size in ONE step (no second enlargement later),
+# and sharpened according to how much it was enlarged. OUT_RES=1080 gives the old size.
+OW, OH = (1080, 1920) if os.environ.get("OUT_RES", "1440") == "1080" else (1440, 2560)
 GROUND = 1360
 FPS = 30
+
+
+# ====================================================================================================== HI-RES RENDERING
+# The painters were written for a 1080 x 1920 picture. To make the video truly sharper, a scene can be drawn with RSF[0] times
+# more pixels (2.0 = four times the pixels): every drawing call keeps its old 1080-based numbers and is scaled here, and the
+# finished big frame is shrunk to the video size (so edges are smooth, thin lines stay crisp, and camera zooms do not blur).
+# RSF[0] == 1.0 means "off": every patch below then just calls the original PIL function, nothing changes.
+import weakref
+
+RSF = [1.0]
+_HR = {}          # id(image) -> weakref, for pictures that hold RSF times more pixels than their 1080-based size
+
+
+def _raw(fn, *a, **k):
+    """Run a real PIL function with the hi-res patches switched off, because PIL's own insides call these same methods."""
+    old = RSF[0]
+    RSF[0] = 1.0
+    try:
+        return fn(*a, **k)
+    finally:
+        RSF[0] = old
+
+
+def _hr_reg(im):
+    if isinstance(im, Image.Image):
+        k = id(im)
+        _HR[k] = weakref.ref(im, lambda _r, k=k: _HR.pop(k, None))
+    return im
+
+
+def _big():
+    return (int(round(W * RSF[0])), int(round(H * RSF[0])))
+
+
+_size_p = Image.Image.size.fget
+_width_p = Image.Image.width.fget
+_height_p = Image.Image.height.fget
+
+
+def _psize(im):
+    """The real number of pixels (PIL's own idea of size)."""
+    return _size_p(im)
+
+
+def _is_hr(im):
+    """A picture counts as hi-res if it was made hi-res, or if it is exactly the big frame size."""
+    if RSF[0] == 1.0 or not isinstance(im, Image.Image):
+        return False
+    r = _HR.get(id(im))
+    if r is not None and r() is im:
+        return True
+    return _size_p(im) == _big()
+
+
+def _lsize(self):
+    """While a scene is drawn big, a hi-res picture reports its 1080-based size, so every `im.size`, `im.width`... in the painters
+    keeps meaning what it always meant. (PIL's own code runs through _raw(), where sizes are real again.)"""
+    s = _size_p(self)
+    if RSF[0] != 1.0 and _is_hr(self):
+        r = RSF[0]
+        return (int(round(s[0] / r)), int(round(s[1] / r)))
+    return s
+
+
+Image.Image.size = property(_lsize)
+Image.Image.width = property(lambda self: _lsize(self)[0])
+Image.Image.height = property(lambda self: _lsize(self)[1])
+
+
+_o_new = Image.new
+
+
+def _hr_new(mode, size, color=0):
+    r = RSF[0]
+    if r != 1.0 and tuple(size) in ((W, H), _big()):
+        return _hr_reg(_o_new(mode, _big(), color))
+    return _o_new(mode, size, color)
+
+
+Image.new = _hr_new
+
+
+def _up(im, r=None):
+    """A 1080-based picture brought up to hi-res size so it can be combined with a hi-res one."""
+    r = r or RSF[0]
+    s = _psize(im)
+    res = _raw(im.resize, (int(round(s[0] * r)), int(round(s[1] * r))), Image.BICUBIC)
+    return _hr_reg(res)
+
+
+def _scpt(v, r):
+    return tuple(int(round(x * r)) for x in v)
+
+
+def _scxy(xy, r):
+    if isinstance(xy, (list, tuple)) and len(xy):
+        if isinstance(xy[0], (int, float)):
+            return [v * r for v in xy]
+        return [(p[0] * r, p[1] * r) for p in xy]
+    return xy
+
+
+def _drs(self):
+    r = RSF[0]
+    if r == 1.0:
+        return 1.0
+    im = getattr(self, "_image", None)
+    return r if (im is not None and _is_hr(im)) else 1.0
+
+
+def _wrap_draw(name, wpos, radius=False):
+    o = getattr(ImageDraw.ImageDraw, name)
+    always = name in ("line", "arc")
+
+    def f(self, xy, *a, **k):
+        r = _drs(self)
+        if r != 1.0:
+            xy = _scxy(xy, r)
+            given = k.get("width") or (a[wpos] if (wpos is not None and len(a) > wpos and a[wpos]) else 0)
+            if given:
+                nw = max(1, int(round(given * r)))
+                if k.get("width"):
+                    k["width"] = nw
+                else:
+                    a = list(a)
+                    a[wpos] = nw
+                    a = tuple(a)
+            else:                                   # the default 1-pixel line / outline must become r pixels wide
+                has_outline = k.get("outline") is not None or (len(a) > wpos - 1 and a[wpos - 1] is not None)
+                if always or has_outline:
+                    k["width"] = max(1, int(round(r)))
+            if radius:
+                if "radius" in k and k["radius"]:
+                    k["radius"] = k["radius"] * r
+                elif a and isinstance(a[0], (int, float)):
+                    a = (a[0] * r,) + tuple(a[1:])
+        return _raw(o, self, xy, *a, **k) if r != 1.0 else o(self, xy, *a, **k)
+    setattr(ImageDraw.ImageDraw, name, f)
+
+
+for _n, _w in (("polygon", 2), ("line", 1), ("ellipse", 2), ("rectangle", 2), ("arc", 3), ("pieslice", 4), ("chord", 4)):
+    _wrap_draw(_n, _w)
+_wrap_draw("rounded_rectangle", 3, radius=True)
+
+_o_text = ImageDraw.ImageDraw.text
+
+
+def _hr_text(self, xy, text, *a, **k):
+    r = _drs(self)
+    if r != 1.0:
+        xy = _scxy(xy, r)
+        f = k.get("font")
+        if f is not None and hasattr(f, "font_variant"):
+            try:
+                k["font"] = f.font_variant(size=int(round(f.size * r)))
+            except Exception:
+                pass
+        if k.get("stroke_width"):
+            k["stroke_width"] = int(round(k["stroke_width"] * r))
+    return _raw(_o_text, self, xy, text, *a, **k) if r != 1.0 else _o_text(self, xy, text, *a, **k)
+
+
+ImageDraw.ImageDraw.text = _hr_text
+
+_o_point = ImageDraw.ImageDraw.point
+
+
+def _hr_point(self, xy, fill=None):
+    r = _drs(self)
+    return _raw(_o_point, self, _scxy(xy, r), fill) if r != 1.0 else _o_point(self, xy, fill)
+
+
+ImageDraw.ImageDraw.point = _hr_point
+
+# ---- pictures combined with each other
+_o_paste = Image.Image.paste
+
+
+def _down(im):
+    """A hi-res picture brought down to a 1080-based picture (for the rare picture that is built the normal way)."""
+    s = _psize(im)
+    r = RSF[0]
+    return _raw(im.resize, (int(round(s[0] / r)), int(round(s[1] / r))), Image.LANCZOS)
+
+
+def _hr_paste(self, im, box=None, mask=None):
+    if not _is_hr(self):
+        if RSF[0] != 1.0:                                   # a normal-size picture receiving a hi-res piece: bring the piece down
+            if isinstance(im, Image.Image) and _is_hr(im):
+                im = _down(im)
+            if isinstance(mask, Image.Image) and _is_hr(mask):
+                mask = _down(mask)
+        return _o_paste(self, im, box, mask)
+    r = RSF[0]
+    if isinstance(im, Image.Image) and not _is_hr(im):
+        im = _up(im, r)
+    if isinstance(mask, Image.Image) and not _is_hr(mask):
+        mask = _up(mask, r)
+    if box is not None and not isinstance(box, Image.Image):
+        box = _scpt(box, r)
+    return _raw(_o_paste, self, im, box, mask)
+
+
+Image.Image.paste = _hr_paste
+
+_o_acm = Image.Image.alpha_composite
+
+
+def _hr_acm(self, im, dest=(0, 0), source=(0, 0)):
+    if not _is_hr(self):
+        if RSF[0] != 1.0 and isinstance(im, Image.Image) and _is_hr(im):
+            im = _down(im)
+        return _o_acm(self, im, dest, source)
+    r = RSF[0]
+    if not _is_hr(im):
+        im = _up(im, r)
+    return _raw(_o_acm, self, im, _scpt(dest, r), _scpt(source, r))
+
+
+Image.Image.alpha_composite = _hr_acm
+
+
+def _same(a, b):
+    """Bring two pictures to the same size when exactly one of them is hi-res."""
+    ha, hb = _is_hr(a), _is_hr(b)
+    if ha and not hb and _psize(a) != _psize(b):
+        b = _up(b)
+    elif hb and not ha and _psize(a) != _psize(b):
+        a = _up(a)
+    return a, b
+
+
+def _wrap2(mod, name, nargs=2):
+    o = getattr(mod, name)
+
+    def f(*args, **k):
+        if RSF[0] != 1.0 and len(args) >= nargs and isinstance(args[0], Image.Image) and isinstance(args[1], Image.Image):
+            a, b = _same(args[0], args[1])
+            args = (a, b) + tuple(args[2:])
+            res = _raw(o, *args, **k)
+            return _hr_reg(res) if (_is_hr(a) or _is_hr(b)) and isinstance(res, Image.Image) else res
+        return o(*args, **k)
+    setattr(mod, name, f)
+
+
+for _n in ("blend", "alpha_composite"):
+    _wrap2(Image, _n)
+
+_o_composite = Image.composite
+
+
+def _hr_composite(im1, im2, mask):
+    if RSF[0] != 1.0 and (_is_hr(im1) or _is_hr(im2) or _is_hr(mask)):
+        im1 = im1 if _is_hr(im1) else _up(im1)
+        im2 = im2 if _is_hr(im2) else _up(im2)
+        mask = mask if _is_hr(mask) else _up(mask)
+        return _hr_reg(_raw(_o_composite, im1, im2, mask))
+    return _o_composite(im1, im2, mask)
+
+
+Image.composite = _hr_composite
+
+from PIL import ImageChops as _IC
+for _n in ("multiply", "screen", "add", "subtract", "lighter", "darker", "difference", "add_modulo", "subtract_modulo", "overlay", "soft_light", "hard_light"):
+    if hasattr(_IC, _n):
+        _wrap2(_IC, _n)
+
+_o_offset = _IC.offset
+
+
+def _hr_chops_offset(image, xoffset, yoffset=None):
+    if _is_hr(image):
+        r = RSF[0]
+        return _hr_reg(_raw(_o_offset, image, int(round(xoffset * r)), None if yoffset is None else int(round(yoffset * r))))
+    return _o_offset(image, xoffset, yoffset)
+
+
+_IC.offset = _hr_chops_offset
+
+# ---- pictures made from a hi-res picture stay hi-res
+_o_crop = Image.Image.crop
+
+
+def _hr_crop(self, box=None):
+    if not _is_hr(self):
+        return _o_crop(self, box)
+    return _hr_reg(_raw(_o_crop, self, _scpt(box, RSF[0]) if box is not None else None))
+
+
+Image.Image.crop = _hr_crop
+
+
+def _wrap_keep(name):
+    o = getattr(Image.Image, name)
+
+    def f(self, *a, **k):
+        hr = _is_hr(self)
+        res = _raw(o, self, *a, **k) if hr else o(self, *a, **k)
+        if hr:
+            if isinstance(res, Image.Image):
+                _hr_reg(res)
+            elif isinstance(res, tuple):
+                for q in res:
+                    _hr_reg(q)
+        return res
+    setattr(Image.Image, name, f)
+
+
+for _n in ("copy", "convert", "point", "getchannel", "transpose", "split"):
+    _wrap_keep(_n)
+
+_o_filter = Image.Image.filter
+
+
+def _hr_filter(self, flt):
+    if not _is_hr(self):
+        return _o_filter(self, flt)
+    r = RSF[0]
+    try:
+        if isinstance(flt, ImageFilter.GaussianBlur):
+            flt = ImageFilter.GaussianBlur(flt.radius * r)
+        elif isinstance(flt, ImageFilter.UnsharpMask):
+            flt = ImageFilter.UnsharpMask(radius=flt.radius * r, percent=flt.percent, threshold=flt.threshold)
+        elif isinstance(flt, ImageFilter.BoxBlur):
+            flt = ImageFilter.BoxBlur(flt.radius * r)
+        elif isinstance(flt, (ImageFilter.MaxFilter, ImageFilter.MinFilter, ImageFilter.MedianFilter, ImageFilter.ModeFilter)):
+            sz = int(round(flt.size * r)) | 1
+            flt = type(flt)(sz)
+    except Exception:
+        pass
+    return _hr_reg(_raw(_o_filter, self, flt))
+
+
+Image.Image.filter = _hr_filter
+
+_o_transform = Image.Image.transform
+
+
+def _hr_transform(self, size, method, data=None, resample=Image.NEAREST, fill=1, fillcolor=None):
+    """A hi-res picture keeps hi-res: the output size and every pixel-based number of the transform are multiplied by RSF."""
+    hr = _is_hr(self)
+    if hr:
+        r = RSF[0]
+        size = (int(round(size[0] * r)), int(round(size[1] * r)))
+        if data is not None:
+            if method == Image.AFFINE and len(data) == 6:
+                data = (data[0], data[1], data[2] * r, data[3], data[4], data[5] * r)
+            elif method == Image.PERSPECTIVE and len(data) == 8:
+                data = (data[0], data[1], data[2] * r, data[3], data[4], data[5] * r, data[6] / r, data[7] / r)
+            elif method == Image.QUAD and len(data) == 8:
+                data = tuple(v * r for v in data)
+            elif method == Image.MESH:
+                data = [((b[0] * r, b[1] * r, b[2] * r, b[3] * r), tuple(v * r for v in q)) for b, q in data]
+    res = _raw(_o_transform, self, size, method, data, resample, fill, fillcolor) if hr else _o_transform(self, size, method, data, resample, fill, fillcolor)
+    return _hr_reg(res) if hr else res
+
+
+Image.Image.transform = _hr_transform
+
+_o_rotate = Image.Image.rotate
+
+
+def _hr_rotate(self, angle, resample=Image.NEAREST, expand=0, center=None, translate=None, fillcolor=None):
+    hr = _is_hr(self)
+    if hr:
+        r = RSF[0]
+        if center is not None:
+            center = (center[0] * r, center[1] * r)
+        if translate is not None:
+            translate = (translate[0] * r, translate[1] * r)
+    res = _raw(_o_rotate, self, angle, resample, expand, center, translate, fillcolor) if hr else _o_rotate(self, angle, resample, expand, center, translate, fillcolor)
+    return _hr_reg(res) if hr else res
+
+
+Image.Image.rotate = _hr_rotate
+
+_o_resize = Image.Image.resize
+
+
+def _hr_resize(self, size, resample=None, box=None, reducing_gap=None):
+    """A hi-res picture resized to a 1080-based size stays hi-res (its size is multiplied)."""
+    if _is_hr(self) and not getattr(_hr_resize, "raw", False):
+        r = RSF[0]
+        size = (int(round(size[0] * r)), int(round(size[1] * r)))
+        if box is not None:
+            box = tuple(v * r for v in box)
+        return _hr_reg(_raw(_o_resize, self, size, resample, box, reducing_gap))
+    return _o_resize(self, size, resample, box, reducing_gap)
+
+
+Image.Image.resize = _hr_resize
+
+_o_getbbox = Image.Image.getbbox
+
+
+def _hr_getbbox(self, *a, **k):
+    hr = _is_hr(self)
+    bb = _raw(_o_getbbox, self, *a, **k) if hr else _o_getbbox(self, *a, **k)
+    if bb is not None and hr:
+        r = RSF[0]
+        bb = (int(bb[0] // r), int(bb[1] // r), int(-(-bb[2] // r)), int(-(-bb[3] // r)))
+    return bb
+
+
+Image.Image.getbbox = _hr_getbbox
+
+
+def raw_resize(im, size, resample=None, box=None):
+    """The one place that really wants physical pixels (the last step before ffmpeg)."""
+    return _raw(_o_resize, im, size, resample, box)
+
+
+def hr_size(im):
+    return im.size
+
+
+_o_putalpha = Image.Image.putalpha
+
+
+def _hr_putalpha(self, alpha):
+    if _is_hr(self) and isinstance(alpha, Image.Image) and not _is_hr(alpha):
+        alpha = _up(alpha)
+    return _raw(_o_putalpha, self, alpha)
+
+
+Image.Image.putalpha = _hr_putalpha
+
+_o_reduce = Image.Image.reduce
+
+
+def _hr_reduce(self, factor, box=None):
+    hr = _is_hr(self)
+    res = _raw(_o_reduce, self, factor, box) if hr else _o_reduce(self, factor, box)
+    return _hr_reg(res) if hr else res
+
+
+Image.Image.reduce = _hr_reduce
+
+_o_arr = Image.Image.__array_interface__
+
+
+def _hr_arr(self):
+    return _raw(_o_arr.fget, self) if _is_hr(self) else _o_arr.fget(self)
+
+
+Image.Image.__array_interface__ = property(_hr_arr)
 
 
 # ---------------------------------------------------------------- colors
@@ -102,6 +551,9 @@ def hybrid_spec(a, b, seed=0):
 
 
 # ---------------------------------------------------------------- pen: draws in creature space
+_SSK = [1]       # while a creature is drawn at 2x for smooth edges, the smallest line widths double too
+
+
 class Pen:
     def __init__(self, draw, cx, gy, scale, facing, rim):
         self.d, self.cx, self.gy, self.s, self.f, self.rim = draw, cx, gy, scale, facing, rim
@@ -115,15 +567,15 @@ class Pen:
     def ell(self, x, y, rx, ry, fill, rim=True):
         x0, x1 = sorted((self.X(x - rx), self.X(x + rx)))
         self.d.ellipse((x0, self.Y(y - ry), x1, self.Y(y + ry)), fill=tuple(fill),
-                       outline=self.rim(fill) if rim else None, width=max(2, int(4 * self.s)))
+                       outline=self.rim(fill) if rim else None, width=max(2 * _SSK[0], int(4 * self.s)))
 
     def poly(self, pts, fill, rim=True):
         self.d.polygon([(self.X(x), self.Y(y)) for x, y in pts], fill=tuple(fill),
-                       outline=self.rim(fill) if rim else None, width=max(2, int(3 * self.s)))
+                       outline=self.rim(fill) if rim else None, width=max(2 * _SSK[0], int(3 * self.s)))
 
     def line(self, pts, w, fill):
         p = [(self.X(x), self.Y(y)) for x, y in pts]
-        ww = max(2, int(w * self.s))
+        ww = max(2 * _SSK[0], int(w * self.s))
         self.d.line(p, fill=tuple(fill), width=ww, joint="curve")
         for q in (p[0], p[-1]):
             r = ww / 2
@@ -1890,7 +2342,7 @@ class World:
             for i in range(9):
                 fx = (i * 260 - cam * 0.5 - t * 18 * (1 + i % 3)) % (W + 600) - 300
                 fy = GROUND - 140 + (i % 4) * 55 + 12 * math.sin(t * 0.7 + i)
-                d.ellipse((fx - 330, fy - 70, fx + 330, fy + 70), fill=((150, 220, 110, int(40 * self.fog)) if self.skyfx == "virus" else (190, 205, 225, int(34 * self.fog))))
+                d.ellipse((fx - 330, fy - 70, fx + 330, fy + 70), fill=((150, 220, 110, int(30 * self.fog)) if self.skyfx == "virus" else (190, 205, 225, int(24 * self.fog))))
         if self.storm:
             ph = (t * 0.45) % 1.0
             f = 0.0
@@ -1917,22 +2369,74 @@ _ANGLES = {"wide": (1.0, None, 0.0, 0, False),
            "drift": (1.16, None, 0.0, 90, False)}      # a slow sideways drift
 
 
+_SINK = [None]                                    # tests only
+HR_SCALE = float(os.environ.get("HR_SCALE", "2.0"))   # scenes are drawn with this many times more pixels per side; 1 = the old way
+_HR_STRIPS = ("sky", "clouds", "hz", "far", "mid", "near", "ground")
+
+
+def _hr_world_on(world, rs):
+    """The scrolling background pictures, brought up to hi-res size once (and kept for the next scene in the same place)."""
+    saved = {}
+    cache = world.__dict__.setdefault("_hrc", {})
+    for nm in _HR_STRIPS:
+        lay = getattr(world, nm, None)
+        if lay is None:
+            continue
+        saved[nm] = lay
+        key = (nm, rs, id(lay))
+        hr = cache.get(key)
+        if hr is None:
+            hr = _o_resize(lay, (int(round(lay.size[0] * rs)), int(round(lay.size[1] * rs))), Image.LANCZOS)
+            if hasattr(lay, "top"):
+                hr.top = lay.top
+            _hr_reg(hr)
+            cache[key] = hr
+        setattr(world, nm, hr)
+    return saved
+
+
 def write_video(out, dur, painter, world, cwd=None, cam_dir=1, cam_fn=None):
-    """painter(draw, t, u, cam) draws the actors. Frames are piped straight into ffmpeg."""
+    """painter(draw, t, u, cam) draws the actors. Frames are piped straight into ffmpeg.
+    The scene is drawn hi-res (HR_SCALE times the pixels) and shrunk to the video size; if anything in a scene cannot be
+    drawn that way, it is simply drawn the old way instead."""
+    rs = HR_SCALE if HR_SCALE > 1.0 else 1.0
+    if rs > 1.0:
+        try:
+            return _write_video(out, dur, painter, world, cwd, cam_dir, cam_fn, rs)
+        except Exception as e:
+            RSF[0] = 1.0
+            if os.environ.get("HR_DEBUG"):
+                import traceback
+                traceback.print_exc()
+            print(f"[toon] hi-res draw failed for {os.path.basename(str(out))} ({type(e).__name__}: {e}); drawing it normally", flush=True)
+    return _write_video(out, dur, painter, world, cwd, cam_dir, cam_fn, 1.0)
+
+
+def _write_video(out, dur, painter, world, cwd, cam_dir, cam_fn, rs):
     n = max(int(dur * FPS), 2)
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{OW}x{OH}",
-           "-r", str(FPS), "-i", "-", "-vf", "scale=1080:1920:flags=bicubic", "-c:v", "libx264",
-           "-preset", "veryfast", "-crf", "14", "-pix_fmt", "yuv420p", "-an", out]
-    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, cwd=cwd)
+           "-r", str(FPS), "-i", "-", "-vf", f"scale={OW}:{OH}:flags=bicubic", "-c:v", "libx264",
+           "-preset", "veryfast", "-crf", "15", "-pix_fmt", "yuv420p", "-an", out]
+    if _SINK[0] is not None:                     # tests collect the finished frames instead of making a video
+        proc = subprocess.Popen(["cat"], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, cwd=cwd)
+    else:
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, cwd=cwd)
     _LIGHT_WORLD[0] = world
     REACT.update(t=-99.0, power=0.0)
     BODY.clear()
     _MOT.clear()
     _SCENE[0] = out
     track = []
+    if rs != 1.0:
+        try:
+            world.frame(0.0, 0.0)           # let the world build whatever it builds on first use, at the normal size, before it is made big
+        except Exception:
+            pass
     EMERGE.update(dur=float(getattr(world, "emerge", 0.0) or 0.0), t0=None, last=-9.0, t=0.0)
+    saved_strips = _hr_world_on(world, rs) if rs != 1.0 else {}
     try:
         for i in range(n):
+            RSF[0] = rs
             t = i / FPS
             EMERGE["t"] = t
             u = i / max(n - 1, 1)
@@ -1944,12 +2448,15 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1, cam_fn=None):
             ov = painter(im, d, t, u, cam)
             if ov is not None:
                 im = ov
+            if rs != 1.0 and _psize(im) != _big():
+                im = _up(im, rs)                          # a painter handed back an ordinary-size picture
             if CINEMA_ON() and not getattr(world, "no_cinema", False) and not _CLOSEUP[0]:
                 im = world.cinema_front(im, cam, t)
             box = None
             if _BOXES:
                 box = _Box([min(b[0] for b in _BOXES), min(b[1] for b in _BOXES), max(b[2] for b in _BOXES), max(b[3] for b in _BOXES)])
                 box.parts = tuple(tuple(b) for b in _BOXES)
+            zoom_now = 1.0
             push, shake = getattr(world, "push", 0.0), getattr(world, "shake", 0.0)
             pull = getattr(world, "pull", 0.0)  # a pull-back: the camera starts close and drifts away
             ang = _ANGLES.get(getattr(world, "angle", None) or "wide", _ANGLES["wide"])   # (zoom, look height, tilt, drift, follows the creature)
@@ -1971,7 +2478,11 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1, cam_fn=None):
                     parts_ = tuple(((q[0] - ax) * z, (q[1] - ay) * z, (q[2] - ax) * z, (q[3] - ay) * z) for q in getattr(box, "parts", ()))
                     box = _Box([(box[0] - ax) * z, (box[1] - ay) * z, (box[2] - ax) * z, (box[3] - ay) * z])
                     box.parts = parts_
-                im = im.crop((int(cx - cw / 2), int(cy - ch / 2), int(cx + cw / 2), int(cy + ch / 2)))
+                zoom_now = z
+                im = raw_resize(im, (OW, OH), Image.LANCZOS, box=tuple(v * rs for v in (cx - cw / 2, cy - ch / 2, cx + cw / 2, cy + ch / 2)))      # one smooth cut, sub-pixel exact
+            if rs != 1.0 and _psize(im) != (OW, OH):
+                im = raw_resize(im, (OW, OH), Image.LANCZOS)      # no zoom this frame: shrink the big picture to the video size
+            RSF[0] = 1.0                                          # from here on it is an ordinary picture
             track.append((t, box))
             tilt = getattr(world, "tilt", 0.0) or ang[2]
             if tilt:
@@ -1980,8 +2491,19 @@ def write_video(out, dur, painter, world, cwd=None, cam_dir=1, cam_fn=None):
                 im = im.rotate(tilt, resample=Image.BICUBIC)
                 w2, h2 = im.size
                 im = im.crop((int(w2 * (1 - k) / 2), int(h2 * (1 - k) / 2), int(w2 * (1 + k) / 2), int(h2 * (1 + k) / 2)))
-            proc.stdin.write(im.resize((OW, OH), Image.LANCZOS).tobytes())
+            if im.size != (OW, OH):
+                im = im.resize((OW, OH), Image.LANCZOS)
+            up = zoom_now * OW / (W * rs)                  # how much the drawing was enlarged to make this frame
+            if up > 1.02:                                  # enlarging softens edges: win the crispness back (more for tighter shots)
+                im = im.filter(ImageFilter.UnsharpMask(radius=1.0 + 0.5 * (up - 1.0), percent=int(min(190, 20 + 115 * (up - 1.0))), threshold=3))
+            if _SINK[0] is not None:
+                _SINK[0].append(im.copy())
+            else:
+                proc.stdin.write(im.tobytes())
     finally:
+        RSF[0] = 1.0
+        for nm_, lay_ in saved_strips.items():
+            setattr(world, nm_, lay_)
         EMERGE["dur"] = 0.0
         proc.stdin.close()
         rc = proc.wait()
@@ -2147,6 +2669,7 @@ EYES = {"red": (255, 40, 30), "gold": (255, 190, 40), "green": (90, 255, 110), "
         "violet": (200, 110, 255), "orange": (255, 130, 30), "blue": (90, 190, 255)}
 BODIES = ("beast", "stalker", "arachnid", "serpent", "wraith", "owlman", "crawler", "djinn", "hollow", "theropod", "dragon")
 HORNS = (None, "antlers", "ram", "twin", "bull")
+BANNED_BODIES = ("stalker",)      # designs that are never used any more (the drawing code stays, but a banned body is drawn as a beast)
 
 
 def folk_creature(name, design=None):
@@ -2155,6 +2678,8 @@ def folk_creature(name, design=None):
     design = design or {}
     sp = animal_spec(name)
     body = design.get("body") if design.get("body") in BODIES else "beast"
+    if body in BANNED_BODIES:
+        body = "beast"
     if body == "beast" and "SKELETAL_FOLK" in globals() and SKELETAL_FOLK:
         try:
             sk = skeletal_folk(name, design)
@@ -7969,6 +8494,9 @@ def _lit_draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=Non
     base = img_draw._image
     if base.mode != "RGB":
         return _draw_creature_plain(img_draw, sp, cx, gy, phase, facing, scale, st, focus)
+    R = RSF[0] if _is_hr(base) else 1.0                  # hi-res drawing: pixel arrays hold R times more pixels than the 1080-based numbers
+    if R != 1.0 and (st.get("xray") or st.get("tint")):
+        raise RuntimeError("hi-res: x-ray / skin-tint scenes are drawn the normal way")
     layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
     ld = ImageDraw.Draw(layer, "RGBA")
     s = 1.4 * (scale if scale is not None else 1.0) * sp.get("scale", 1.0) * KIND_SCALE.get(sp["kind"], 1.0)
@@ -8001,19 +8529,23 @@ def _lit_draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=Non
     ground = int(gy + 18)
     if ground > y0 + 8:
         top = max(y0, 0)
-        sil = Image.fromarray((solid[: max(ground - y0, 1)] * 255).astype(np.uint8), "L")
-        H0 = sil.height
-        sh_h = max(int(H0 * 0.20), 6)
-        sil = sil.transpose(Image.FLIP_TOP_BOTTOM).resize((sil.width, sh_h), Image.BILINEAR)   # feet at row 0, head far away
+        rows = max(int(round((ground - y0) * R)), 1)                 # (pixel work below is in real pixels: R per 1080-based unit)
+        sil = _raw(Image.fromarray, (solid[:rows] * 255).astype(np.uint8), "L")
+        H0 = _psize(sil)[1]
+        sh_h = max(int(H0 * 0.20), int(6 * R))
+        sil = _raw(sil.transpose, Image.FLIP_TOP_BOTTOM)
+        sil = _raw(sil.resize, (_psize(sil)[0], sh_h), Image.BILINEAR)   # feet at row 0, head far away
         reach = 0.45 * H0 * abs(dx0 / dy0)                      # the shadow falls away from the light
-        extra = int(reach) + 8
-        wide = Image.new("L", (sil.width + 2 * extra, sh_h), 0)
-        wide.paste(sil, (extra, 0))
+        extra = int(reach) + int(8 * R)
+        wide = _raw(Image.new, "L", (_psize(sil)[0] + 2 * extra, sh_h), 0)
+        _raw(wide.paste, sil, (extra, 0))
         a_ = (reach / sh_h) * (1 if dx0 > 0 else -1)            # row j of the shadow moves sideways by a_ * j
-        wide = wide.transform(wide.size, Image.AFFINE, (1, a_, 0, 0, 1, 0), Image.BILINEAR)
-        wide = wide.filter(ImageFilter.GaussianBlur(max(5, 8 * s)))
-        wide = wide.point(lambda v: int(v * (0.30 if sp["kind"] in ("bird", "float", "swim", "wraith") else 0.55)))
-        sx = x0 - extra
+        wide = _raw(wide.transform, _psize(wide), Image.AFFINE, (1, a_, 0, 0, 1, 0), Image.BILINEAR)
+        wide = _raw(wide.filter, ImageFilter.GaussianBlur(max(4, 6 * s) * R))
+        wide = _raw(wide.point, lambda v: int(v * (0.42 if sp["kind"] in ("bird", "float", "swim", "wraith") else 0.80)))
+        if R != 1.0:
+            _hr_reg(wide)
+        sx = int(x0 - extra / R)
         base.paste((5, 7, 16), (sx, ground - 6), wide)
     # --- light spill from glowing eyes / fire onto the ground ---
     ec = sp.get("eye") if isinstance(sp, dict) else None
@@ -8027,24 +8559,24 @@ def _lit_draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=Non
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
     proj = ((xx - w / 2) * -dx0 + (yy - h / 2) * -dy0)
     proj = proj / max(float(np.abs(proj).max()), 1.0)             # -1 lit side .. +1 shadow side
-    shade = 1.0 - 0.50 * np.clip((proj + 0.05) / 1.0, 0, 1) - 0.12 * np.clip((yy / max(h, 1) - 0.6) / 0.4, 0, 1)
+    shade = 1.0 - 0.58 * np.clip((proj + 0.05) / 1.0, 0, 1) - 0.16 * np.clip((yy / max(h, 1) - 0.6) / 0.4, 0, 1)
     if world is not None:       # one colour world: the creature picks up the scene's own tone and loses a little saturation
         try:
             tint = np.array(rgb(world.st["sky"][1]), dtype=np.float32)
             grey = C.mean(axis=2, keepdims=True)
-            C = C * 0.90 + grey * 0.10
-            C = C * 0.86 + tint * 0.14
+            C = C * 0.94 + grey * 0.06
+            C = C * 0.92 + tint * 0.08
         except Exception:
             pass
     C = C * shade[..., None]
-    kpx = max(4, int(9 * s))
+    kpx = max(4, int(9 * s)) * R
     lit_edge = solid * (1.0 - _shift(solid, int(round(dx0 * kpx)), int(round(dy0 * kpx))))
     # the rim only where the surface really faces the light, and softened
-    r = Image.fromarray((np.clip(lit_edge, 0, 1) * 255).astype(np.uint8), "L").filter(ImageFilter.GaussianBlur(1.3 * max(s, 0.6)))
+    r = _raw(Image.fromarray((np.clip(lit_edge, 0, 1) * 255).astype(np.uint8), "L").filter, ImageFilter.GaussianBlur(1.3 * max(s, 0.6) * R))
     r = np.asarray(r, dtype=np.float32)[..., None] / 255.0
     C = 255 - (255 - C) * (1 - np.clip(r * 1.6, 0, 1) * (lc / 255.0))
     # a faint wide glow so the lit side reads as lit, not just outlined
-    wide = Image.fromarray((np.clip(lit_edge, 0, 1) * 255).astype(np.uint8), "L").filter(ImageFilter.GaussianBlur(7 * max(s, 0.6)))
+    wide = _raw(Image.fromarray((np.clip(lit_edge, 0, 1) * 255).astype(np.uint8), "L").filter, ImageFilter.GaussianBlur(7 * max(s, 0.6) * R))
     wide = np.asarray(wide, dtype=np.float32)[..., None] / 255.0
     C = np.clip(C + wide * solid[..., None] * lc * 0.30, 0, 255)
     v = float(st.get("veil", sp.get("veil", 0.0)) or 0.0)
@@ -8053,10 +8585,16 @@ def _lit_draw_creature(img_draw, sp, cx, gy, phase, facing=1, scale=None, st=Non
         dark = np.array(rgb(world.st["sky"][1]), dtype=np.float32) * 0.22 if world is not None else np.array((8, 8, 14), dtype=np.float32)
         C = (C * (1 - 0.90 * v) + dark * 0.90 * v) * (1 - sat) + C * sat
         A = A * (1 - 0.18 * v)
+    C = 255.0 * (np.clip(C, 0, 255) / 255.0) ** 1.07              # deeper darks: the body keeps real shadow, not a milky grey
     out = np.zeros((h, w, 4), dtype=np.uint8)
-    out[..., :3] = C.astype(np.uint8)
+    out[..., :3] = np.clip(C, 0, 255).astype(np.uint8)
     out[..., 3] = (A * 255).astype(np.uint8)
-    base.paste(Image.fromarray(out, "RGBA").convert("RGB"), (x0, y0), Image.fromarray(out[..., 3], "L"))
+    body = _raw(Image.fromarray(out[..., :3], "RGB").filter, ImageFilter.UnsharpMask(radius=2.2 * R, percent=70, threshold=2))     # clearer forms
+    edge_ = _raw(Image.fromarray(out[..., 3], "L").filter, ImageFilter.GaussianBlur(0.7 if R == 1.0 else 0.45 * R))      # softened silhouette edge: no stair-steps
+    if R != 1.0:
+        _hr_reg(body)
+        _hr_reg(edge_)
+    base.paste(body, (x0, y0), edge_)
     if st.get("xray"):
         _xray_overlay(base, solid, x0, y0, sp, cx, gy, s, facing, st["xray"])
 
@@ -8838,7 +9376,7 @@ def swirl_scene(out, dur, world, sp, cwd=None):
             ld = ImageDraw.Draw(lay, "RGBA")
             draw_creature(ld, sp, 0, 0, t * 1.0, 1, 1.4, {"t": t, "roar": 0.0, "moving": False}, focus=(ax_, ay_, 560, cy + 420 * (1 - q) - 120))
             a = np.asarray(lay).copy()
-            a[cy + 40:, :, 3] = 0                                                # everything below the water line stays hidden
+            a[int(round((cy + 40) * (RSF[0] if _is_hr(lay) else 1.0))):, :, 3] = 0                # everything below the water line stays hidden
             lay = Image.fromarray(a, "RGBA")
             im.paste(lay, (0, 0), lay)
             d = ImageDraw.Draw(im, "RGBA")
@@ -9697,6 +10235,14 @@ def maul_frame(im, t, u, sp, prey_col=(200, 170, 130), kind="fur", seed=1):
     return arr.convert("RGB")
 
 
+_maul_frame_impl = maul_frame
+
+
+def maul_frame(*a, **k):
+    """This close-up is built (and supersampled) as one 1080-based picture, so it is made the normal way and enlarged afterwards."""
+    return _raw(_maul_frame_impl, *a, **k)
+
+
 def maul_scene(out, dur, world, sp, prey_text="", cwd=None):
     """The close-up kill as its own scene (an insert for hunt / attack sentences)."""
     prey, _ = prey_spec(prey_text)
@@ -9766,6 +10312,13 @@ def hook_frame(t, eye=(255, 170, 40), seed=3):
         d.ellipse((x - r * 1.15, cy - r * 0.8 * blink, x + r * 1.15, cy + r * 0.8 * blink), fill=tuple(min(255, c + 40) for c in eye) + (int(255 * a),))
         d.ellipse((x - r * 0.28, cy - r * 0.8 * blink, x + r * 0.28, cy + r * 0.8 * blink), fill=(8, 6, 10, int(255 * a)))
     return im
+
+
+_hook_frame_impl = hook_frame
+
+
+def hook_frame(*a, **k):
+    return _raw(_hook_frame_impl, *a, **k)
 
 
 def hook_clip(out, eye=(255, 170, 40), cwd=None):

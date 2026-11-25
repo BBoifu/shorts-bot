@@ -2021,21 +2021,23 @@ def clip_seconds(path):
         return 0.0
 
 
-def clip_shot(clip, dur, out):
+def clip_shot(clip, dur, out, size=None):
     """Use an AI-made video clip for `dur` seconds: fill the tall frame, trim it, or slow it down a
-    little (at most 1.5x) and hold the last frame if the clip is shorter than needed."""
+    little (at most 1.5x) and hold the last frame if the clip is shorter than needed.
+    size: the frame size to cut it to (the finished video's own size, so a sharp drawing is never shrunk and enlarged again)."""
+    SW_, SH_ = size or (1080, 1920)
     d = clip_seconds(clip)
     if d < 0.5:
         raise RuntimeError("clip unreadable")
     f = 1.0 if d >= dur else min(dur / d, 1.5)
     extra = max(dur - d * f, 0.0)
-    vf = (f"scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,setsar=1,"
+    vf = (f"scale={SW_}:{SH_}:force_original_aspect_ratio=increase:flags=lanczos,crop={SW_}:{SH_},setsar=1,"
           f"fps={FPS},setpts={f:.4f}*PTS,tpad=stop_mode=clone:stop_duration={extra + 0.2:.3f}")
     run(["ffmpeg", "-y", "-i", clip, "-vf", vf, "-t", f"{dur:.3f}", "-an",
-         "-c:v", "libx264", "-preset", "veryfast", "-crf", "15", "-pix_fmt", "yuv420p", out], cwd=WORK)
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "14", "-pix_fmt", "yuv420p", out], cwd=WORK)
 
 
-def shot_or_clip(plate, clip, dur, out, mode="in"):
+def shot_or_clip(plate, clip, dur, out, mode="in", size=None):
     """The AI video clip if there is one (and it works), otherwise the still picture with camera motion."""
     if not plate:
         if not (WORK / "grad.png").exists():
@@ -2043,7 +2045,7 @@ def shot_or_clip(plate, clip, dur, out, mode="in"):
         plate = "grad.png"
     if clip:
         try:
-            clip_shot(clip, dur, out)
+            clip_shot(clip, dur, out, size)
             log(f"Used video clip {pathlib.Path(clip).name} for {dur:.1f}s")
             return
         except RuntimeError as e:
@@ -2394,7 +2396,7 @@ def quality_gate(video_path, words, kind, rebuild=None):
 
 
 # The film look: the old "vintage" curve with the blue/red black-points pulled down so shadows are no longer hazy.
-FILM = "curves=r='0/0.06 0.42/0.48 1/0.97':g='0/0 0.5/0.49 1/1':b='0/0.12 0.49/0.45 1/0.86'"
+FILM = "curves=r='0/0.03 0.42/0.45 1/0.98':g='0/0 0.5/0.48 1/1':b='0/0.06 0.49/0.44 1/0.88'"
 
 
 def out_size():
@@ -2403,22 +2405,40 @@ def out_size():
     return (1080, 1920) if os.environ.get("OUT_RES", "1440") == "1080" else (1440, 2560)
 
 
+def _force_seg_size(seg, size):
+    """Every piece joined into the video must have exactly the same frame size. A piece made at another size (a still-picture
+    fallback, the hybrid opening) is cut to the right one here, so a joined video can never come out broken."""
+    path = WORK / seg
+    try:
+        got = run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", str(path)]).strip()
+    except Exception:
+        return
+    if got == f"{size[0]}x{size[1]}":
+        return
+    tmp = f"fix_{seg}"
+    run(["ffmpeg", "-y", "-i", seg, "-vf", f"scale={size[0]}:{size[1]}:flags=lanczos,setsar=1", "-an",
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "15", "-pix_fmt", "yuv420p", tmp], cwd=WORK)
+    (WORK / tmp).replace(path)
+
+
 def build_video(scenes, assets, audio_name, captions_name, out_path):
     OW_, OH_ = out_size()
     K = OW_ / 1080.0
     segs, reveal = [], 0.0
     k = 0
     h = assets["h"]
+    seg_size = (OW_, OH_)
     for i, sc in enumerate(scenes):
         seg = f"seg{i}.mp4"
         if sc["kind"] == "open":
             t = open_block(sc["hook"], sc["morph"], assets, seg)
             reveal = t["reveal"]
         elif sc["kind"] == "hold":
-            shot_or_clip(h["plate"], sc.get("clip"), sc["dur"], seg, "in")
+            shot_or_clip(h["plate"], sc.get("clip"), sc["dur"], seg, "in", seg_size)
         else:
-            shot_or_clip(sc["plate"], sc.get("clip"), sc["dur"], seg, MOTIONS[k % len(MOTIONS)])
+            shot_or_clip(sc["plate"], sc.get("clip"), sc["dur"], seg, MOTIONS[k % len(MOTIONS)], seg_size)
             k += 1
+        _force_seg_size(seg, seg_size)
         segs.append(seg)
     (WORK / "list.txt").write_text("".join(f"file '{s}'\n" for s in segs))
     T = reveal
@@ -2430,9 +2450,9 @@ def build_video(scenes, assets, audio_name, captions_name, out_path):
     # one shared "old film" look over everything: faded colors, scene color grade, heavy grain, vignette
     vf = (f"scale={round(1134 * K)}:{round(2016 * K)}:flags=lanczos,crop={OW_}:{OH_}:x='({xe})*{K:.5f}':y='({ye})*{K:.5f}',"
           f"{FILM},{LOOK['grade']},"
-          f"eq=brightness='{flash}+0.075':saturation=1.08:contrast=1.10:gamma=1.2:eval=frame,"
-          "unsharp=5:5:0.7:5:5:0.0,unsharp=13:13:0.35:13:13:0.0,"          # crisp fine detail + local contrast ("clarity")
-          "vignette=PI/5.5,noise=alls=5:allf=t+u")
+          f"eq=brightness='{flash}+0.06':saturation=1.12:contrast=1.25:gamma=1.35:eval=frame,"
+          "unsharp=5:5:0.9:5:5:0.0,unsharp=13:13:0.45:13:13:0.0,"          # crisp fine detail + local contrast ("clarity")
+          "vignette=PI/5.5,noise=alls=2:allf=t+u")
     if captions_name:
         vf += f",subtitles={captions_name}"
     hook_in, hook_fc = [], None
@@ -2476,7 +2496,7 @@ def build_video(scenes, assets, audio_name, captions_name, out_path):
     vmap = ["-map", "0:v"] if not hook_fc else ["-filter_complex", hook_fc, "-map", "[vout]"]
     run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "list.txt", "-i", audio_name] + hook_in +
         ([] if hook_fc else ["-vf", vf]) + vmap + ["-map", "1:a",
-         "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-maxrate", "14M", "-bufsize", "28M", "-pix_fmt", "yuv420p",
+         "-c:v", "libx264", "-preset", "faster", "-crf", "18", "-maxrate", "18M", "-bufsize", "36M", "-pix_fmt", "yuv420p",
          "-af", f"afade=t=out:st={max(0.0, T_end - 0.35):.2f}:d=0.35,loudnorm=I=-14:TP=-1.5:LRA=11", "-ac", "2", "-ar", "44100",
          "-c:a", "aac", "-b:a", "192k", "-shortest", "-t", "59", str(out_path)], cwd=WORK)
 
@@ -2944,9 +2964,9 @@ MODERN_TYPES = {
               "and the whole sky seems to turn its head. Clouds drift across its face as it looks down.", "giant, woods, road"),
 }
 NATURE_TYPES = ("sea", "lake", "lava", "storm", "tsunami", "titan")
-NATURE_BODIES = {"sea": ("serpent", "beast"), "lake": ("serpent", "hollow", "stalker"), "lava": ("dragon", "beast", "stalker"),
-                 "storm": ("dragon", "wraith", "stalker", "owlman"), "tsunami": ("beast", "serpent"),
-                 "titan": ("theropod", "dragon", "beast", "stalker", "hollow")}
+NATURE_BODIES = {"sea": ("serpent", "beast"), "lake": ("serpent", "hollow"), "lava": ("dragon", "beast"),
+                 "storm": ("dragon", "wraith", "owlman"), "tsunami": ("beast", "serpent"),
+                 "titan": ("theropod", "dragon", "beast", "hollow")}
 
 # Prehistoric horror: the age of dinosaurs, told as a story about a new apex predator. Each type: (plot, what each of the 8 sentences does).
 # The scene for every sentence is fixed by the type, so the pictures always follow the story in order.
@@ -2989,8 +3009,10 @@ PRE_TYPES = {
 }
 PRE_BODIES = {"volcano": ("theropod",), "meteor": ("theropod",), "dragon": ("dragon",)}
 PRE_CRACKS = {"volcano": True, "meteor": False, "dragon": True}
-MODERN_BODIES = ("crawler", "stalker", "wraith", "owlman", "beast", "arachnid", "hollow")
-BODY_HINT = ("beast = a four-legged hunting predator (dog, wolf, bear or bull-like); stalker = a tall thin antlered forest spirit; "
+# Creature designs that are never picked again (the owner did not like them). The drawing code stays, but nothing chooses them.
+BANNED_BODIES = ("stalker",)      # the tall, thin, antlered forest spirit with the skull face
+MODERN_BODIES = ("crawler", "wraith", "owlman", "beast", "arachnid", "hollow")
+BODY_HINT = ("beast = a four-legged hunting predator (dog, wolf, bear or bull-like); "
              "arachnid = a huge spider-like weaver or trapper; serpent = a giant snake or river creature; "
              "wraith = a floating ghost, banshee or cloaked spirit; owlman = a winged night bird or bat-thing; "
              "crawler = an upside-down man-dog thing that hangs from ceilings and crawls on walls; "
@@ -3063,7 +3085,8 @@ def folk_variety(history):
     fmt = random.choices(list(weights), weights=list(weights.values()))[0]
     pool = {"modern": MODERN_TYPES, "legend": STORY_TYPES, "prehistoric": PRE_TYPES}[fmt]
     types = [k for k in pool if k not in recent("type", len(pool) // 2 + 1)] or list(pool)
-    allowed = MODERN_BODIES if fmt == "modern" else ("beast", "stalker", "arachnid", "serpent", "wraith", "owlman", "dragon")
+    allowed = MODERN_BODIES if fmt == "modern" else ("beast", "arachnid", "serpent", "wraith", "owlman", "dragon")
+    allowed = tuple(b for b in allowed if b not in BANNED_BODIES)
     bodies = [b for b in allowed if b not in recent("body", 3)] or [allowed[0]]
     palettes = [c for c in PALETTE_NAMES if c not in recent("palette", 4)] or list(PALETTE_NAMES)
     regions = [r for r in FOLK_REGIONS if r not in recent("region", 6)] or FOLK_REGIONS
@@ -3077,6 +3100,7 @@ def folk_variety(history):
         bodies = ["djinn"]
     elif "djinn" in bodies:
         bodies = [b for b in bodies if b != "djinn"] or ["hollow"]
+    bodies = [b for b in bodies if b not in BANNED_BODIES] or ["beast"]
     # most episodes get a body that is not an animal shape at all (no legs, hands or wings): an eye, a swarm, a flower, a drifting mass
     n_ep = len(past)
     strange_body = False
