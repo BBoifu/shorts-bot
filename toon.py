@@ -11402,3 +11402,1063 @@ KIND_SCALE.update({"swarm": 0.85, "tendril": 1.0, "orb": 1.0, "bloom": 0.9})
 HEAD_AT.update({"swarm": (20, -820), "tendril": (60, -300), "orb": (90, -350), "bloom": (90, -520)})
 PRINT_OF.update({"swarm": "dots", "tendril": "slither", "orb": "frost", "bloom": "slither"})
 BODIES = BODIES + ("swarm", "tendril", "orb", "bloom")
+
+# ====================================================================================================== VISTA
+# A far landscape seen in FIRST PERSON. The camera zooms into one far landmark (a waterfall, a mountain with a cave, a
+# ruined tower); something comes out of it and down the land toward you, and the land answers it: water splashes, birds
+# scatter, trees sway, rocks fall, mist swirls. The whole landscape is painted ONCE at 3x ("plates") so the zoom stays sharp.
+VS = 3                                                       # plate scale: 3 pixels for every drawing unit
+VISTA_KINDS = ("falls", "peak", "tower")
+
+
+class _VC:
+    """A big picture painted in drawing units (1080 x 1920) but with VS times the pixels."""
+
+    def __init__(self, mode="RGB", fill=None):
+        if fill is None:
+            fill = (0, 0, 0, 0) if mode == "RGBA" else (0, 0, 0)       # overlay layers start clear, not black
+        self.im = Image.new(mode, (W * VS, H * VS), fill)
+        self.d = ImageDraw.Draw(self.im, "RGBA")
+
+    def P(self, pts, fill):
+        self.d.polygon([(x * VS, y * VS) for x, y in pts], fill=fill)
+
+    def L(self, pts, fill, w=1.0):
+        self.d.line([(x * VS, y * VS) for x, y in pts], fill=fill, width=max(1, int(round(w * VS))))
+
+    def E(self, box, fill):
+        self.d.ellipse([box[0] * VS, box[1] * VS, box[2] * VS, box[3] * VS], fill=fill)
+
+    def R(self, box, fill):
+        self.d.rectangle([box[0] * VS, box[1] * VS, box[2] * VS, box[3] * VS], fill=fill)
+
+    def masked(self, poly, fn):
+        """fn(canvas) draws freely; only what falls inside the polygon is kept (used for rock facets, snow, strata)."""
+        xs, ys = [p[0] for p in poly], [p[1] for p in poly]
+        x0, y0, x1, y1 = max(0, min(xs)), max(0, min(ys)), min(W, max(xs)), min(H, max(ys))
+        if x1 <= x0 or y1 <= y0:
+            return
+        bw, bh = int((x1 - x0) * VS) + 2, int((y1 - y0) * VS) + 2
+        tile = _VC.__new__(_VC)
+        tile.im = Image.new("RGBA", (bw, bh), (0, 0, 0, 0))
+        tile.d = ImageDraw.Draw(tile.im, "RGBA")
+        tile.ox, tile.oy = x0, y0
+        tile.lit_side = getattr(self, "lit_side", -1)
+        # in a tile, drawing units are shifted: wrap the drawing calls
+        sh = lambda pts: [(x - x0, y - y0) for x, y in pts]
+        tile.P = lambda pts, fill: tile.d.polygon([((x - x0) * VS, (y - y0) * VS) for x, y in pts], fill=fill)
+        tile.L = lambda pts, fill, w=1.0: tile.d.line([((x - x0) * VS, (y - y0) * VS) for x, y in pts], fill=fill, width=max(1, int(round(w * VS))))
+        tile.E = lambda box, fill: tile.d.ellipse([(box[0] - x0) * VS, (box[1] - y0) * VS, (box[2] - x0) * VS, (box[3] - y0) * VS], fill=fill)
+        fn(tile)
+        mask = Image.new("L", (bw, bh), 0)
+        ImageDraw.Draw(mask).polygon([((x - x0) * VS, (y - y0) * VS) for x, y in poly], fill=255)
+        a = ImageChops.multiply(tile.im.getchannel("A"), mask)
+        tile.im.putalpha(a)
+        if self.im.mode == "RGBA":
+            layer = Image.new("RGBA", self.im.size, (0, 0, 0, 0))
+            layer.paste(tile.im, (int(x0 * VS), int(y0 * VS)))
+            self.im.alpha_composite(layer)
+        else:
+            self.im.paste(tile.im.convert("RGB"), (int(x0 * VS), int(y0 * VS)), tile.im.getchannel("A"))
+
+
+def _v_pal(world):
+    """Colours for the landscape: taken from the place the story is in, so the vista belongs to the same world."""
+    st = world.st
+    s0, s1 = rgb(st["sky"][0]), rgb(st["sky"][1])
+    night = (_lum01(st["sky"][0]) + _lum01(st["sky"][1])) / 2 < 0.34
+    far, near, grd = rgb(st["far"]), rgb(st["near"]), rgb(st["ground"])
+    pal = dict(s0=s0, s1=s1, night=night)
+    pal["haze"] = light(mix(s1, (200, 205, 225), 0.35), 0.1)
+    pal["rock_l"] = light(mix(far, s1, 0.25), 0.22)             # the lit side of rock
+    pal["rock_d"] = dark(mix(near, s0, 0.35), 0.62)             # the shadow side
+    pal["rock_m"] = mix(pal["rock_l"], pal["rock_d"], 0.5)
+    pal["tree"] = dark(mix(near, (20, 48, 40), 0.45), 0.6)
+    pal["tree_l"] = light(mix(near, (40, 80, 60), 0.4), 0.18)
+    pal["grass"] = mix(grd, (34, 58, 36), 0.55)
+    pal["water"] = mix(s1, (30, 70, 105), 0.45)
+    pal["snow"] = (232, 238, 248) if not st["ground"].lower().startswith("#e") else (255, 255, 255)
+    pal["moon"] = rgb(st["sun"]) if isinstance(st.get("sun"), str) and st["sun"].startswith("#") else ((236, 238, 214) if night else (255, 240, 205))
+    pal["glow"] = (255, 70, 56)
+    return pal
+
+
+def _v_ridge(rnd, y0, amp, step=7.0, rough=0.55, x0=-20, x1=W + 20, peaks=3):
+    """A ragged ridge line: points (x, y) from left to right."""
+    n = int((x1 - x0) / step) + 1
+    ph = [rnd.uniform(0, 6.28) for _ in range(peaks + 3)]
+    pts = []
+    walk = 0.0
+    for i in range(n):
+        x = x0 + i * step
+        v = 0.0
+        for k in range(peaks):
+            v += math.sin(x / (170 + 140 * k) * (1 + 0.6 * k) + ph[k]) * (1.0 / (1 + 0.55 * k))
+        walk += rnd.uniform(-1, 1) * rough * 5
+        walk *= 0.93
+        pts.append((x, y0 - amp * (0.5 + 0.5 * v) - walk))
+    return pts
+
+
+def _v_pine(c, x, y, h, col, lit, rnd, lean=0.0):
+    """One pine: a stack of drooping, ragged skirts with a lit side (the side facing the moon) and a trunk."""
+    w = h * rnd.uniform(0.26, 0.38)
+    tiers = max(3, min(9, int(h / 13)))
+    big = h > 55
+    ls = getattr(c, "lit_side", -1)
+    for t in range(tiers):
+        k0, k1 = t / tiers, (t + 1) / tiers
+        yb = y - h * k0 * 0.88
+        yt = y - h * (k1 + 0.10) * 0.98
+        ww = w * (1.0 - k0 * 0.80)
+        xl = x + lean * (1 - k0) * h * 0.04
+        if big:
+            nseg = 7
+            edge = [(xl - ww, yb)]
+            for i in range(1, nseg):
+                px = xl - ww + 2 * ww * i / nseg
+                py = yb + ww * 0.13 * (1.0 if i % 2 else -0.25) * rnd.uniform(0.6, 1.3)
+                edge.append((px, py))
+            edge.append((xl + ww, yb))
+            c.P([(xl, yt)] + edge, col)
+            # a lighter wedge on the moon side, and dark drooping shadow lines under the skirt
+            if ls < 0:
+                c.P([(xl, yt), (xl - ww, yb), (xl - ww * 0.35, yb + ww * 0.05), (xl - ww * 0.02, yt + (yb - yt) * 0.15)], lit)
+            else:
+                c.P([(xl, yt), (xl + ww, yb), (xl + ww * 0.35, yb + ww * 0.05), (xl + ww * 0.02, yt + (yb - yt) * 0.15)], lit)
+            for i in range(2, nseg - 1, 2):
+                px = xl - ww + 2 * ww * i / nseg
+                c.L([(px, yb - ww * 0.02), (px + rnd.uniform(-2, 2), yb + ww * 0.17)], (0, 0, 0, 110), max(0.8, h * 0.006))
+        else:
+            c.P([(xl - ww, yb), (xl, yt), (xl + ww, yb)], col)
+            if h > 20:
+                if ls < 0:
+                    c.P([(xl - ww, yb), (xl, yt), (xl - ww * 0.06, yb)], lit)
+                else:
+                    c.P([(xl + ww, yb), (xl, yt), (xl + ww * 0.06, yb)], lit)
+    tw = max(h * 0.025, 0.4)
+    c.P([(x - tw, y), (x - tw, y + h * 0.1), (x + tw, y + h * 0.1), (x + tw, y)], col)
+
+
+def _v_forest(c, rnd, pal, x0, x1, y0, y1, n, h0, h1, fog=0.0, zone=None):
+    """Thousands of tiny pines, small and hazy far up, bigger and darker near the bottom of the band."""
+    trees = []
+    for _ in range(n):
+        x = rnd.uniform(x0, x1)
+        y = rnd.uniform(y0, y1)
+        if zone and not zone(x, y):
+            continue
+        trees.append((y, x))
+    trees.sort()
+    for y, x in trees:
+        k = (y - y0) / max(1.0, (y1 - y0))
+        h = h0 + (h1 - h0) * k * rnd.uniform(0.8, 1.2)
+        col = mix(pal["tree"], pal["haze"], fog * (1 - k)) + (255,)
+        lit = mix(pal["tree_l"], pal["haze"], fog * (1 - k)) + (255,)
+        _v_pine(c, x, y, h, col, lit, rnd, lean=rnd.uniform(-1, 1))
+
+
+def _v_sky(pal, rnd, kind):
+    """The sky at 1x: gradient, a big soft moon or sun with a halo, thin drifting cloud banks."""
+    ys = np.linspace(0, 1, H, dtype=np.float32)[:, None]
+    top, bot = np.array(pal["s0"], np.float32), np.array(pal["s1"], np.float32)
+    k = np.clip((ys / 0.62), 0, 1) ** 0.9
+    g = top[None, None, :] * (1 - k[..., None]) + bot[None, None, :] * k[..., None]
+    g = np.broadcast_to(g, (H, W, 3)).copy()
+    mx, my = (300 if kind != "peak" else 760), 330
+    yy, xx = np.mgrid[0:H:2, 0:W:2].astype(np.float32)
+    dist = np.sqrt((xx - mx) ** 2 + (yy - my) ** 2)
+    halo = np.exp(-(dist / 330.0) ** 1.4)[..., None] * np.array(pal["moon"], np.float32)[None, None, :] * 0.34
+    halo = np.asarray(Image.fromarray(np.clip(halo, 0, 255).astype(np.uint8)).resize((W, H), Image.BICUBIC), np.float32)
+    g = g + halo
+    # thin cloud banks
+    nz = _fractal_noise(H // 8, W // 8, rnd.randint(1, 99999))
+    nz = np.asarray(Image.fromarray((np.clip(nz, 0, 1) * 255).astype(np.uint8)).resize((W, H), Image.BICUBIC), np.float32) / 255.0
+    band = np.exp(-((ys - 0.26) / 0.12) ** 2) + 0.6 * np.exp(-((ys - 0.46) / 0.08) ** 2)
+    cl = np.clip((nz - 0.52) * 3.4, 0, 1) * band * 0.55
+    ccol = mix(pal["haze"], pal["moon"], 0.3)
+    g = g * (1 - cl[..., None]) + np.array(ccol, np.float32)[None, None, :] * cl[..., None]
+    return Image.fromarray(np.clip(g, 0, 255).astype(np.uint8)), (mx, my)
+
+
+def _fractal_noise(h, w, seed):
+    r = np.random.RandomState(seed)
+    out = np.zeros((h, w), np.float32)
+    amp, tot = 1.0, 0.0
+    for o in range(5):
+        sh, sw = max(2, h // (2 ** (4 - o)) + 2), max(2, w // (2 ** (4 - o)) + 2)
+        base = r.rand(sh, sw).astype(np.float32)
+        up = np.asarray(Image.fromarray((base * 255).astype(np.uint8)).resize((w, h), Image.BICUBIC), np.float32) / 255.0
+        out += up * amp
+        tot += amp
+        amp *= 0.55
+    return out / tot
+
+
+class Vista:
+    """One painted landscape: back / front / near plates (3x), the path the creature will take, and where things happen."""
+
+    def __init__(self, world, kind=None, seed=1, side=None):
+        self.rnd = random.Random(seed * 7919 + 13)
+        rnd = self.rnd
+        self.pal = pal = _v_pal(world)
+        self.kind = kind if kind in VISTA_KINDS else rnd.choice(VISTA_KINDS)
+        self.side = side if side in (-1, 1) else rnd.choice((-1, 1))
+        side = self.side
+        # the far landmark stands at one side, about a third of the way up the picture
+        self.lx = 540 + side * 215
+        self.base_y = 1010                                         # where the landmark's foot meets the land
+        self.horizon = 900
+        sky, (mx, my) = _v_sky(pal, rnd, self.kind)
+        back = _VC("RGB")
+        back.im = sky.resize((W * VS, H * VS), Image.BICUBIC)
+        back.d = ImageDraw.Draw(back.im, "RGBA")
+        self.ls = back.lit_side = -1 if mx < 540 else 1
+        self._stars_moon(back, mx, my)
+        # three far mountain ranges, hazier the further they are
+        for i, (yb, amp, fogk) in enumerate(((880, 250, 0.72), (940, 190, 0.52), (985, 130, 0.34))):
+            col = mix(pal["rock_m"], pal["haze"], fogk)
+            pts = _v_ridge(rnd, yb, amp, peaks=3 + i)
+            back.P(pts + [(W + 20, yb + 140), (-20, yb + 140)], col + (255,))
+            # lit rims and snow flecks on the highest ridges
+            for j in range(0, len(pts) - 1, 1):
+                if rnd.random() < 0.55:
+                    back.L([pts[j], pts[j + 1]], mix(pal["haze"], (255, 255, 255), 0.4) + (150,), 1.1)
+            for _ in range(10 + 4 * i):
+                x = rnd.uniform(0, W)
+                yk = min(pts, key=lambda p: abs(p[0] - x))
+                ss = rnd.uniform(14, 40)
+                back.P([(x - ss, yk[1] + ss * 1.1), (x, yk[1] - 2), (x + ss * 0.8, yk[1] + ss * 1.0)], pal["snow"] + (170 - 30 * i,))
+        # forests on the far hills: so many tiny trees that they read as texture, and as detail when you zoom
+        _v_forest(back, rnd, pal, -10, W + 10, 940, 1060, 1400, 8, 20, fog=0.55)
+        getattr(self, "_" + self.kind)(back, pal, rnd)
+        self._land(back, pal, rnd)
+        self.back = back.im
+        self.front = self._front_plate(pal, rnd)
+        self.near = self._near_plate(pal, rnd)
+        self.heroes = self._heroes(pal, rnd)
+
+    # ---------------------------------------------------------------- sky details
+    def _stars_moon(self, c, mx, my):
+        rnd, pal = self.rnd, self.pal
+        if pal["night"]:
+            for _ in range(240):
+                x, y = rnd.uniform(0, W), rnd.uniform(0, 760)
+                r = rnd.choice((0.6, 0.7, 0.8, 0.9, 1.1, 1.5))
+                a = int(110 + 140 * rnd.random())
+                c.E((x - r * 2.6, y - r * 2.6, x + r * 2.6, y + r * 2.6), (210, 220, 255, 14))
+                c.E((x - r, y - r, x + r, y + r), (235, 240, 255, a))
+        R_ = 62
+        c.E((mx - R_ * 1.55, my - R_ * 1.55, mx + R_ * 1.55, my + R_ * 1.55), pal["moon"] + (28,))
+        c.E((mx - R_ * 1.22, my - R_ * 1.22, mx + R_ * 1.22, my + R_ * 1.22), pal["moon"] + (46,))
+        c.E((mx - R_, my - R_, mx + R_, my + R_), pal["moon"] + (255,))
+        for _ in range(11):                                                      # craters
+            a = rnd.uniform(0, 6.28)
+            rr = rnd.uniform(0, R_ * 0.72)
+            cx_, cy_ = mx + math.cos(a) * rr, my + math.sin(a) * rr
+            cr = rnd.uniform(4, 11)
+            c.E((cx_ - cr, cy_ - cr, cx_ + cr, cy_ + cr), dark(pal["moon"], 0.86) + (120,))
+
+    # ---------------------------------------------------------------- the three landmarks
+    def _peak(self, c, pal, rnd):
+        """A tall snow-capped mountain, lit on one side, with a dark cave mouth low on its face and scree below it."""
+        s = self.side
+        lx, by = self.lx, self.base_y
+        top = (lx - s * 20, 430)
+        # outline: from the left foot up a jagged face to the summit and down the right side
+        left, right = lx - 330, lx + 330
+        L = []
+        n = 26
+        for i in range(n + 1):
+            k = i / n
+            x = left + (top[0] - left) * k
+            y = by + (top[1] - by) * (k ** 0.86) + rnd.uniform(-14, 14) * math.sin(k * 3.14)
+            L.append((x + rnd.uniform(-7, 7), y))
+        Rr = []
+        for i in range(n + 1):
+            k = i / n
+            x = top[0] + (right - top[0]) * k
+            y = top[1] + (by - top[1]) * (k ** 0.9) + rnd.uniform(-14, 14) * math.sin(k * 3.14)
+            Rr.append((x + rnd.uniform(-7, 7), y))
+        outline = L + Rr + [(right + 40, by + 90), (left - 40, by + 90)]
+        lit_side, shade_side = (L, Rr) if s > 0 else (Rr, L)
+        # the lit and the shadowed halves: split by the summit ridge line that runs from the top down the middle
+        ridge = [(top[0], top[1])]
+        for i in range(1, 12):
+            k = i / 11
+            ridge.append((top[0] + rnd.uniform(-34, 34) * math.sin(k * 3.14) + s * 18 * k, top[1] + (by - top[1]) * k))
+        half_l = L + ridge[::-1] if True else None
+        half_l = [p for p in L] + [(top[0], top[1])] + ridge[1:][::-1][::-1]
+        pl = L + [r for r in ridge[::-1]]
+        pr = ridge + Rr[::-1][::-1]
+        back_lit = pal["rock_l"] + (255,)
+        back_shd = pal["rock_d"] + (255,)
+        c.P(outline, pal["rock_m"] + (255,))
+        c.masked(outline, lambda t: (t.P(pl, back_lit if s < 0 else back_shd), t.P(pr + [(right + 60, by + 100), (ridge[-1][0], by + 100)], back_shd if s < 0 else back_lit)))
+        # facets: dozens of triangular planes, lighter facing the moon and darker away, long gullies running down
+        def facets(t):
+            for _ in range(190):
+                x = rnd.uniform(left, right)
+                y = rnd.uniform(top[1], by)
+                w_ = rnd.uniform(14, 62)
+                h_ = rnd.uniform(26, 110)
+                lit_f = (x < top[0]) == (s > 0)
+                a = rnd.randint(40, 110)
+                col = (255, 255, 255, a // 3) if lit_f else (0, 0, 20, a)
+                t.P([(x, y), (x + w_ * rnd.uniform(0.3, 1), y + h_ * 0.35), (x + w_ * rnd.uniform(-0.5, 0.4), y + h_)], col)
+            for _ in range(46):
+                x = rnd.uniform(left + 40, right - 40)
+                y0 = rnd.uniform(top[1] + 40, by - 200)
+                pts = [(x, y0)]
+                for j in range(1, 7):
+                    pts.append((pts[-1][0] + rnd.uniform(-9, 9), pts[-1][1] + rnd.uniform(22, 50)))
+                t.L(pts, (8, 10, 24, rnd.randint(80, 150)), rnd.uniform(1.2, 3.2))
+        c.masked(outline, facets)
+        # the snow cap: an irregular lower edge, drifts down the gullies, blue shadow under it
+        edge_y = top[1] + 245
+        sn = [(left + (top[0] - left) * 0.45, edge_y - 12)]
+        for i in range(0, 17):
+            k = i / 16
+            x = (left + (top[0] - left) * 0.45) + (right - (right - top[0]) * 0.45 - (left + (top[0] - left) * 0.45)) * k
+            sn.append((x, edge_y + rnd.uniform(-26, 70) + 38 * math.sin(k * 9)))
+        snow_poly = [(top[0], top[1] - 4)] + sn
+        c.masked(outline, lambda t: (t.P(snow_poly + [(top[0], top[1] - 4)], pal["snow"] + (245,)),
+                                     t.P([(x, y) for x, y in sn[len(sn) // 2:]] + [(top[0], top[1] + 20)], (90, 110, 170, 90))))
+        def runs(t):
+            for _ in range(80):                                                  # snow runs down the gullies
+                x = rnd.uniform(left + 80, right - 80)
+                y = edge_y + rnd.uniform(-10, 50)
+                if abs(x - top[0]) < 200:
+                    t.L([(x, y), (x + rnd.uniform(-6, 6), y + rnd.uniform(24, 80))], pal["snow"] + (190,), rnd.uniform(1.5, 3.6))
+        c.masked(outline, runs)
+        # the rim light along the lit edge
+        for pts in (lit_side,):
+            for i in range(len(pts) - 1):
+                c.L([pts[i], pts[i + 1]], mix(pal["moon"], (255, 255, 255), 0.4) + (200,), 1.6)
+        # forest climbing the lower slopes
+        zone = lambda x, y: (abs(x - lx) < 330 - (by - y) * 0.2) and y > 760
+        _v_forest(c, rnd, pal, left, right, 760, by + 10, 2200, 7, 24, fog=0.5, zone=zone)
+        # the cave mouth, low on the face: a black arch with a faint red glow deep inside, and a scree fan under it
+        self.cx, self.cy = lx + s * 14, by - 26
+        c.P([(self.cx - 150, by + 20), (self.cx - 50, self.cy - 46), (self.cx + 70, self.cy - 50), (self.cx + 170, by + 24)], pal["rock_d"] + (255,))     # overhang
+        arch = [(self.cx - 46, by + 30), (self.cx - 46, self.cy - 6)] + [(self.cx + 46 * math.cos(math.pi * (1 - j / 10)), self.cy - 6 - 52 * math.sin(math.pi * (1 - j / 10))) for j in range(1, 10)] + [(self.cx + 46, self.cy - 6), (self.cx + 46, by + 30)]
+        c.P(arch, (2, 2, 8, 255))
+        c.E((self.cx - 18, self.cy - 8, self.cx + 18, self.cy + 24), (70, 8, 10, 120))
+        for _ in range(120):                                                    # scree
+            x = self.cx + rnd.uniform(-160, 160)
+            y = by + rnd.uniform(-6, 40)
+            if abs(x - self.cx) < 40 + (y - by) * 0.4 + 10:
+                continue
+            sz = rnd.uniform(2, 7)
+            c.P([(x, y), (x + sz, y - sz * 0.6), (x + sz * 1.6, y + sz * 0.2)], mix(pal["rock_m"], pal["rock_d"], rnd.random()) + (255,))
+        self.emerge = (self.cx, by + 22)
+        self.size_hint = (330, 640)
+        self.c_h0 = 82
+
+    def _falls(self, c, pal, rnd):
+        """A tall dark cliff with a river pouring over a notch (the water itself is animated), a pool and boulders at the foot,
+        pines on the ledges, and a cave hidden behind the curtain."""
+        s = self.side
+        ls = self.ls
+        lx, by = self.lx, self.base_y
+        topy = 540
+        fx = lx - s * 10
+        # outline: a trapezoid with ragged, stepped shoulders and a notch where the river comes over
+        pts = [(lx - 340, by + 90)]
+        for i in range(1, 9):                                    # left flank, climbing in steps
+            k = i / 8
+            pts.append((lx - 340 + 80 * k + rnd.uniform(-14, 14), by + 90 - (by + 90 - topy - 30) * k ** 0.8 + rnd.uniform(-10, 10)))
+        x = lx - 262
+        while x < lx + 262:
+            x += rnd.uniform(16, 38)
+            dip = 20 if abs(x - fx) < 40 else 0
+            pts.append((min(x, lx + 262), topy + rnd.uniform(-22, 18) + dip))
+        for i in range(1, 9):                                    # right flank, stepping down
+            k = i / 8
+            pts.append((lx + 262 + 80 * k + rnd.uniform(-14, 14), topy + 30 + (by + 90 - topy - 30) * k ** 1.2 + rnd.uniform(-10, 10)))
+        cliff = pts
+        c.P(cliff, pal["rock_m"] + (255,))
+        def face(t):
+            xs = lx - 360
+            while xs < lx + 360:                                 # tall rock columns: moon side light, far side dark
+                w_ = rnd.uniform(22, 70)
+                lit_ = ((xs + w_ / 2 - lx) * ls < 0) if ls else True
+                col = mix(pal["rock_l"] if lit_ else pal["rock_d"], pal["rock_m"], rnd.uniform(0.05, 0.5)) + (255,)
+                t.P([(xs, topy - 50), (xs + w_, topy - 50), (xs + w_ + rnd.uniform(-10, 10), by + 100), (xs + rnd.uniform(-10, 10), by + 100)], col)
+                xs += w_
+            for _ in range(110):                                 # broken facets
+                x0, y0 = rnd.uniform(lx - 340, lx + 340), rnd.uniform(topy, by)
+                w_, h_ = rnd.uniform(14, 54), rnd.uniform(22, 90)
+                lit_f = (x0 - lx) * ls < 0
+                t.P([(x0, y0), (x0 + w_, y0 + h_ * 0.3), (x0 + w_ * rnd.uniform(-0.4, 0.6), y0 + h_)], (255, 255, 255, 30) if lit_f else (0, 0, 16, rnd.randint(50, 120)))
+            for _ in range(70):                                  # strata
+                y = rnd.uniform(topy + 20, by)
+                x0 = rnd.uniform(lx - 340, lx + 260)
+                t.L([(x0, y), (x0 + rnd.uniform(40, 170), y + rnd.uniform(-6, 6))], (0, 0, 12, rnd.randint(50, 110)), rnd.uniform(1, 2.4))
+            for _ in range(60):                                  # cracks
+                x0, y0 = rnd.uniform(lx - 340, lx + 340), rnd.uniform(topy + 20, by - 40)
+                p2 = [(x0, y0)]
+                for j in range(6):
+                    p2.append((p2[-1][0] + rnd.uniform(-7, 7), p2[-1][1] + rnd.uniform(14, 38)))
+                t.L(p2, (4, 6, 16, rnd.randint(90, 170)), rnd.uniform(1, 2.6))
+            for _ in range(46):                                  # pale ledges
+                x0, y0 = rnd.uniform(lx - 340, lx + 340), rnd.uniform(topy + 30, by - 20)
+                t.L([(x0, y0), (x0 + rnd.uniform(20, 80), y0 + rnd.uniform(-3, 3))], mix(pal["haze"], (255, 255, 255), 0.4) + (rnd.randint(50, 130),), rnd.uniform(1, 2.2))
+            for _ in range(40):                                  # moss and wet streaks running down from the top
+                x0, y0 = rnd.uniform(lx - 330, lx + 330), rnd.uniform(topy, topy + 160)
+                t.L([(x0, y0), (x0 + rnd.uniform(-5, 5), y0 + rnd.uniform(40, 200))], mix(pal["tree"], pal["rock_d"], 0.3) + (90,), rnd.uniform(1.5, 4))
+        c.masked(cliff, face)
+        # pines clinging to ledges halfway down, and a rim of them along the top
+        for _ in range(26):
+            x = rnd.uniform(lx - 320, lx + 320)
+            y = rnd.uniform(topy + 150, by - 40)
+            if abs(x - fx) < 70:
+                continue
+            _v_pine(c, x, y, rnd.uniform(16, 32), mix(pal["tree"], pal["rock_d"], 0.2) + (255,), pal["tree_l"] + (255,), rnd, rnd.uniform(-1, 1))
+        _v_forest(c, rnd, pal, lx - 270, lx + 270, topy - 30, topy + 26, 320, 16, 36, fog=0.25,
+                  zone=lambda x, y: abs(x - fx) > 34)
+        # the river channel and the cave behind where the curtain will hang
+        self.fall = dict(x=fx, top=topy + 14, bot=by + 14, w_top=50, w_bot=70)
+        c.P([(fx - 34, topy + 18), (fx + 34, topy + 18), (fx + 50, by + 14), (fx - 50, by + 14)], mix(pal["rock_d"], (0, 0, 0), 0.45) + (255,))
+        cy0, cy1 = by - 150, by + 10
+        c.P([(fx - 40, cy0 + 30), (fx - 24, cy0), (fx + 24, cy0), (fx + 40, cy0 + 30), (fx + 44, cy1), (fx - 44, cy1)], (3, 4, 10, 255))
+        c.E((fx - 17, cy0 + 48, fx + 17, cy0 + 86), (70, 8, 10, 90))
+        # the pool at the foot with boulders round its rim
+        pool = (fx - 200, by - 26, fx + 200, by + 80)
+        c.E(pool, dark(pal["water"], 0.7) + (255,))
+        c.E((pool[0] + 12, pool[1] + 6, pool[2] - 12, pool[3] - 8), mix(pal["water"], pal["s1"], 0.3) + (255,))
+        c.E((pool[0] + 34, pool[1] + 16, pool[2] - 34, pool[3] - 20), mix(pal["water"], pal["haze"], 0.3) + (255,))
+        self.pool = pool
+        for _ in range(60):
+            ang = rnd.uniform(0, 6.28)
+            x = (pool[0] + pool[2]) / 2 + math.cos(ang) * (pool[2] - pool[0]) / 2 * rnd.uniform(0.96, 1.08)
+            y = (pool[1] + pool[3]) / 2 + math.sin(ang) * (pool[3] - pool[1]) / 2 * rnd.uniform(0.96, 1.1)
+            sz = rnd.uniform(5, 20)
+            col = mix(pal["rock_d"], pal["rock_m"], rnd.random())
+            c.P([(x - sz, y + sz * 0.3), (x - sz * 0.4, y - sz * 0.7), (x + sz * 0.5, y - sz * 0.8), (x + sz, y + sz * 0.3)], col + (255,))
+            c.P([(x - sz * 0.4, y - sz * 0.7), (x + sz * 0.5, y - sz * 0.8), (x + sz * 0.1, y - sz * 0.3)], pal["rock_l"] + (140,))
+        _v_forest(c, rnd, pal, lx - 380, lx + 380, by + 22, by + 100, 360, 18, 40, fog=0.3,
+                  zone=lambda x, y: abs(x - fx) > 225 or y > by + 88)
+        self.emerge = (fx, cy1 - 8)
+        self.size_hint = (720, 540)
+        self.c_h0 = 80
+
+    def _tower(self, c, pal, rnd):
+        """A crag with a ruined stone tower on it: broken battlements, arched windows (one lit), a stair switch-backing
+        down the rock to a dark archway at the foot."""
+        s = self.side
+        ls = self.ls
+        lx, by = self.lx, self.base_y
+        topy = 540
+        # the crag
+        crag = [(lx - 320, by + 80)]
+        for i in range(1, 13):
+            k = i / 12
+            crag.append((lx - 320 + (210) * k + rnd.uniform(-12, 12), by + 80 - (by + 80 - topy - 110) * (k ** 0.75) + rnd.uniform(-14, 14)))
+        crag += [(lx - 60, topy + 100), (lx + 40, topy + 104), (lx + 116, topy + 108)]
+        for i in range(1, 13):
+            k = i / 12
+            crag.append((lx + 116 + 214 * k + rnd.uniform(-12, 12), topy + 108 + (by + 80 - topy - 108) * (k ** 1.15) + rnd.uniform(-14, 14)))
+        c.P(crag, pal["rock_m"] + (255,))
+        def planes(t):
+            for xs in range(int(lx - 340), int(lx + 340), 46):           # big lit / shadow blocks
+                lit_ = (xs + 23 - lx) * ls < 0
+                t.P([(xs, topy + 90), (xs + 46, topy + 90), (xs + 46 + rnd.uniform(-10, 10), by + 100), (xs + rnd.uniform(-10, 10), by + 100)],
+                    mix(pal["rock_l"] if lit_ else pal["rock_d"], pal["rock_m"], rnd.uniform(0.1, 0.55)) + (255,))
+            for _ in range(180):
+                x = rnd.uniform(lx - 330, lx + 330)
+                y = rnd.uniform(topy + 90, by + 20)
+                w_, h_ = rnd.uniform(14, 56), rnd.uniform(22, 100)
+                t.P([(x, y), (x + w_, y + h_ * 0.3), (x + w_ * rnd.uniform(-0.4, 0.5), y + h_)], (255, 255, 255, 30) if (x - lx) * ls < 0 else (0, 0, 16, rnd.randint(60, 120)))
+            for _ in range(60):
+                x0, y0 = rnd.uniform(lx - 330, lx + 330), rnd.uniform(topy + 100, by - 20)
+                p2 = [(x0, y0)]
+                for j in range(6):
+                    p2.append((p2[-1][0] + rnd.uniform(-8, 8), p2[-1][1] + rnd.uniform(16, 42)))
+                t.L(p2, (4, 6, 18, rnd.randint(90, 160)), rnd.uniform(1, 2.4))
+        c.masked(crag, planes)
+        # the tower
+        tx0, tx1 = lx - 92, lx + 92
+        ty0, ty1 = topy - 280, topy + 112
+        lit_l = mix(pal["rock_l"], pal["haze"], 0.35) + (255,)
+        shd = mix(pal["rock_d"], pal["rock_m"], 0.35) + (255,)
+        mid = mix(pal["rock_m"], pal["haze"], 0.15) + (255,)
+        # broken crown: merlons on most of the top, a missing bite, a slumped section
+        crown = [(tx0, ty0 + 36)]
+        x = tx0
+        i = 0
+        while x < tx1:
+            w_ = 20
+            drop = 0 if i % 2 == 0 else 22
+            if 0.55 < (x - tx0) / (tx1 - tx0) < 0.78:
+                drop += 48
+            crown += [(x, ty0 + drop), (x + w_, ty0 + drop)]
+            x += w_
+            i += 1
+        crown += [(tx1, ty0 + 40), (tx1, ty1), (tx0, ty1)]
+        c.P(crown, mid)
+        half = [(tx0, ty0 + 36), (lx, ty0 + 36), (lx, ty1), (tx0, ty1)] if ls < 0 else [(lx, ty0 + 36), (tx1, ty0 + 36), (tx1, ty1), (lx, ty1)]
+        other = [(lx, ty0 + 36), (tx1, ty0 + 36), (tx1, ty1), (lx, ty1)] if ls < 0 else [(tx0, ty0 + 36), (lx, ty0 + 36), (lx, ty1), (tx0, ty1)]
+        def bricks(t):
+            t.P(half, lit_l)
+            t.P(other, shd)
+            for y in range(int(ty0), int(ty1), 16):
+                t.L([(tx0, y), (tx1, y)], (0, 0, 12, 80), 0.9)
+                for xx in range(int(tx0) + (8 if (y // 16) % 2 else 0), int(tx1), 26):
+                    t.L([(xx, y), (xx, y + 16)], (0, 0, 12, 60), 0.8)
+            for _ in range(70):                                      # chipped stones, lighter and darker
+                x_, y_ = rnd.uniform(tx0, tx1), rnd.uniform(ty0 + 30, ty1)
+                t.P([(x_, y_), (x_ + rnd.uniform(6, 14), y_), (x_ + rnd.uniform(6, 14), y_ + rnd.uniform(5, 10)), (x_, y_ + 8)], (255, 255, 255, 20) if rnd.random() < 0.5 else (0, 0, 12, 40))
+            for _ in range(16):                                      # ivy dripping from the top
+                x_ = rnd.uniform(tx0, tx1)
+                t.L([(x_, ty0 + 40), (x_ + rnd.uniform(-5, 5), ty0 + rnd.uniform(80, 210))], mix(pal["tree"], (20, 50, 30), 0.4) + (190,), rnd.uniform(1.4, 3.2))
+        c.masked(crown, bricks)
+        # windows: arched; one is lit warm with a halo
+        wins = ((lx - 26, ty0 + 90, False), (lx + 26, ty0 + 150, True), (lx - 24, ty0 + 220, False), (lx + 22, ty0 + 290, False))
+        for (wx, wy, lamp) in wins:
+            c.P([(wx - 11, wy + 44), (wx - 11, wy + 14), (wx - 7, wy + 4), (wx, wy), (wx + 7, wy + 4), (wx + 11, wy + 14), (wx + 11, wy + 44)], (255, 186, 84, 255) if lamp else (2, 3, 8, 255))
+            c.L([(wx - 14, wy + 45), (wx + 14, wy + 45)], mix(pal["haze"], pal["rock_l"], 0.5) + (255,), 2.2)       # sill
+            if lamp:
+                for r_, a in ((70, 14), (46, 22), (28, 34)):
+                    c.E((wx - r_, wy + 22 - r_, wx + r_, wy + 22 + r_), (255, 170, 70, a))
+                c.L([(wx, wy + 8), (wx, wy + 44)], (110, 60, 20, 255), 1.6)
+                c.L([(wx - 11, wy + 26), (wx + 11, wy + 26)], (110, 60, 20, 255), 1.6)
+                self.lamp = (wx, wy + 22)
+        # a ruined wing and a broken second turret
+        wing = [(tx1, ty1 - 170), (tx1 + 40, ty1 - 150), (tx1 + 64, ty1 - 100), (tx1 + 92, ty1 - 92), (tx1 + 100, ty1), (tx1, ty1)]
+        if ls < 0:
+            c.P(wing, shd)
+        else:
+            c.P(wing, mid)
+        c.P([(tx0 - 84, ty1 - 110), (tx0 - 60, ty1 - 124), (tx0 - 44, ty1 - 108), (tx0 - 30, ty1 - 120), (tx0 - 24, ty1 - 60), (tx0, ty1 - 40), (tx0, ty1), (tx0 - 84, ty1)], lit_l if ls < 0 else mid)
+        for xx in (tx1 + 14, tx1 + 52, tx1 + 90):                       # arches in the wing
+            c.P([(xx - 10, ty1 - 6), (xx - 10, ty1 - 50), (xx, ty1 - 62), (xx + 10, ty1 - 50), (xx + 10, ty1 - 6)], (2, 3, 8, 255))
+        # the stair: diagonal switchbacks cut into the rock face, with a landing at each turn
+        sx0, sx1 = lx - 96, lx + 96
+        n = 9
+        y0_, y1_ = topy + 122, by - 14
+        pts = [(lx + s * 8, y0_)]
+        for j in range(1, n + 1):
+            pts.append((sx1 if j % 2 == 1 else sx0, y0_ + (y1_ - y0_) * j / n))
+        pts.append((lx + s * 6, by - 10))
+        c.L([(x_, y_ + 5) for x_, y_ in pts], (0, 0, 10, 190), 5.5)
+        c.L(pts, mix(pal["haze"], pal["rock_l"], 0.45) + (240,), 4.2)
+        for k in range(len(pts) - 1):                                      # step ticks and a landing at each turn
+            (xa, ya), (xb, yb_) = pts[k], pts[k + 1]
+            for u in (0.12, 0.24, 0.36, 0.48, 0.6, 0.72, 0.84):
+                px, py = xa + (xb - xa) * u, ya + (yb_ - ya) * u
+                c.L([(px, py - 3), (px, py + 3)], (0, 0, 10, 120), 0.9)
+            c.E((xb - 9, yb_ - 4, xb + 9, yb_ + 4), mix(pal["haze"], pal["rock_l"], 0.5) + (255,))
+        # the dark archway at the foot
+        ax, ay = lx + s * 6, by + 6
+        c.P([(ax - 56, ay + 44), (ax - 50, ay - 40), (ax - 30, ay - 66), (ax, ay - 78), (ax + 30, ay - 66), (ax + 50, ay - 40), (ax + 56, ay + 44)], pal["rock_d"] + (255,))
+        c.P([(ax - 36, ay + 44), (ax - 34, ay - 34), (ax, ay - 54), (ax + 34, ay - 34), (ax + 36, ay + 44)], (2, 2, 8, 255))
+        c.E((ax - 12, ay - 16, ax + 12, ay + 12), (70, 8, 10, 100))
+        # gnarled dead trees and pines on the crag
+        for _ in range(34):
+            x = rnd.uniform(lx - 310, lx + 310)
+            y = rnd.uniform(topy + 190, by + 40)
+            if abs(x - lx) < 125 and y < by - 40:
+                continue
+            _v_pine(c, x, y, rnd.uniform(18, 48), mix(pal["tree"], pal["haze"], 0.12) + (255,), pal["tree_l"] + (255,), rnd, rnd.uniform(-1, 1))
+        self.emerge = (ax, ay + 34)
+        self.size_hint = (500, 800)
+        self.c_h0 = 74
+
+    # ---------------------------------------------------------------- the land in front: hills, the river, the path
+    def _land(self, c, pal, rnd):
+        """Rolling slopes down to the viewer, with a river to cross, the path winding from the landmark, grass, stones."""
+        s = self.side
+        ex, ey = self.emerge
+        # the ground: a few overlapping slopes, each darker and nearer
+        for i, (yb, amp, k) in enumerate(((1060, 70, 0.30), (1140, 90, 0.16), (1260, 110, 0.06))):
+            col = mix(pal["grass"], pal["haze"], k)
+            pts = _v_ridge(rnd, yb, amp, step=9, rough=0.3, peaks=2)
+            c.P(pts + [(W + 20, H + 20), (-20, H + 20)], col + (255,))
+            for _ in range(60 + 40 * i):                                          # grass strokes and little bushes catching light
+                x, y = rnd.uniform(0, W), rnd.uniform(yb, yb + 260)
+                c.L([(x, y), (x + rnd.uniform(-5, 5), y - rnd.uniform(5, 16))], mix(col, pal["haze"], 0.3) + (130,), 1.1)
+            _v_forest(c, rnd, pal, -20, W + 20, yb - 70, yb + 50, 150 + 60 * i, 18 + 10 * i, 42 + 20 * i, fog=0.35 - 0.1 * i,
+                      zone=lambda x, y: abs(x - (540 + s * (1 - i * 0.2) * 150 * (1 - (y - 1000) / 600.0))) > 110)
+        # the path first (the river is placed so that the path fords it): a pale thread from the landmark's door to the viewer
+        path = []
+        xt = 540 - s * 40
+        for j in range(0, 61):
+            k = j / 60
+            y = ey + (1900 - ey) * k ** 1.35
+            g = k - 0.62 * math.sin(2 * math.pi * k) / (2 * math.pi)       # an S: it hurries sideways in the middle and eases at both ends, never turning back
+            path.append((ex + (xt - ex) * g, y))
+        self.path = path
+        # the river crosses the whole land, a winding stream that the creature has to wade across at the ford
+        ph = rnd.uniform(0, 6.28)
+        ry = lambda x: 1236 + 30 * math.sin(x / 190.0 + ph) + 0.03 * (x - 540) * s
+        rw = lambda x: 40 + 8 * math.sin(x / 120.0 + ph * 2)
+        xs_ = [-40 + i * 12 for i in range(0, 95)]
+        up = [(x, ry(x) - rw(x)) for x in xs_]
+        dn = [(x, ry(x) + rw(x) * 1.15) for x in xs_]
+        self.river_pts = [(x, ry(x)) for x in xs_]
+        self.river_w = rw
+        self.river_y = ry
+        c.P([(x, y - 6) for x, y in up] + [(x, y + 6) for x, y in dn[::-1]], dark(pal["water"], 0.55) + (255,))          # banks
+        c.P(up + dn[::-1], mix(pal["water"], pal["s1"], 0.55) + (255,))
+        c.P([(x, y + (y2 - y) * 0.45) for (x, y), (_, y2) in zip(up, dn)] + dn[::-1], mix(pal["water"], pal["s1"], 0.30) + (255,))   # deeper near bank
+        for _ in range(520):                                                     # ripples and sparkles
+            x = rnd.uniform(0, W)
+            yy = ry(x) + rnd.uniform(-rw(x), rw(x) * 1.1) * 0.9
+            ln = rnd.uniform(8, 34)
+            c.L([(x, yy), (x + ln, yy + rnd.uniform(-1, 1))], mix(pal["haze"], (255, 255, 255), 0.5) + (rnd.randint(40, 130),), rnd.uniform(0.8, 1.9))
+        # reeds along the banks
+        for _ in range(180):
+            x = rnd.uniform(0, W)
+            yy = (ry(x) - rw(x) - 4) if rnd.random() < 0.5 else (ry(x) + rw(x) * 1.15 + 4)
+            h = rnd.uniform(10, 30)
+            c.L([(x, yy), (x + rnd.uniform(-5, 5), yy - h)], dark(pal["grass"], 0.55) + (230,), 1.3)
+        # a short stream from the landmark's foot down to the river
+        sp = []
+        for j in range(0, 21):
+            k = j / 20
+            sp.append((ex + s * 46 * min(1, k * 4) + math.sin(k * 6) * 12, ey + 8 + (ry(ex) - ey - 10) * k))
+        for j in range(len(sp) - 1):
+            wd = 6 + 12 * (j / 20)
+            c.P([(sp[j][0] - wd, sp[j][1]), (sp[j][0] + wd, sp[j][1]), (sp[j + 1][0] + wd, sp[j + 1][1]), (sp[j + 1][0] - wd, sp[j + 1][1])], mix(pal["water"], pal["s1"], 0.5) + (235,))
+        # the path over everything, then the ford: stepping stones and a lighter shallows
+        for j in range(len(path) - 1):
+            k = j / 60
+            wd = 3 + 150 * k ** 1.7
+            (x0, y0), (x1, y1) = path[j], path[j + 1]
+            c.P([(x0 - wd, y0), (x0 + wd, y0), (x1 + wd * 1.03, y1), (x1 - wd * 1.03, y1)], mix(pal["grass"], (150, 140, 120), 0.5 - 0.2 * k) + (210,))
+            if j % 2 == 0:
+                c.L([(x0 - wd * 0.9, y0), (x1 - wd * 0.9, y1)], (0, 0, 0, 40), 1 + 3 * k)
+        fj = min(range(len(path)), key=lambda j: abs(path[j][1] - ry(path[j][0])))
+        fxp, fyp = path[fj]
+        self.ford = (fxp, ry(fxp) + rw(fxp) * 0.07)
+        self.ford_k = fj / 60.0
+        wd = 3 + 150 * (fj / 60.0) ** 1.7
+        c.E((fxp - wd * 0.9, ry(fxp) - rw(fxp) * 0.6, fxp + wd * 0.9, ry(fxp) + rw(fxp) * 0.8), mix(pal["water"], pal["haze"], 0.45) + (200,))
+        for _ in range(16):
+            sx_ = fxp + rnd.uniform(-wd * 0.8, wd * 0.8)
+            sy_ = ry(fxp) + rnd.uniform(-rw(fxp) * 0.4, rw(fxp) * 0.6)
+            sz = rnd.uniform(5, 11)
+            c.E((sx_ - sz, sy_ - sz * 0.5, sx_ + sz, sy_ + sz * 0.5), mix(pal["rock_m"], pal["rock_l"], rnd.random()) + (255,))
+        # stones and tufts on the land, bigger near the viewer
+        for _ in range(240):
+            k = rnd.random() ** 0.8
+            y = 1040 + 860 * k
+            x = rnd.uniform(0, W)
+            sz = 2 + 30 * k * k
+            cx_ = min(path, key=lambda p: abs(p[1] - y))[0]
+            if abs(x - cx_) < 40 + 140 * k:
+                continue
+            c.P([(x - sz, y), (x - sz * 0.4, y - sz * 0.7), (x + sz * 0.6, y - sz * 0.6), (x + sz, y)], mix(pal["rock_d"], pal["rock_m"], rnd.random()) + (255,))
+            c.P([(x - sz * 0.4, y - sz * 0.7), (x + sz * 0.6, y - sz * 0.6), (x + sz * 0.2, y - sz * 0.3)], pal["rock_l"] + (120,))
+        # light haze lying in the valley (soft bands)
+        hz = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        hd = ImageDraw.Draw(hz)
+        for yb, a in ((1000, 80), (1070, 54), (1160, 34)):
+            hd.rectangle((0, yb, W, yb + 34), fill=pal["haze"] + (a,))
+        hz = hz.filter(ImageFilter.GaussianBlur(26)).resize((W * VS, H * VS), Image.BICUBIC)
+        base = c.im.convert("RGBA")
+        base.alpha_composite(hz)
+        c.im = base.convert("RGB")
+        c.d = ImageDraw.Draw(c.im, "RGBA")
+
+    def path_at(self, k):
+        """Where the path is at fraction k (0 at the landmark's door, 1 at your feet): (x, y)."""
+        k = min(1.0, max(0.0, k)) * (len(self.path) - 1)
+        i = min(int(k), len(self.path) - 2)
+        f = k - i
+        (x0, y0), (x1, y1) = self.path[i], self.path[i + 1]
+        return x0 + (x1 - x0) * f, y0 + (y1 - y0) * f
+
+    def creature_h(self, y):
+        """How tall (in drawing units) the creature is when its feet are at height y: things shrink toward the horizon."""
+        return self.c_h0 * (y - self.horizon) / max(1.0, (self.emerge[1] - self.horizon))
+
+    def _heroes(self, pal, rnd):
+        """Big pines standing beside the path, each as its own sprite so it can sway and shed leaves when the creature slips past.
+        They are tall enough to hide it: the creature goes behind them, then steps out again."""
+        kf = self.ford_k
+        ks = [0.40 * kf, 0.82 * kf, kf + 0.30 * (1 - kf), kf + 0.62 * (1 - kf)]
+        out = []
+        for i, kk in enumerate(ks):
+            x, y = self.path_at(kk)
+            h = max(100.0, self.creature_h(y) * rnd.uniform(0.95, 1.2) + 30)
+            tw, th = h * 0.92, h * 1.18
+            c = _VC.__new__(_VC)
+            c.im = Image.new("RGBA", (int(tw * VS), int(th * VS)), (0, 0, 0, 0))
+            c.d = ImageDraw.Draw(c.im, "RGBA")
+            c.lit_side = self.ls
+            _v_pine(c, tw / 2, th - h * 0.12, h, mix(pal["tree"], pal["haze"], 0.08) + (255,), pal["tree_l"] + (255,), rnd, rnd.uniform(-0.6, 0.6))
+            ox = (1 if i % 2 else -1) * rnd.uniform(0.30, 0.42) * h * (1.0 + 0.0 * i)
+            out.append(dict(k=kk, x=x + ox, y=y + 26 + 0.05 * h, h=h, spr=c.im, tw=tw, th=th, foot=th - h * 0.12, seed=rnd.random() * 6.28))
+        return out
+
+    # ---------------------------------------------------------------- plates in front of the creature
+    def _front_plate(self, pal, rnd):
+        """Trees and rocks standing between the viewer and the creature's path: it is hidden behind them while it stalks."""
+        c = _VC("RGBA")
+        c.lit_side = self.ls
+        s = self.side
+        pth = self.path
+        for (yy, n, hh0, hh1, dx) in ((1130, 10, 70, 120, 130), (1250, 8, 110, 170, 170), (1390, 6, 170, 250, 230)):
+            for _ in range(n):
+                x = rnd.uniform(0, W)
+                cx_ = min(pth, key=lambda p: abs(p[1] - yy))[0]
+                if abs(x - cx_) < dx * 0.6:
+                    continue
+                y = yy + rnd.uniform(-18, 18)
+                h = rnd.uniform(hh0, hh1)
+                _v_pine(c, x, y, h, mix(pal["tree"], pal["haze"], 0.1) + (255,), pal["tree_l"] + (255,), rnd, rnd.uniform(-1, 1))
+        return c.im
+
+    def _near_plate(self, pal, rnd):
+        """Your own foreground: dark slope, long grass, a rock ledge, huge pines framing the left and right."""
+        c = _VC("RGBA")
+        c.lit_side = self.ls
+        col = dark(pal["grass"], 0.4) + (255,)
+        pts = _v_ridge(rnd, 1860, 70, step=10, rough=0.4, peaks=2)
+        c.P(pts + [(W + 20, H + 20), (-20, H + 20)], col)
+        for _ in range(520):                                                       # long grass
+            x = rnd.uniform(-10, W + 10)
+            y = rnd.uniform(1800, 1930)
+            h = rnd.uniform(26, 120)
+            bend = rnd.uniform(-22, 22)
+            c.P([(x - 3.2, y), (x + bend, y - h), (x + 3.2, y)], mix(dark(pal["grass"], 0.35), pal["tree_l"], rnd.random() * 0.5) + (255,))
+        for sgn, x0 in ((-1, -40), (1, W + 40)):                                     # framing pines
+            for _ in range(4):
+                x = x0 + sgn * rnd.uniform(-20, 70)
+                _v_pine(c, x - sgn * rnd.uniform(0, 70), rnd.uniform(1500, 1900), rnd.uniform(520, 760), dark(pal["tree"], 0.5) + (255,), dark(pal["tree_l"], 0.6) + (255,), rnd, sgn * 0.5)
+        return c.im
+
+# ====================================================================================================== VISTA (animation)
+# First-person camera, far away: one landmark in the distance (a waterfall with a cave behind it, a mountain with a cave, a ruined tower
+# with a dark door). The camera zooms into it, the creature comes out, then it stalks down the land towards you -- it fords the river,
+# slips behind trees, birds burst up, rocks fall, the water and mist keep moving -- and ambushes you.
+
+
+def _vz_crop(plate, x0, y0, cw, ch):
+    """A window (1080-based numbers) of a 3x plate, as a picture of the frame size (hi-res when the scene is drawn big)."""
+    box = (x0 * VS, y0 * VS, (x0 + cw) * VS, (y0 + ch) * VS)
+    big = _big()
+    res = _raw(plate.resize, big, Image.LANCZOS if cw * VS > big[0] else Image.BICUBIC, box)
+    return _hr_reg(res) if RSF[0] != 1.0 else res
+
+
+def _vz_height(sp):
+    """The creature's drawn height (in drawing units) at scale 1, measured."""
+    if "_vzh" in sp:
+        return sp["_vzh"]
+    old = RSF[0]
+    RSF[0] = 1.0
+    nb = len(_BOXES)
+    try:
+        lay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        ld = ImageDraw.Draw(lay, "RGBA")
+        draw_creature(ld, sp, 540, 1500, 0.3, 1, 1.0, {"t": 0.5, "moving": False, "noemerge": True, "noshadow": True})
+        bb = lay.getchannel("A").point(lambda v: 255 if v > 120 else 0).getbbox()
+    except Exception:
+        bb = None
+    finally:
+        RSF[0] = old
+        del _BOXES[nb:]
+    hb = float(bb[3] - bb[1]) if bb else 500.0
+    sp["_vzh"] = max(hb, 120.0)
+    return sp["_vzh"]
+
+
+def _vz_mist(seed=5):
+    rnd = random.Random(seed)
+    lay = Image.new("RGBA", (W * 2, 420), (0, 0, 0, 0))
+    d = ImageDraw.Draw(lay, "RGBA")
+    for _ in range(46):
+        x, y = rnd.uniform(0, W * 2), rnd.uniform(120, 300)
+        rx, ry = rnd.uniform(120, 330), rnd.uniform(24, 60)
+        d.ellipse((x - rx, y - ry, x + rx, y + ry), fill=(220, 228, 240, rnd.randint(18, 40)))
+    lay = lay.filter(ImageFilter.GaussianBlur(34))
+    # make it tile: the right half repeats the left
+    left = lay.crop((0, 0, W, 420))
+    lay.paste(left, (W, 0))
+    return lay
+
+
+def _vz_bird(d, x, y, sz, flap, col):
+    f = math.sin(flap)
+    d.line([(x - sz, y - sz * 0.5 * f), (x, y), (x + sz, y - sz * 0.5 * f)], fill=col, width=max(2, int(sz * 0.28)))
+
+
+def _vz_cam(V, u, T, zL):
+    """Camera window (x0, y0, zoom) for scene time u: wide, zoom to the landmark, hold, then ease out as the creature comes."""
+    ex, ey = V.emerge
+    z_in = _smooth(u / 0.26)
+    z = 1.0 + (zL - 1.0) * z_in
+    w = _smooth((u - 0.30) / 0.42)                       # after the creature appears the camera relaxes out
+    z = z + (1.0 - z) * w
+    return z
+
+
+def vista_scene(out, dur, world, sp, kind=None, seed=None, cwd=None, finale="face", kinds=None):
+    """See the block comment above. Returns the same timing info as the other attack scenes."""
+    seed = seed if seed is not None else (zlib.crc32(str(sp.get("name", "")).encode()) % 997) + 1
+    if kind is None and kinds:
+        kind = kinds[seed % len(kinds)]
+    V = Vista(world, kind=kind, seed=seed)
+    s = V.side
+    ex, ey = V.emerge
+    air = sp.get("kind") in AIR_KINDS
+    hb = _vz_height(sp)
+    G = chim_ground(sp) if sp.get("kind") == "chimera" else WALK_PX
+    T = 0.92
+    if PAUSE_REMAIN[0]:
+        T = min(0.95, max(0.78, (dur - PAUSE_REMAIN[0]) / dur))
+    u_go, u_arr, u_lunge = 0.34, T - 0.09, T - 0.09
+    sp3 = dict(sp)
+    sp3["bloody"] = True
+    info = {"hits": [dur * T], "impact_at": dur * T, "stalk_at": dur * u_go, "maul_at": dur * (T + (1 - T) * 0.07), "maul_dur": dur * (1 - T) * 0.57}
+    K_END = 0.93
+    face = -s                                            # it comes down from the landmark towards the middle: that way is its facing
+
+    def kof(u):
+        v = min(1.0, max(0.0, (u - u_go) / max(u_arr - u_go, 0.05)))
+        return K_END * (v ** 1.12)
+
+    def sc_at(k):
+        x, y = V.path_at(k)
+        return x, y, max(0.05, 1.3 * V.creature_h(y) / hb)
+
+    # distance walked (in creature units) as a function of u, so the feet keep to the ground
+    nS = 240
+    PT = [0.0]
+    pk = kof(u_go)
+    for i in range(1, nS + 1):
+        uu = u_go + (u_arr - u_go) * i / nS
+        kk = kof(uu)
+        (xa, ya, sa), (xb, yb, sb) = sc_at(pk), sc_at(kk)
+        PT.append(PT[-1] + math.hypot(xb - xa, yb - ya) / (0.5 * (sa + sb)) / G)
+        pk = kk
+
+    def P_at(u):
+        q = min(1.0, max(0.0, (u - u_go) / max(u_arr - u_go, 0.05))) * nS
+        i = min(int(q), nS - 1)
+        return PT[i] + (PT[i + 1] - PT[i]) * (q - i)
+
+    fo = {"falls": 150, "peak": 170, "tower": 330}.get(V.kind, 160)
+    zL = {"falls": 2.4, "peak": 2.2, "tower": 1.9}.get(V.kind, 2.2)
+    mist = _vz_mist(seed)
+    rnd = random.Random(seed + 5)
+    kf = V.ford_k
+    fx, fy = V.ford
+    u_ford = u_go + (u_arr - u_go) * ((kf / K_END) ** (1 / 1.12)) if kf < K_END else 0.6
+    # birds: a few drift far off from the start; a flock bursts out of the trees as the creature passes the ford
+    far_birds = [(rnd.uniform(0.1, 0.9) * W, rnd.uniform(560, 760), rnd.uniform(0.6, 1.2), rnd.uniform(0, 6)) for _ in range(5)]
+    flock = []
+    bx, by_ = V.path_at(min(0.92, kf + 0.18 * (1 - kf)))
+    for i in range(9):
+        flock.append((bx + rnd.uniform(-70, 70), by_ - rnd.uniform(20, 120), rnd.uniform(-1, 1), rnd.uniform(0.6, 1.3), rnd.uniform(0, 6)))
+    u_flock = u_go + (u_arr - u_go) * (((kf + 0.12 * (1 - kf)) / K_END) ** (1 / 1.12)) if kf + 0.12 * (1 - kf) < K_END else 0.62
+    rocks = [(rnd.uniform(-60, 60), rnd.uniform(-170, -60), rnd.uniform(3, 8), rnd.uniform(0, 0.25)) for _ in range(9)]
+    world.push, world.shake = 0.0, 0.0
+    world.no_cinema = True
+    st_run = {"moving": True, "ground": G}
+
+    def to_screen(px, py, c):
+        return (px - c[0]) * c[2], (py - c[1]) * c[2]
+
+    def paint(im0, d0, t, u, cam):
+        R = RSF[0]
+        # ---------------------------------------------------------------- camera
+        k = kof(u) if u >= u_go else 0.0
+        cxp, cyp, scl = sc_at(k)
+        z = _vz_cam(V, u, T, zL)
+        w = _smooth((u - 0.30) / 0.42)
+        tgt_x = ex + (cxp - ex) * w * 0.9 + (0.0 if w > 0 else 0.0)
+        mid_y = ey - 0.40 * V.creature_h(ey) + (cyp - 0.5 * V.creature_h(cyp) - (ey - 0.40 * V.creature_h(ey))) * w
+        focus_x = ex * (1 - w) + 540 * w * 0.35 + cxp * w * 0.65 if w > 0 else ex
+        focus_y = (ey - fo) * (1 - w) + mid_y * w if w > 0 else ey - fo
+        if u < 0.26:
+            q = _smooth(u / 0.26)
+            focus_x, focus_y = 540 + (ex - 540) * q, 960 + (ey - fo - 960) * q
+        cw, ch = W / z, H / z
+        shk = 0.0 if u < 0.6 else 2.4 * (u - 0.6) / 0.4
+        bx_ = 4.0 * math.sin(t * 1.3) + shk * math.sin(t * 31)
+        by__ = 3.0 * math.sin(t * 1.9 + 1.0) + shk * math.cos(t * 27)
+        x0 = _clip(focus_x - cw / 2 + bx_ / z, 0, W - cw)
+        y0 = _clip(focus_y - ch / 2 + by__ / z, 0, H - ch)
+        c = (x0, y0, z)
+        im = _vz_crop(V.back, x0, y0, cw, ch)
+        d = ImageDraw.Draw(im, "RGBA")
+        # ---------------------------------------------------------------- far things that move
+        for (bx0, byy, sp_, ph) in far_birds:
+            bxx = (bx0 + t * 22 * sp_ * 1.0) % (W + 120) - 60
+            sx_, sy_ = to_screen(bxx, byy + 12 * math.sin(t * 0.7 + ph), c)
+            _vz_bird(d, sx_, sy_, 7 * z, t * 9 + ph, (14, 16, 26, 220))
+        if V.kind == "falls":
+            f = V.fall
+            top_, bot_ = f["top"], f["bot"]
+            cur = [to_screen(f["x"] - 34, top_, c), to_screen(f["x"] + 34, top_, c), to_screen(f["x"] + 50, bot_, c), to_screen(f["x"] - 50, bot_, c)]
+            d.polygon(cur, fill=(150, 180, 205, 120))                # the sheet of water itself, a little see-through
+            n = 34
+            for i in range(n):                                   # streaks running down, brighter and wider towards the bottom
+                xr = (i + 0.5) / n * 2 - 1
+                ph = (i * 0.6180339) % 1.0
+                for seg in range(4):
+                    yy0 = top_ + ((t * (0.7 + 0.5 * ph) + ph + seg / 4.0) % 1.0) * (bot_ - top_)
+                    yy1 = min(bot_, yy0 + (bot_ - top_) * (0.05 + 0.08 * ph))
+                    hw = lambda y: 34 + 16 * (y - top_) / max(1.0, bot_ - top_)
+                    p0, p1 = to_screen(f["x"] + xr * hw(yy0), yy0, c), to_screen(f["x"] + xr * hw(yy1), yy1, c)
+                    d.line([p0, p1], fill=(226, 238, 248, 70 + int(60 * ph)), width=max(1, int(1.6 * z)))
+            for a_, wd in ((60, 1.0), (40, 0.7)):
+                x1, y1 = to_screen(f["x"] - 54, bot_ - 14, c)
+                x2, y2 = to_screen(f["x"] + 54, bot_ + 14, c)
+                d.ellipse((x1, y1, x2, y2), fill=(235, 242, 250, a_))
+            for i in range(10):                                  # spray at the foot
+                ang = (t * 1.3 + i * 0.63) % 1.0
+                sxx, syy = to_screen(f["x"] + (i - 4.5) * 9, bot_ - 18 * ang - 6, c)
+                r_ = (3 + 8 * ang) * z
+                d.ellipse((sxx - r_, syy - r_, sxx + r_, syy + r_), fill=(240, 246, 252, int(80 * (1 - ang))))
+        if V.kind == "tower" and hasattr(V, "lamp"):
+            lx_, ly_ = to_screen(V.lamp[0], V.lamp[1], c)
+            fl = 0.72 + 0.28 * math.sin(t * 13) * math.sin(t * 5.3 + 1.0)
+            for r_, a_ in ((80, 20), (48, 34), (26, 55)):
+                rr = r_ * z * fl
+                d.ellipse((lx_ - rr, ly_ - rr, lx_ + rr, ly_ + rr), fill=(255, 170, 70, int(a_ * fl)))
+        # eyes in the dark before it comes out
+        if 0.17 < u < u_go + 0.03:
+            aeye = _smooth((u - 0.17) / 0.08) * (0.6 + 0.4 * math.sin(t * 5)) * (1 - _smooth((u - u_go) / 0.03))
+            exx, eyy = to_screen(ex, ey - 0.45 * V.creature_h(ey), c)
+            for sg in (-1, 1):
+                rr = 5.5 * z
+                d.ellipse((exx + sg * 7 * z - rr, eyy - rr, exx + sg * 7 * z + rr, eyy + rr), fill=(255, 60, 40, int(240 * aeye)))
+                rr *= 2.4
+                d.ellipse((exx + sg * 7 * z - rr, eyy - rr, exx + sg * 7 * z + rr, eyy + rr), fill=(255, 40, 30, int(50 * aeye)))
+        # rocks and dust shaken loose as it comes out
+        ua = u - (u_go - 0.05)
+        if 0 < ua < 0.22:
+            for (rx0, ry0, rs, rd) in rocks:
+                a_ = ua - rd * 0.2
+                if a_ <= 0:
+                    continue
+                tt_ = a_ * dur
+                rx_ = ex + rx0 + 6 * tt_
+                ry_ = ey + ry0 + 220 * tt_ * tt_
+                if ry_ > ey + 40:
+                    continue
+                sx_, sy_ = to_screen(rx_, ry_, c)
+                r_ = rs * z
+                d.polygon([(sx_ - r_, sy_), (sx_, sy_ - r_ * 0.9), (sx_ + r_, sy_ + r_ * 0.2)], fill=(52, 50, 56, 255))
+            for j in range(5):
+                dq = min(1.0, ua / 0.2)
+                sx_, sy_ = to_screen(ex + (j - 2) * 30, ey + 10 - dq * 40, c)
+                r_ = (16 + 40 * dq) * z
+                d.ellipse((sx_ - r_, sy_ - r_ * 0.6, sx_ + r_, sy_ + r_ * 0.6), fill=(150, 142, 130, int(70 * (1 - dq))))
+        # ---------------------------------------------------------------- creature and the things it passes behind
+        show = u >= u_go - 0.005
+        heroes = V.heroes
+        before = [h for h in heroes if not show or h["y"] <= cyp]
+        after = [h for h in heroes if show and h["y"] > cyp]
+
+        def put_hero(h):
+            near_k = math.exp(-((h["k"] - k) / 0.06) ** 2) if show else 0.0
+            ang = 0.012 * math.sin(t * 1.7 + h["seed"]) + 0.05 * near_k * math.sin(t * 9 + h["seed"])
+            spr = h["spr"]
+            tw, th = h["tw"], h["th"]
+            lx_, ty_ = to_screen(h["x"] - tw / 2, h["y"] - h["foot"], c)
+            sw_, sh_ = tw * z, th * z
+            if lx_ > W or ty_ > H or lx_ + sw_ < 0 or ty_ + sh_ < 0:
+                return
+            pic = _raw(spr.resize, (max(2, int(round(sw_ * R))), max(2, int(round(sh_ * R)))), Image.BICUBIC)
+            if abs(ang) > 1e-4:                                  # sway: turn it about its foot (done at the small size: much faster)
+                pic = _raw(pic.rotate, math.degrees(ang), Image.BICUBIC, 0, (pic.width / 2, h["foot"] / th * pic.height))
+            if R != 1.0:
+                _hr_reg(pic)
+            im.paste(pic, (int(round(lx_)), int(round(ty_))), pic)
+
+        for h in before:
+            put_hero(h)
+        if show:
+            q_l = _smooth((u - u_lunge) / max(T - u_lunge, 0.02)) if u > u_lunge else 0.0
+            sx, sy = to_screen(cxp, cyp, c)
+            sc_draw = scl * z
+            if q_l > 0:
+                sx = sx + (540 - sx) * q_l ** 1.5
+                sy = sy + (1790 - sy) * q_l ** 1.5
+                sc_draw = sc_draw * (1 + 1.25 * q_l ** 2)
+            vis = _smooth((u - u_go) / 0.05)
+            dyfl = -90 * scl * z if air else 0.0
+            stt = dict(st_run, t=t, moving=(q_l < 0.6), roar=0.9 * q_l, lunge=q_l, crouch=0.0 if q_l == 0 else 0.3 * (1 - q_l))
+            phase = P_at(min(u, u_arr)) * STEP * 0.5
+            if vis < 0.98:
+                lay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+                ld = ImageDraw.Draw(lay, "RGBA")
+                draw_creature(ld, sp, sx, sy + dyfl, phase, face, sc_draw, dict(stt, noemerge=True, noshadow=True))
+                al = lay.getchannel("A").point(lambda v, a=vis: int(v * a))
+                im.paste(lay, (0, 0), al)
+            else:
+                draw_creature(d, sp, sx, sy + dyfl, phase, face, sc_draw, stt)
+            # the ford: it wades through, the water answers
+            ag = u - u_ford
+            if -0.02 < ag < 0.20 and V.kind is not None:
+                for j in range(4):
+                    rr = (ag + 0.02 - j * 0.03) * dur * 90
+                    if rr <= 0 or rr > 140:
+                        continue
+                    ax_, ay_ = to_screen(fx + (cxp - fx) * 0.0, fy, c)
+                    ax_ += (j - 1.5) * 14 * z
+                    d.ellipse((ax_ - rr * z, ay_ - rr * 0.28 * z, ax_ + rr * z, ay_ + rr * 0.28 * z), outline=(228, 238, 248, int(150 * (1 - rr / 140))), width=max(2, int(2.2 * z)))
+                if ag < 0.09:
+                    for j in range(14):
+                        a_ = (ag * dur * 2.2 + j * 0.13) % 1.0
+                        px_ = fx + (j - 7) * 6 + 28 * (a_ - 0.5) * (1 if j % 2 else -1)
+                        py_ = fy - 60 * math.sin(math.pi * a_) * (0.6 + 0.4 * ((j * 7) % 5) / 5)
+                        sxx, syy = to_screen(px_, py_, c)
+                        r_ = 2.6 * z
+                        d.ellipse((sxx - r_, syy - r_, sxx + r_, syy + r_), fill=(240, 246, 252, int(210 * (1 - a_))))
+            if show and u > u_flock - 0.01:
+                af = (u - u_flock) * dur
+                for (x_, y_, vx, sz_, ph) in flock:
+                    if af < 0:
+                        continue
+                    px_ = x_ + vx * 140 * af
+                    py_ = y_ - 210 * af - 30 * af * af
+                    sxx, syy = to_screen(px_, py_, c)
+                    _vz_bird(d, sxx, syy, 8 * z * sz_, t * 16 + ph, (12, 12, 20, 235))
+        for h in after:
+            put_hero(h)
+        # ---------------------------------------------------------------- front trees, mist, foreground, point of view
+        fr = _vz_crop(V.front, x0, y0, cw, ch)
+        im.paste(fr, (0, 0), fr)
+        mo = int(t * 16) % W
+        for yy, a in ((1030, 0.9), (1210, 0.7)):
+            m = mist.crop((mo, 0, mo + W, 420))
+            m = m.point(lambda v, a=a: int(v * a)) if a < 0.99 else m
+            im.paste(m, (0, int((yy - 0.5 * 420 - y0) * z)), m)
+        nr = _vz_crop(V.near, x0, y0, cw, ch)
+        im.paste(nr, (0, 0), nr)
+        # ---------------------------------------------------------------- the ambush
+        if u < T:
+            _vignette(im, 150 + int(70 * _smooth((u - 0.5) / 0.4)))
+            if u > u_lunge:
+                red_ = 0.30 * _smooth((u - u_lunge) / (T - u_lunge))
+                im = red_wash(im, red_)
+            return im
+        kk = (u - T) / (1 - T)
+        dd = ImageDraw.Draw(im, "RGBA")
+        if finale != "maul":                             # no killing here: the face fills the lens, then the dark
+            closeup(im, dd, sp, 0.0, 0.3, 2.3, 2.7, roar=1.0, shake=12 * max(0.0, 1 - kk), tt=t)
+            _vignette(im, 200)
+            return red_wash(im, 0.28)
+        if kk < 0.07:
+            closeup(im, dd, sp3, 0.0, 0.3, 2.3, 2.7, roar=1.0, shake=12, tt=t)
+            return red_wash(im, 0.4)
+        if kk < 0.64:
+            _BOXES.append((100, 540, 980, 1240))
+            return maul_frame(im, t, (kk - 0.07) / (0.64 - 0.07), sp, (44, 50, 82), "cloth", seed=5)
+        k2 = 0.64 + (kk - 0.64) * 0.55
+        dim(im, 150)
+        draw_creature(dd, sp3, 540 + 16 * math.sin(t * 90) * max(0.0, 1 - k2 * 4), 1700, t * 0.8, face, 1.5, {"t": t, "moving": False, "roar": min(1, k2 * 3)})
+        _vignette(im, 230)
+        return red_wash(im, 0.5 * max(0.0, 1 - k2 * 1.2) + 0.12)
+
+    write_video(out, dur, paint, world, cwd, cam_dir=0.0)
+    return info
+
+STORY_FUNCS["vista"] = vista_scene

@@ -246,7 +246,7 @@ def longest_b64(obj):
 
 # ---------------------------------------------------------------- writing
 HYB_ACTIONS_WILD = ("walk", "walkback", "feed", "turn", "face", "hunt", "footprints")
-HYB_ACTIONS_ENC = ("footprints", "pov", "loom", "shoulder", "chase", "face", "walk", "hunt")
+HYB_ACTIONS_ENC = ("footprints", "pov", "loom", "shoulder", "chase", "face", "walk", "hunt", "vista")
 HYB_FORMATS = (
     ("Survival documentary", "wild", "A nature-documentary look at the creature surviving in {place}.",
      "each one a specific danger of {place} and the clever trait that solves it."),
@@ -296,7 +296,7 @@ Rules for "sentences" (7 to 9 items, 65 to 85 words in total (the voice reads sl
 - Sentence 2: names the creature, says it is imaginary, and says what it inherits from the {a} and from the {b}.
 - One middle sentence describes the signature move on its prey.
 - Middle sentences: {middle}
-- Give each middle sentence a DIFFERENT "action", and make it the action the sentence really describes (hunt = it pounces on prey, feed = it eats, walk = it travels, turn = it reacts to a sound, face = a close-up of its face, footprints = its tracks are found). Use "hunt" at most once.
+- Give each middle sentence a DIFFERENT "action", and make it the action the sentence really describes (hunt = it pounces on prey, feed = it eats, walk = it travels, turn = it reacts to a sound, face = a close-up of its face, footprints = its tracks are found, vista = the camera zooms in on a far waterfall, cave or tower and the creature comes out and walks toward us). Use "hunt" at most once, and "vista" at most once.
 - Storyteller frame: in ONE place (never sentence 1, 2 or the last) add a short first-person line from the narrator ("I saw it myself.",
   "We should have turned back.") with "frame": true. It must not describe a new event, only the narrator recalling it.
 - Host reactions: in ONE or TWO places add one short sentence with "speaker": "host", the narrator's curious friend reacting out loud
@@ -986,12 +986,12 @@ BEAT_INTENSITY = {
     "pov": .50, "mpov": .50, "dig": .45, "fly": .50, "ocean": .50, "lake": .45, "erupt": .75, "hallway": .65, "curtain": .60,
     "window": .60, "loom": .70, "shoulder": .60, "mirror": .65, "birth": .80, "tsunami": .85, "storm": .80, "lava": .70,
     "giant": .85, "jump": .90, "attack": .90, "chase": .90, "clash": .95, "transform": .80, "mob": .70, "aftermath": .40,
-    "reign": .45, "hook": .45, "door": .50,
+    "reign": .45, "hook": .45, "door": .50, "vista": .60,
     "eyes": .60, "notice": .55, "lantern": .45, "establish": .32}
 REVEAL_AT = {  # how far into the scene the monster is shown (fraction of the scene)
     "hallway": .72, "woods": .78, "road": .75, "jump": .72, "birth": .45, "loom": .70, "curtain": .70, "window": .70,
     "giant": .40, "tsunami": .55, "ocean": .56, "lake": .56, "lava": .50, "erupt": .55, "clash": .30, "mirror": .60,
-    "lamp": .70, "transform": .50}
+    "lamp": .70, "transform": .50, "vista": .62}
 
 
 def make_score(total, plan, out_path):
@@ -2975,13 +2975,13 @@ PRE_TYPES = {
     "volcano": ("For millions of years the tyrant lizard (T-rex) has been the undisputed apex predator of its valley. A volcano that had "
                 "slept for ages erupts, and in the molten crater a NEW apex predator is born from fire and ash: bigger, hungrier, with "
                 "glowing cracks of lava across its body. It challenges the old king and ends his reign.",
-                ["valley", "valley", "erupt", "erupt", "birth", "birth", "clash", "reign"],
+                ["valley", "valley", "erupt", "erupt", "birth", "vista", "clash", "reign"],
                 ["Hook: open in the age of the dinosaurs and say, in one vivid line, that one animal, the T-rex, ruled this valley and nothing dared hunt it.",
                  "Show the valley: herds, long-necked giants and flying reptiles, all of them keeping away from the king. Name the king's roar.",
                  "A volcano that had slept for ages begins to shake. The ground cracks, the animals fall silent.",
                  "It erupts. Ash, fire, thunder. Every animal in the valley runs, and for the first time even the king runs.",
                  "In the molten crater something moves. Heat and ash gather into a body: describe a creature being born from the fire, with glowing cracks across it.",
-                 "It opens its eyes and takes its first breath. It is already bigger than the king, and the ground trembles under it.",
+                 "It climbs out of the burning mountain and strides down the land toward the valley, already bigger than the king, and the ground trembles under it.",
                  "The old king, proud, goes to face it. One strike. Imply, do not describe, what happens to the king.",
                  "The valley has a new ruler. End with a question for viewers that fits this story."]),
     "meteor": ("It is the age of the dinosaurs. A meteor shower rains fire across the valley. In the crater left by the biggest fragment "
@@ -3176,7 +3176,7 @@ Rules for "sentences" (7 to 9 items, 65 to 85 words in total (the voice reads sl
   hides while it passes), "mob" (villagers with torches hunt it), "stalk" (the creature closes in), "dig" (the creature digs in the earth, dirt flying: use it whenever the narration says
   it or anyone is digging, burying or unearthing something), "fly" (the creature unfolds wings and takes off into the
   sky: use it whenever the narration says it flies, soars or takes off), "attack" (it strikes),
-  "aftermath" (the horrible quiet after), "omen" (a wide shot of the sign in the sky or ground: use it ONCE, for the
+  "aftermath" (the horrible quiet after), "vista" (use it at most ONCE and only when the story has a far landmark such as a waterfall, a cave in a mountain or a ruined tower: the camera zooms in on it from far away, the creature comes out and stalks down the land toward the hero), "omen" (a wide shot of the sign in the sky or ground: use it ONCE, for the
   sentence that shows how the monster enters the world), and five CAMERA ANGLES: "pov" (first person through the hero's
   eyes, turning to see it coming), "mpov" (first person through the monster's eyes as it hunts), "curtain" (seen from
   inside a house through half-closed curtains while someone is chased outside), "shoulder" (over the hero's shoulder as
@@ -3365,7 +3365,7 @@ Rules for "sentences" (7 to 9 items, 65 to 85 words in total (the voice reads sl
   tower or lighthouse: a person checks logbooks while the sea outside draws back), "radio" (a person on a cliff road speaks into a
   radio, the signal bars fall and the static takes over), "harbor" (a harbour with lit houses and boats; the water swallows it,
   nature stories), "rise" (a black mountain of water rises out of a trench, weed and bone on its crest, eyes opening; nature
-  stories), "glass" (eyes glowing behind rain-streaked reinforced glass that begins to crack), "emerge" (something drags itself out of the ground with a huge ghostly shape watching from the sky), "swirl" (water rings and foams into a swirl and a shape slowly surfaces), "abyss" (cast down into a red pit), "dawn" (cold night turns to warm first light), "ridge" (the giant creature
+  stories), "glass" (eyes glowing behind rain-streaked reinforced glass that begins to crack), "emerge" (something drags itself out of the ground with a huge ghostly shape watching from the sky), "swirl" (water rings and foams into a swirl and a shape slowly surfaces), "abyss" (cast down into a red pit), "dawn" (cold night turns to warm first light), "vista" (use at most ONCE: the camera zooms in on a far waterfall, a mountain cave or a ruined tower and the creature comes out of it and walks down the land toward us), "ridge" (the giant creature
   crests a ridge and blots out the stars; nature stories). IMPORTANT: choose the beat that shows what THIS sentence says, and use
   a different beat for every sentence whenever you can, "dig" (the creature digs in the earth, dirt flying, only if the story really has digging), "fly" (the creature unfolds
   wings and takes off, only if the story really has flying), "jump" (a dark room, two eyes open, then the face is
@@ -3556,16 +3556,17 @@ ATTACK_WORDS = ("attack", "lunge", "pounc", "tore", "torn", "bit ", "bite", "blo
 
 SCENE_NAME = {"chase": "person_chase"}   # folk stories: a person runs and the monster gives chase (the plain chase_scene is the hybrid animal hunt)
 SCENE_FUNCS = ("dig", "fly", "bedroom", "stairs", "basement", "hallway", "cctv", "jump", "hook", "footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
-               "omen", "pov", "mpov", "curtain", "shoulder", "loom", "emerge", "swirl", "abyss", "dawn", "hosts")
+               "omen", "pov", "mpov", "curtain", "shoulder", "loom", "emerge", "swirl", "abyss", "dawn", "hosts", "vista")
 CAMERA_SCENES = ("pov", "mpov", "curtain", "shoulder", "loom")
 MODERN_SCENES = ("bedroom", "stairs", "basement", "hallway", "cctv", "door", "window", "curtain", "jump",
                  "woods", "neighbour", "lamp", "road", "mirror", "dig", "fly",
                  "ocean", "lake", "lava", "tornado", "tsunami", "giant",
-                 "retreat", "tidelog", "radio", "harbor", "rise", "glass", "ridge", "emerge", "swirl", "abyss", "dawn", "hosts")
+                 "retreat", "tidelog", "radio", "harbor", "rise", "glass", "ridge", "emerge", "swirl", "abyss", "dawn", "hosts", "vista")
 SECOND_BEAT = {}   # sentence index -> a second story scene for the same sentence
-STORY_SCENES = ("retreat", "tidelog", "radio", "harbor", "rise", "glass", "ridge", "emerge", "swirl", "abyss", "dawn", "hosts")   # scenes for one specific narrated event
+STORY_SCENES = ("retreat", "tidelog", "radio", "harbor", "rise", "glass", "ridge", "emerge", "swirl", "abyss", "dawn", "hosts", "vista")   # scenes for one specific narrated event
 STORY_NATURE = ("retreat", "harbor", "rise", "ridge")                                  # only for stories set in nature
-MODERN_WORDS = (("emerge", ("out of the ground", "out of the earth", "from the soil", "clawed its way", "dug itself out", "from the grave", "burst from the ground", "broke through the ground")),
+MODERN_WORDS = (("vista", ("waterfall", "from the cave", "out of the cave", "mouth of the cave", "the cave", "cavern", "ruined tower", "old tower", "abandoned tower", "ruins on the")),
+                ("emerge", ("out of the ground", "out of the earth", "from the soil", "clawed its way", "dug itself out", "from the grave", "burst from the ground", "broke through the ground")),
                 ("swirl", ("foam", "whirlpool", "swirl", "ripples", "vortex", "bubbles rose")),
                 ("abyss", ("hurled", "cast down", "plunged", "into the pit", "abyss", "bottomless", "fell into the dark")),
                 ("dawn", ("sunrise", "first light", "morning came", "at daybreak", "the dawn", "as dawn")),
@@ -3608,6 +3609,7 @@ SCENE_INFO = {
     "emerge": ("Something drags itself out of the ground while a huge ghostly shape watches from the sky", "slow tilt up, eased rise", "earth cracking, dust, a low groan"),
     "swirl": ("The water rings and foams into a swirl and a shape slowly surfaces", "slow push-in", "water ripple, a deep hum"),
     "abyss": ("Cast down into a red pit, rock walls rushing past, figures tumbling", "falling, shaking", "a long falling rumble"),
+    "vista": ("A far waterfall, mountain cave or ruined tower: the camera zooms in, the creature comes out and stalks down the land toward you", "slow zoom, then following", "rumble, splash, a roar"),
     "dawn": ("The light changes from cold night to warm first light as the sun climbs", "slow, still", "birdsong, soft wind"),
     "tsunami": ("The sea draws back, then a wall of water with the creature rising behind it", "wide", "rush, rumble"),
     "giant": ("The titan's face comes out of the clouds above the mountains", "low angle", "wind, a roar"),
@@ -3629,7 +3631,7 @@ def write_storyboard(sentences, beats, durs, settings, path):
 
 
 SCENES = ("walk", "dig", "fly", "footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
-          "stalk", "attack", "aftermath", "omen", "pov", "mpov", "curtain", "shoulder", "loom", "emerge", "swirl", "abyss", "dawn", "hosts")
+          "stalk", "attack", "aftermath", "omen", "pov", "mpov", "curtain", "shoulder", "loom", "emerge", "swirl", "abyss", "dawn", "hosts", "vista")
 SCENE_WORDS = (("dig", ("dig ", "digging", "dug ", "unearth", "shovel", "burying", "buried it", "claw at the earth", "clawing at the ground")),
                ("fly", ("flew", "flying", "fly ", "wings", "soared", "soaring", "took off", "takes off", "into the sky", "swooped")),
                ("footprints", ("footstep", "footprint", "steps behind", "tracks")),
@@ -3692,13 +3694,32 @@ def assign_settings(sentences, beats):
     return out
 
 
+VISTA_COMES_RX = re.compile(r"\b(came out|comes out|come out|emerg\w*|stepped out|crept out|crawled out|climbed out|slid out|poured out|walked down|came down|comes down|"
+                            r"strode|stalk\w*|approach\w*|descend\w*|rose from|out of the)\b|out of the")
+
+
+def limit_vista(beats, fill, texts=None):
+    """The far-landmark zoom ("vista") is used at most once in a story, never as the first or the last scene, and only on a sentence in
+    which the creature actually comes out and moves (the picture shows what the sentence says); the sentence that says it best wins."""
+    n = len(beats)
+    cands = [i for i, b in enumerate(beats) if b == "vista" and 0 < i < n - 1]
+    if texts:
+        good = [i for i in cands if VISTA_COMES_RX.search(texts[i])]
+        cands = good
+    keep = cands[0] if cands else None
+    for i, b in enumerate(beats):
+        if b == "vista" and i != keep:
+            beats[i] = fill(i)
+    return beats
+
+
 def assign_modern_beats(sentences, stype=None):
     n = len(sentences)
     beats = []
     for i, s in enumerate(sentences):
         b = s.get("beat")
         low = s["text"].lower()
-        hits_ = sorted((min(low.find(w) for w in words if w in low), name) for name, words in MODERN_WORDS[:11] if any(w in low for w in words))
+        hits_ = sorted((min(low.find(w) for w in words if w in low), name) for name, words in MODERN_WORDS[:12] if any(w in low for w in words))
         hits_ = [(pos, nm) for pos, nm in hits_ if nm not in STORY_NATURE or stype in NATURE_TYPES]
         said = hits_[0][1] if hits_ else None
         SECOND_BEAT.pop(i, None)
@@ -3742,7 +3763,7 @@ def assign_modern_beats(sentences, stype=None):
     if n >= 6 and "cctv" in beats and beats.count("cctv") > 1:
         j = [k for k, b in enumerate(beats) if b == "cctv"][-1]
         beats[j] = "hallway" if beats[j - 1] != "hallway" else "door"
-    return beats
+    return limit_vista(beats, lambda i: fill[i % len(fill)] if fill[i % len(fill)] != final else "hallway", [x["text"].lower() for x in sentences])
 
 
 def assign_pre_beats(n, stype):
@@ -3753,7 +3774,8 @@ def assign_pre_beats(n, stype):
     return beats
 
 
-LEGEND_SAID = (("emerge", r"(out of the (ground|earth)|from the (soil|grave)|clawed its way|dug itself out|burst from the ground)"),
+LEGEND_SAID = (("vista", r"\b(waterfall|cavern|ruined tower|old tower|abandoned tower)\b|(out of|from|mouth of) the cave"),
+               ("emerge", r"(out of the (ground|earth)|from the (soil|grave)|clawed its way|dug itself out|burst from the ground)"),
                ("swirl", r"\b(foam\w*|whirlpool|swirl\w*|ripples?|vortex)\b"),
                ("abyss", r"\b(hurled|cast down|plunged|abyss|bottomless)\b|into the pit"),
                ("dawn", r"\b(sunrise|first light|daybreak)\b|morning came|\bat dawn\b|\bthe dawn\b"),
@@ -3850,7 +3872,7 @@ def assign_beats(sentences, modern=False, stype=None):
     for i in range(1, n - 1):  # never the same scene twice in a row
         if beats[i] == beats[i - 1] and beats[i] not in ("attack",) and i not in said_idx:
             beats[i] = "stalk" if beats[i] != "stalk" else "walk"
-    return beats
+    return limit_vista(beats, lambda i: "stalk" if (i + 1 >= n or beats[i - 1] != "stalk") else "walk", [x["text"].lower() for x in sentences])
 
 
 FOLK_STYLE = ("a warm, soft-spoken person telling a story out loud, naturally and conversationally, the way you would tell "
@@ -3867,7 +3889,7 @@ DRAMATIC_STYLE = ("a deep, confident storyteller with real energy and feeling, t
                   "not a nature documentary")
 NARR_RATE = float(os.environ.get("NARRATION_RATE", "1.10"))      # the finished narration plays a little faster than the voice reads
 NARRATOR_STYLE = DRAMATIC_STYLE if os.environ.get("VOICE_TONE", "dramatic") != "warm" else FOLK_STYLE
-REVEAL_BEATS = ("hallway", "woods", "road", "jump", "birth", "loom", "curtain", "window", "giant", "tsunami", "ocean", "lake",
+REVEAL_BEATS = ("hallway", "woods", "road", "jump", "birth", "loom", "vista", "curtain", "window", "giant", "tsunami", "ocean", "lake",
                 "lava", "erupt", "clash", "mirror", "lamp", "transform", "attack")
 
 
@@ -4466,6 +4488,24 @@ def folk_sound_events(durs, beats, impacts, sounds, hits=None, quiet=None, origi
             ev.append({"file": sounds["boom"], "at": at + h[0], "vol": 0.5})
         elif beats[i] == "swirl":
             ev.append({"file": sounds["rumble"], "at": at + d * 0.3, "vol": 0.5})
+        elif beats[i] == "vista":
+            hit = at + (hits.get(i) or [d * 0.92])[0]
+            ev.append({"file": sounds["gust"], "at": at + 0.1, "vol": 0.4})
+            ev.append({"file": sounds["rumble"], "at": at + d * 0.26, "vol": 0.6})
+            ev.append({"file": sounds["boom"], "at": at + d * 0.33, "vol": 0.45})
+            ev.append({"file": sounds["splash"], "at": at + d * 0.58, "vol": 0.5})
+            tt, gapb = at + d * 0.45, 0.85
+            while tt < hit - 0.9:
+                ev.append({"file": sounds["heart"], "at": tt, "vol": 0.8})
+                tt += gapb
+                gapb = max(0.42, gapb * 0.88)
+            quiet.append((hit - 0.7, hit - 0.05))
+            ev.append({"file": sounds["roar"], "at": hit - 0.05, "vol": 0.9})
+            ev.append({"file": sounds["boom"], "at": hit, "vol": 0.7})
+            if i in MAULS:
+                fe, qw = maul_sound_events(sounds, at + MAULS[i][0], MAULS[i][1])
+                ev += fe
+                quiet.append(qw)
         elif beats[i] == "ridge":
             h = hits.get(i, [d * 0.3, d * 0.65])
             ev.append({"file": sounds["rumble"], "at": at + 0.05, "vol": 0.9})
@@ -4891,6 +4931,9 @@ def build_folk_main(plan):
         last = i == n - 1 and not sh["insert"]
         if re.search(toon.VEHICLE_RX, sentences[i].get("text", "").lower()) and re.search(toon.SMASH_VERB_RX, sentences[i].get("text", "").lower()):
             log(f"Vehicle-wreck sentence {i + 1}: shot {j}, beat {beats[i]}, {dur:.1f}s, creature veil {veil}, cutaway={sh['insert']}")
+        if beat == "vista" and (dur < 3.4 or i == 0 or last):           # too short to read: a plainer scene instead
+            beat = (("valley" if fmt == "prehistoric" else "ridge" if story.get("story_type") in NATURE_TYPES else "hallway") if modern else "stalk")
+            sh["beat"] = beat
         if sh["insert"]:
             w.variant = sh["variant"]
             if beat == "valley":  # the wide view of the valley, used as an establishing cutaway
@@ -4905,6 +4948,8 @@ def build_folk_main(plan):
                 w = toon.World(toon.SETTINGS["pathway"], 3 + j * 5, {"fog": 0.5})
             _sm = toon.smash_scene(out, dur, w, creature_v, cwd=WORK)             # the narration wrecks a vehicle: show contact, crumple, debris, aftermath
             SMASH_AT[j] = _sm["impact_at"]
+        elif modern and beat == "vista":                       # a far landmark: the camera zooms in, the creature comes out and stalks down the land
+            hits[j] = toon.vista_scene(out, dur, w, cur, kinds=("falls", "peak") if fmt == "prehistoric" else None, finale="face", cwd=WORK).get("hits", [])
         elif modern:
             if beat == "jump":      # the scare lands a beat AFTER the last spoken word, in silence
                 tail_ = (locals().get("tail", 0.45) if lead else 0.45)
@@ -4919,6 +4964,15 @@ def build_folk_main(plan):
             impacts[j] = _ai["impact_at"]
             MAULS[j] = (_ai["maul_at"], _ai["maul_dur"])
             blooded = True
+        elif beat == "vista":
+            _fin = "face" if any(b_ == "attack" for b_ in beats[i + 1:]) else "maul"     # the story's own attack comes later: no second killing here
+            toon.PAUSE_REMAIN[0] = None
+            _vi = toon.vista_scene(out, dur, w, cur, finale=_fin, cwd=WORK)
+            hits[j] = _vi.get("hits", [])
+            if _fin == "maul":
+                impacts[j] = _vi["impact_at"]
+                MAULS[j] = (_vi["maul_at"], _vi["maul_dur"])
+                blooded = True
         elif beat == "aftermath" and not last:
             toon.ground_scene(out, dur, w, cur, cwd=WORK)
         elif beat == "aftermath":
@@ -5348,6 +5402,7 @@ def build_main():
     hunt_info = None
     k = 0
     prev_shot = None
+    vista_done = False
     scene_tracks = {}
     used_places = []
     for i_, sc_ in enumerate(scenes):         # which scenes must DEMONSTRATE an ability the narration describes
@@ -5433,8 +5488,14 @@ def build_main():
                 shot_type = "walk"
             if sc["dur"] < 2.4 and shot_type in ("pov", "loom", "shoulder", "chase", "footprints"):
                 shot_type = "walk"
+            if shot_type == "vista" and (sc["dur"] < 3.4 or vista_done):
+                shot_type = "walk"
             prev_shot = shot_type
-            if shot_type in ("footprints", "pov", "loom", "shoulder", "chase"):
+            if shot_type == "vista":
+                toon.vista_scene(out, sc["dur"], w, sh, finale="face", cwd=WORK)
+                sc["steps"] = []
+                vista_done = True
+            elif shot_type in ("footprints", "pov", "loom", "shoulder", "chase"):
                 getattr(toon, shot_type + "_scene")(out, sc["dur"], w, sh, cwd=WORK)
                 sc["steps"] = []
             elif shot_type == "walk":
