@@ -2395,24 +2395,114 @@ def _hr_world_on(world, rs):
     return saved
 
 
+RENDER_BUDGET_S = float(os.environ.get("RENDER_BUDGET_MIN", "20")) * 60.0     # the most time all the scenes of one video may take
+RENDER_PLAN = {"total": None, "hr_wall": 0.0, "hr_vid": 0.0, "lo_wall": 0.0, "lo_vid": 0.0,
+               "fast_wall": 0.0, "fast_vid": 0.0, "done": 0.0, "mark": None}
+HR_SLOWDOWN = 2.5                                                               # hi-res takes about this many times longer than normal
+FAST_SPEEDUP = 1.7                                                              # the emergency mode (every second frame drawn) is about this much quicker
+REF_HR_RATE = 32.0                                                              # work seconds per video second on the machine the numbers were made on
+REF_LO_RATE = REF_HR_RATE / HR_SLOWDOWN
+# The whole run (set-up, voice, scenes, the final film pass, upload) must end before the build job's time limit. make_short.py sets:
+#   RUN_END[0]    = the clock time (time.time()) by which all scenes must be drawn, if everything after them takes its normal time
+#   POST_REF_S[0] = how long everything after the scenes takes on the reference machine (a slower machine needs more)
+RUN_END = [None]
+POST_REF_S = [0.0]
+
+
+def speed_factor():
+    """How much slower this machine is than the one the time estimates were made on (1.0 = the same, capped at 3)."""
+    P, f = RENDER_PLAN, 1.0
+    if P["hr_vid"] > 1.5:
+        f = max(f, P["hr_wall"] / P["hr_vid"] / REF_HR_RATE)
+    if P["lo_vid"] > 1.5:
+        f = max(f, P["lo_wall"] / P["lo_vid"] / REF_LO_RATE)
+    return min(f, 3.0)
+
+
+def _rates():
+    """Work seconds per video second: hi-res, normal, and the emergency mode (measured when there is data, else estimated)."""
+    P = RENDER_PLAN
+    hr = P["hr_wall"] / P["hr_vid"] if P["hr_vid"] > 1.5 else None
+    lo = P["lo_wall"] / P["lo_vid"] if P["lo_vid"] > 1.5 else None
+    if hr is None and lo is None:
+        hr, lo = REF_HR_RATE, REF_LO_RATE
+    elif hr is None:
+        hr = lo * HR_SLOWDOWN
+    elif lo is None:
+        lo = hr / HR_SLOWDOWN
+    fast = (P["fast_wall"] / P["fast_vid"]) if P["fast_vid"] > 1.5 else lo / FAST_SPEEDUP
+    return hr, lo, fast
+
+
+def _scene_mode(dur):
+    """'hr' (sharpest), 'lo' (normal) or 'fast' (emergency: every second frame is drawn). The sharpest mode that still lets the whole run
+    finish in time is chosen: the speed of the scenes already made decides, so a slow free build machine is handled by itself."""
+    import time as _time
+    P = RENDER_PLAN
+    hr, lo, fast = _rates()
+    total = P["total"] or 55.0
+    remaining = max(total - P["done"] - dur, 0.0)
+    spent = P["hr_wall"] + P["lo_wall"] + P["fast_wall"]
+    end = RUN_END[0]
+    if end is not None:
+        end = end - POST_REF_S[0] * (speed_factor() - 1.0)
+    now = _time.time()
+
+    def in_time(cost):
+        return end is None or now + cost <= end
+    cost_hr = dur * hr + remaining * lo
+    if HR_SCALE > 1.0 and spent + cost_hr <= RENDER_BUDGET_S and in_time(cost_hr):
+        return "hr"
+    if in_time((dur + remaining) * lo):
+        return "lo"
+    return "fast"
+
+
+def _use_hr(dur):
+    return _scene_mode(dur) == "hr"
+
+
 def write_video(out, dur, painter, world, cwd=None, cam_dir=1, cam_fn=None):
     """painter(draw, t, u, cam) draws the actors. Frames are piped straight into ffmpeg.
     The scene is drawn hi-res (HR_SCALE times the pixels) and shrunk to the video size; if anything in a scene cannot be
-    drawn that way, it is simply drawn the old way instead."""
-    rs = HR_SCALE if HR_SCALE > 1.0 else 1.0
-    if rs > 1.0:
-        try:
-            return _write_video(out, dur, painter, world, cwd, cam_dir, cam_fn, rs)
-        except Exception as e:
-            RSF[0] = 1.0
-            if os.environ.get("HR_DEBUG"):
-                import traceback
-                traceback.print_exc()
-            print(f"[toon] hi-res draw failed for {os.path.basename(str(out))} ({type(e).__name__}: {e}); drawing it normally", flush=True)
-    return _write_video(out, dur, painter, world, cwd, cam_dir, cam_fn, 1.0)
+    drawn that way, it is simply drawn the old way instead. If the run is behind its time, later scenes are drawn the normal way,
+    and as a last resort with every second frame (the other frames repeat the one before)."""
+    import time as _time
+    P = RENDER_PLAN
+    mode = _scene_mode(dur)
+    t0 = _time.time()
+    if P["mark"] is None:
+        P["mark"] = t0
+    try:
+        if mode == "hr":
+            try:
+                res = _write_video(out, dur, painter, world, cwd, cam_dir, cam_fn, HR_SCALE)
+                return res
+            except Exception as e:
+                RSF[0] = 1.0
+                if os.environ.get("HR_DEBUG"):
+                    import traceback
+                    traceback.print_exc()
+                print(f"[toon] hi-res draw failed for {os.path.basename(str(out))} ({type(e).__name__}: {e}); drawing it normally", flush=True)
+                mode = "lo"
+        elif HR_SCALE > 1.0 and mode == "lo":
+            print(f"[toon] time is short: {os.path.basename(str(out))} is drawn the normal way", flush=True)
+        elif mode == "fast":
+            print(f"[toon] time is very short: {os.path.basename(str(out))} is drawn in the emergency mode (half the frames)", flush=True)
+        res = _write_video(out, dur, painter, world, cwd, cam_dir, cam_fn, 1.0, fast=(mode == "fast"))
+        return res
+    finally:
+        now = _time.time()
+        w = now - P["mark"]                       # this scene's share of the clock, including whatever was prepared before it
+        P["mark"] = now
+        P["done"] += dur
+        P[mode + "_wall"] += w
+        P[mode + "_vid"] += dur
+        if os.environ.get("RENDER_LOG", "1") != "0":
+            print(f"[toon] {os.path.basename(str(out))}: {dur:.1f}s of video drawn {mode} in {w:.0f}s", flush=True)
 
 
-def _write_video(out, dur, painter, world, cwd, cam_dir, cam_fn, rs):
+def _write_video(out, dur, painter, world, cwd, cam_dir, cam_fn, rs, fast=False):
     n = max(int(dur * FPS), 2)
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{OW}x{OH}",
            "-r", str(FPS), "-i", "-", "-vf", f"scale={OW}:{OH}:flags=bicubic", "-c:v", "libx264",
@@ -2434,8 +2524,16 @@ def _write_video(out, dur, painter, world, cwd, cam_dir, cam_fn, rs):
             pass
     EMERGE.update(dur=float(getattr(world, "emerge", 0.0) or 0.0), t0=None, last=-9.0, t=0.0)
     saved_strips = _hr_world_on(world, rs) if rs != 1.0 else {}
+    prev_im, prev_bytes, prev_box = None, None, None
     try:
         for i in range(n):
+            if fast and i % 2 == 1 and i < n - 1 and prev_im is not None:        # emergency mode: this frame is the one before
+                track.append((i / FPS, prev_box))
+                if _SINK[0] is not None:
+                    _SINK[0].append(prev_im.copy())
+                else:
+                    proc.stdin.write(prev_bytes)
+                continue
             RSF[0] = rs
             t = i / FPS
             EMERGE["t"] = t
@@ -2498,8 +2596,13 @@ def _write_video(out, dur, painter, world, cwd, cam_dir, cam_fn, rs):
                 im = im.filter(ImageFilter.UnsharpMask(radius=1.0 + 0.5 * (up - 1.0), percent=int(min(190, 20 + 115 * (up - 1.0))), threshold=3))
             if _SINK[0] is not None:
                 _SINK[0].append(im.copy())
+                if fast:
+                    prev_im, prev_box = im, box
             else:
-                proc.stdin.write(im.tobytes())
+                bts = im.tobytes()
+                proc.stdin.write(bts)
+                if fast:
+                    prev_im, prev_bytes, prev_box = im, bts, box
     finally:
         RSF[0] = 1.0
         for nm_, lay_ in saved_strips.items():

@@ -155,6 +155,94 @@ def log(msg):
     print(msg, flush=True)
 
 
+# ---------------------------------------------------------------- one clock for the whole run
+# The build job has a time limit (the timeout-minutes of the workflow; it was cancelled at 40 minutes). Everything counts: the job's own
+# set-up, the voice, drawing the scenes, the final film pass (the biggest single step after the scenes), the quality check and the upload.
+# The scenes are drawn as sharp as the clock allows (toon.py chooses per scene); the steps after them are planned for.
+RUN_T0 = time.time()
+RUN_LIMIT_MIN = float(os.environ.get("RUN_LIMIT_MIN", "40"))       # set this to the workflow's timeout-minutes
+RUN_SETUP_MIN = float(os.environ.get("RUN_SETUP_MIN", "5"))        # the job's own set-up (checkout, installs) before this program starts
+RUN_MARGIN_MIN = float(os.environ.get("RUN_MARGIN_MIN", "3"))      # kept free for surprises
+FINAL_PASS_S = 10.0     # work seconds per video second for everything after the scenes up to the finished file (sound mix, opening hook, the
+                        # 1440x2560 film pass), measured on a 2-core machine; a quick speed test replaces this guess with the real machine's number
+FINISH_S = 100.0        # the quality check and the upload
+BENCH_SHARE = 2.0       # the whole post-scene work takes this many times what the speed test (the film pass alone) takes
+CLOCK = {"total": 55.0, "per_s": None}
+
+
+def run_min():
+    return (time.time() - RUN_T0) / 60.0
+
+
+def clock(stage):
+    if stage.startswith("all scenes"):       # what is drawn after this (the opening hook) must not count as scene time
+        try:
+            import toon
+            toon.RENDER_PLAN["mark"] = None
+            toon.RUN_END[0] = None                  # the opening hook is part of the final steps, which were planned for separately
+        except Exception:
+            pass
+    log(f"[clock] {stage}: {run_min():.1f} min into the run (limit {RUN_LIMIT_MIN:.0f} min, of which the job's own set-up takes about {RUN_SETUP_MIN:.0f})")
+
+
+def bench_final_pass():
+    """Speed test of the biggest step after the scenes: the film pass on 1.5 s of test picture, at the real video size. Gives the work seconds per
+    video second on THIS machine (about 8 s on the test machine)."""
+    try:
+        import toon
+        OW_, OH_ = out_size()
+        K = OW_ / 1080.0
+        vf = (f"scale={round(1134 * K)}:{round(2016 * K)}:flags=lanczos,crop={OW_}:{OH_}:x=27:y=48,{FILM},{LOOK['grade']},"
+              "eq=brightness=0.06:saturation=1.12:contrast=1.25:gamma=1.35,unsharp=5:5:0.9:5:5:0.0,unsharp=13:13:0.45:13:13:0.0,"
+              "vignette=PI/5.5,noise=alls=2:allf=t+u")
+        t0 = time.time()
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", f"testsrc2=size={round(1134 * K)}x{round(2016 * K)}:rate=30",
+                        "-t", "1.5", "-vf", vf, "-c:v", "libx264", "-preset", "faster", "-crf", "18", "-pix_fmt", "yuv420p", "-f", "null", "-"],
+                       check=True, capture_output=True, timeout=120)
+        return (time.time() - t0) / 1.5
+    except Exception as e:
+        log(f"[clock] the speed test could not run ({e}); the standard estimate is used")
+        return None
+
+
+def arm_clock(total):
+    """Called when the scenes are about to be drawn: tells toon.py how the time is shared out."""
+    import toon
+    toon.RENDER_PLAN.update(total=total, hr_wall=0.0, hr_vid=0.0, lo_wall=0.0, lo_vid=0.0, fast_wall=0.0, fast_vid=0.0, done=0.0, mark=None)
+    CLOCK["total"] = total
+    rate = bench_final_pass()
+    if rate:      # the real machine's speed decides how long the steps after the scenes need
+        CLOCK["per_s"] = rate * BENCH_SHARE
+        post = total * CLOCK["per_s"] + FINISH_S
+        toon.POST_REF_S[0] = 0.0                     # no further guessing from the scene speed
+        log(f"[clock] speed test: the final video pass runs at {rate:.1f} s of work per video second on this machine")
+    else:
+        CLOCK["per_s"] = None
+        post = total * FINAL_PASS_S + FINISH_S
+        toon.POST_REF_S[0] = post
+    end = RUN_T0 + (RUN_LIMIT_MIN - RUN_SETUP_MIN - RUN_MARGIN_MIN) * 60.0 - post
+    if os.environ.get("SCENES_END_MIN"):
+        end = RUN_T0 + float(os.environ["SCENES_END_MIN"]) * 60.0
+    toon.RUN_END[0] = end
+    clock("the voice is ready, the scenes start")
+    log(f"[clock] all scenes must be drawn by minute {(end - RUN_T0) / 60.0:.1f} of the run (the steps after them are planned at about {post / 60.0:.1f} min)")
+
+
+def time_for_second_pass():
+    """Is there still time to run the final film pass once more (the quality check may ask for that)?"""
+    if CLOCK.get("per_s"):
+        need = CLOCK["total"] * CLOCK["per_s"] + FINISH_S + 60.0
+    else:
+        try:
+            import toon
+            f = toon.speed_factor()
+        except Exception:
+            f = 1.0
+        need = CLOCK["total"] * FINAL_PASS_S * f + FINISH_S + 60.0
+    left = (RUN_LIMIT_MIN - RUN_SETUP_MIN - RUN_MARGIN_MIN) * 60.0 - (time.time() - RUN_T0)
+    return left >= need
+
+
 def run(cmd, cwd=None):
     if cmd and cmd[0] == "ffmpeg":  # show only real errors, not the long banner and progress lines
         cmd = [cmd[0], "-hide_banner", "-loglevel", "error"] + list(cmd[1:])
@@ -2369,6 +2457,9 @@ def quality_gate(video_path, words, kind, rebuild=None):
         for stage, ok, msg in res:
             log(f"QC {'PASS' if ok else 'FAIL'} - {stage}: {msg}")
         if not failed:
+            break
+        if attempt == 1 and rebuild is not None and not time_for_second_pass():
+            log("QC: no time left for a second render (the run has a time limit), so the video is checked as it is.")
             break
         if attempt == 1 and rebuild is not None:
             log("QC: re-rendering once to try to repair: " + ", ".join(r[0] for r in failed))
@@ -4894,6 +4985,7 @@ def build_folk_main(plan):
     log(f"Shots ({len(shots)}): " + ", ".join(sh["beat"] + (f"[{sh['variant']}]" if sh["variant"] else "") for sh in shots))
     SMASH_AT.clear()
     scenes, impacts, blooded, hits = [], {}, False, {}
+    arm_clock(total)                                                                          # the scenes share one time budget
     cap_track, scene_at = [], 0.0
     for j, sh in enumerate(shots):
         i, dur, beat = sh["i"], sh["dur"], sh["beat"]
@@ -4997,6 +5089,7 @@ def build_folk_main(plan):
                               card_big=animal)
     sounds = prepare_sounds(animal, animal, ambient_query)
     quiet = []
+    clock("all scenes are drawn")
     events = folk_sound_events(durs, beats, impacts, sounds, hits, quiet, origin)
     events = sound_sync_check(events, words)
     try:
@@ -5010,8 +5103,10 @@ def build_folk_main(plan):
     build_video(scenes, {"h": {"plate": None, "sprite": None, "clip": None}}, "mix.wav",
                 "captions.ass" if has_caps else None, out_path)
     log(f"Video ready: {out_path} ({total:.1f}s of speech)")
+    clock("the final video is made")
     quality_gate(out_path, words, "folk", rebuild=lambda: build_video(scenes, {"h": {"plate": None, "sprite": None, "clip": None}}, "mix.wav",
                                                                       "captions.ass" if has_caps else None, out_path))
+    clock("the quality check is done")
 
     title = story["title"][:80].rstrip() + " #Shorts"
     description = (
@@ -5403,6 +5498,7 @@ def build_main():
     k = 0
     prev_shot = None
     vista_done = False
+    arm_clock(total)                                                                          # the scenes share one time budget
     scene_tracks = {}
     used_places = []
     for i_, sc_ in enumerate(scenes):         # which scenes must DEMONSTRATE an ability the narration describes
@@ -5533,6 +5629,7 @@ def build_main():
         step_abs += [at_ + x for x in sc.get("steps", [])]
         at_ += sc["dur"]
     steps_file = make_steps(step_abs, toon.chim_mass(sh), "steps.wav", total) if step_abs else None
+    clock("all scenes are drawn")
     events = sound_events(scenes, sounds, hunt_info, steps_file)
     build_audio(audio_name, total, events, sounds["ambient"], "mix.wav", score=ramp_score(total))
 
@@ -5540,7 +5637,9 @@ def build_main():
     build_video(scenes, assets, "mix.wav", "captions.ass" if has_caps else None, out_path)
     log(f"Video ready: {out_path} ({total:.1f}s of speech, AI video clips used: {len(clips)}/3, "
         f"real animal calls: {sounds['real_calls']}/2)")
+    clock("the final video is made")
     quality_gate(out_path, words, "hybrid", rebuild=lambda: build_video(scenes, assets, "mix.wav", "captions.ass" if has_caps else None, out_path))
+    clock("the quality check is done")
     remember_locations(PLACES_USED)
 
     title = story["title"][:80].rstrip() + " #Shorts"
