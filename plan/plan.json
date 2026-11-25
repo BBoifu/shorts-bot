@@ -1,294 +1,104 @@
 {
- "series": "hybrid",
- "key": "frog+gorilla@the clouds of Venus",
- "a": "frog",
- "b": "gorilla",
- "place": [
-  "the clouds of Venus",
-  "thick orange storm clouds with lightning",
-  "thunder storm",
-  "sickly orange light through thick haze",
-  "warm"
- ],
+ "series": "folklore",
+ "key": "folk:snake:The Wet Lens|orb|sea|bone|A research ship off the Irish coast, 3:33 AM|",
+ "episode": 33,
  "story": {
-  "title": "The Gorilla Frog of the Venus Clouds",
-  "creature_name": "Gorillafrog",
-  "prey": "Venusian cloud-jellyfish",
-  "signature_move": "It vaults through the vapor using gorilla strength, then snags escaping prey with a sudden, elastic tongue snap.",
-  "hybrid_look": "Its broad, hunched gorilla torso and long knuckle-walking arms are covered in coarse black fur mixed with a warty frog texture, topped with a frog-shaped head and gorilla eyes.",
+  "legend_name": "The Wet Lens",
+  "region": "A research ship off the Irish coast, 3:33 AM",
+  "time": "3:33",
+  "animal": "snake",
+  "title": "The Glass Eye in the Deep Water",
+  "narrator": {
+   "gender": "male",
+   "persona": "a marine biologist reviewing audio logs three years later"
+  },
+  "hero": "traveller",
+  "people": "alone",
+  "monster": {
+   "body": "orb",
+   "palette": "bone",
+   "eyes": "red",
+   "size": "huge",
+   "horn": null,
+   "spine": "none",
+   "eye_count": 2
+  },
   "sentences": [
    {
-    "text": "It steals your shadow without ever touching you.",
-    "image": "dense, swirling amber clouds masking the crushing sulfuric horizon of Venus",
-    "action": "face",
+    "text": "Three slow thuds against the steel hull, repeated until the rivets groaned.",
+    "beat": "ocean",
+    "delivery": "dread",
     "speaker": "narrator",
+    "voice": "man",
     "frame": false
    },
    {
-    "text": "Meet the Gorillafrog, an imaginary hybrid mixing a heavy gorilla body with cold-blooded frog patience.",
-    "image": "vast canyon walls carved by ancient acid rain under a dim yellow sky",
-    "action": "walk",
+    "text": "I was there that night.",
+    "beat": "tsunami",
+    "delivery": "hushed",
     "speaker": "narrator",
+    "voice": "man",
     "frame": false
    },
    {
-    "text": "High in the thick atmospheric storms, it guards a clutch of gelatinous eggs.",
-    "image": "towering pillars of condensing carbon dioxide shrouded in perpetual lightning",
-    "action": "",
+    "text": "My partner went down to check the wet well and never came back up.",
+    "beat": "tidelog",
+    "delivery": "trembling",
     "speaker": "narrator",
+    "voice": "man",
     "frame": false
    },
    {
-    "text": "A predatory cloud-hawk drifts toward the nest, talons gleaming in the static glow.",
-    "image": "churning upper atmospheric tempests lit by violent bolts of plasma",
-    "action": "turn",
+    "text": "I called his name into the radio, waiting for an answer.",
+    "beat": "radio",
+    "delivery": "urgent",
     "speaker": "narrator",
+    "voice": "man",
     "frame": false
    },
    {
-    "text": "It vaults through the vapor using gorilla strength, then snags escaping prey with a sudden, elastic tongue snap.",
-    "image": "endless banks of rolling white mist hiding jagged floating mountain spires",
-    "action": "hunt",
-    "speaker": "narrator",
+    "text": "I am right here by the hatch.",
+    "beat": "door",
+    "delivery": "whisper",
+    "speaker": "mimic",
+    "voice": "man",
     "frame": false
    },
    {
-    "text": "We should have turned back.",
-    "image": "dark churning vortexes spinning slowly within the dense planetary haze",
-    "action": "walkback",
-    "frame": true,
-    "speaker": "narrator"
-   },
-   {
-    "text": "Balancing gorilla brooding with amphibian stillness, it glares until the threat retreats.",
-    "image": "isolated atmospheric thermal plumes rising lazily into the upper stratosphere",
-    "action": "footprints",
-    "speaker": "narrator",
+    "text": "Wait, WHAT?!",
+    "beat": "harbor",
+    "delivery": "shout",
+    "speaker": "host",
+    "voice": "host",
     "frame": false
    },
    {
-    "text": "It loses all courage in direct sunlight, fleeing the dawn. What should I combine next? Tell me in the comments.",
-    "image": "blinding amber rays piercing through the upper cloud deck of Venus",
-    "action": "feed",
+    "text": "Instead of my friend, a small silver coin sat on the wet deck, and the black sea began to rise like oil.",
+    "beat": "swirl",
+    "delivery": "sorrow",
     "speaker": "narrator",
+    "voice": "man",
+    "frame": false
+   },
+   {
+    "text": "A giant floating bloodshot eyeball with a toothed mouth and trailing nerves crested the black water.",
+    "beat": "rise",
+    "delivery": "calm",
+    "speaker": "narrator",
+    "voice": "man",
+    "frame": false
+   },
+   {
+    "text": "Would you have kept that silver coin?",
+    "beat": "giant",
+    "delivery": "awe",
+    "speaker": "narrator",
+    "voice": "man",
     "frame": false
    }
   ],
-  "format": "Guardian of the nest"
- },
- "episode": 37,
- "design": {
-  "hybrid": true,
-  "parents": [
-   "frog",
-   "gorilla"
-  ],
-  "dominant": "gorilla",
-  "secondary": "frog",
-  "dom_weight": 0.62,
-  "torso": [
-   "barrel",
-   240.95129782695653,
-   201.1415315472243,
-   0.53
-  ],
-  "arch": 0.0,
-  "legs": [
-   "pillar",
-   2,
-   107.67189684920673,
-   46.25801041006985
-  ],
-  "foot": "bigpaw",
-  "gait": "knuckle",
-  "legs_from": "gorilla",
-  "arms": [
-   "ape",
-   343.0721380211102
-  ],
-  "head": {
-   "skull": [
-    74.66051005851108,
-    48.30974180256599
-   ],
-   "snout": [
-    "wide",
-    82,
-    40,
-    20,
-    0.0
-   ],
-   "teeth": "none",
-   "ears": [
-    "round",
-    19.763076191958813
-   ],
-   "eyes": "bulge",
-   "brow": 0.0,
-   "extras": [
-    "crown",
-    "browridge"
-   ],
-   "eyecol": [
-    110,
-    70,
-    40
-   ]
-  },
-  "neck": [
-   5.9155022273160345,
-   0.034999999999999996
-  ],
-  "neck_bow": 0.12,
-  "tail": "none",
-  "tail_len": 1.0974491029524098,
-  "wings": null,
-  "wingfly": false,
-  "shell": null,
-  "dorsal": [],
-  "skin": "fur",
-  "skin2": "warty",
-  "pal": [
-   [
-    67,
-    97,
-    64
-   ],
-   [
-    34,
-    60,
-    38
-   ],
-   [
-    185,
-    197,
-    145
-   ]
-  ],
-  "pat": "spots",
-  "hover": 0,
-  "temper": "brooding",
-  "glow": false,
-  "ribs": false,
-  "cracks": false,
-  "strike": "tongue",
-  "sig": [
-   "arms",
-   "huge ape arms"
-  ],
-  "sigscale": {
-   "arms": 1.3
-  },
-  "donors": {
-   "body": "gorilla",
-   "legs": "gorilla",
-   "arms": "gorilla",
-   "head": "frog",
-   "face": "gorilla",
-   "mouth": "frog",
-   "tail": "gorilla",
-   "skin": "gorilla",
-   "palette": [
-    "gorilla",
-    "frog"
-   ]
-  },
-  "flies": false,
-  "words": {},
-  "name": "frog-gorilla",
-  "fingerprint": {
-   "prof": "barrel",
-   "pitch": 1,
-   "L": 1,
-   "H": 3,
-   "legs": "pillar",
-   "nlegs": 2,
-   "legh": 1,
-   "neck": 0,
-   "snout": "wide",
-   "snoutl": 1,
-   "teeth": "none",
-   "ears": "round",
-   "eyes": "bulge",
-   "tail": "none",
-   "wings": "none",
-   "shell": "none",
-   "dorsal": "none",
-   "skin": "fur",
-   "skin2": "warty",
-   "pat": "spots",
-   "hue": 3,
-   "light": 0,
-   "gait": "knuckle",
-   "hover": false,
-   "arms": "ape",
-   "extras": "browridge+crown"
-  },
-  "fp_distance": 99.0,
-  "attempt": 0
- },
- "profile": {
-  "hybrid_name": "frog-gorilla",
-  "parent_a": "frog",
-  "parent_b": "gorilla",
-  "dominant_parent": "gorilla",
-  "dominant": [
-   "gorilla body structure"
-  ],
-  "secondary": [
-   "gorilla eyes and face details",
-   "gorilla tail"
-  ],
-  "proportions": "barrel torso, 240x201, horizontal posture, neck 5, legs pillar x2",
-  "head": "a frog-shaped head and the gorilla's eyes",
-  "limbs": "pillar x2, ape arms",
-  "texture": "fur body, warty limbs and tail",
-  "colour": {
-   "main": [
-    67,
-    97,
-    64
-   ],
-   "accent": [
-    34,
-    60,
-    38
-   ],
-   "belly": [
-    185,
-    197,
-    145
-   ],
-   "pattern": "spots"
-  },
-  "silhouette": "barrel-none",
-  "locomotion": "knuckle-walks, swinging its great arms",
-  "gait": "knuckle",
-  "hovers": false,
-  "signature_ability": "tongue",
-  "temperament": "brooding",
-  "signature_feature": "huge ape arms",
-  "summary": [
-   "a broad, hunched gorilla torso (from the gorilla)",
-   "a frog-shaped head and the gorilla's eyes",
-   "arms so long they brush the ground (from the gorilla)",
-   "long knuckle-walking arms",
-   "no tail (from the gorilla)",
-   "coarse black fur mixed with warty texture"
-  ]
- },
- "clips": [
-  {
-   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in the clouds of Venus: thick orange storm clouds with lightning. Its broad, hunched gorilla torso and long knuckle-walking arms are covered in coarse black fur mixed with a warty frog texture, topped with a frog-shaped head and gorilla eyes. It is menacing and dominant."
-  },
-  {
-   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In thick orange storm clouds with lightning, the same hybrid creature goes after Venusian cloud-jellyfish. It vaults through the vapor using gorilla strength, then snags escaping prey with a sudden, elastic tongue snap.. Fast, powerful movement, camera follows the action. Its broad, hunched gorilla torso and long knuckle-walking arms are covered in coarse black fur mixed with a warty frog texture, topped with a frog-shaped head and gorilla eyes."
-  },
-  {
-   "title": "Clip 3 - the close-up (plays at the end)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. Its broad, hunched gorilla torso and long knuckle-walking arms are covered in coarse black fur mixed with a warty frog texture, topped with a frog-shaped head and gorilla eyes."
-  }
- ]
+  "story_type": "sea",
+  "format": "modern",
+  "origin": ""
+ }
 }
