@@ -370,13 +370,41 @@ def generic_scene(i, beats):
     return min(rotated(GENERIC_SCENES), key=lambda c: SCENE_RECENCY.get(c, 0) + 3 * beats.count(c))
 
 
+CONTINUITY = [""]
+
+
+def set_continuity(history, series, episode):
+    """Series memory: now and then (every third video) the storyteller or a host is allowed to glance back at ONE earlier story of the same
+    series, in fresh words each time. It never touches the legend itself, and most videos have no such line, so it never becomes a formula."""
+    CONTINUITY[0] = ""
+    try:
+        if not episode or episode % 3 != 0:
+            return
+        mine = [k for k in history if k.startswith("folk:") == (series == "folklore")][-8:]
+        names = []
+        for k in reversed(mine):
+            if series == "folklore":
+                parts = k.split("|")
+                nm = parts[0].split(":", 2)[-1].strip()
+                reg = parts[4].strip() if len(parts) > 4 else ""
+                names.append(f"{nm} ({reg})" if reg else nm)
+            else:
+                names.append(k.replace("+", " + ").replace("@", " in "))
+        if names:
+            CONTINUITY[0] = ("\n\nSERIES: this story may, if a storyteller or host line fits naturally, glance back at ONE earlier story of this series, for example: "
+                             + "; ".join(names[:4]) + ". Do it at most once, in a short line that is not part of the legend itself, in fresh words (no fixed phrase, no "
+                             "'last time on'). Skip it if it does not fit. Never change the legend's facts.")
+    except Exception:
+        CONTINUITY[0] = ""
+
+
 def scene_hint():
     """A line for the story writer: events the latest videos were built around (so a legend that allows it gets a different event)."""
     skip = {"walk", "stalk", "attack", "aftermath", "hosts", "omen", "jump", "hold", "frame", "reign"}
     names = [k for k, v in sorted(SCENE_RECENCY.items(), key=lambda kv: -kv[1]) if k not in skip][:6]
     if not names:
-        return ""
-    return ("\n\nVARIETY: the latest videos were built around these scenes: " + ", ".join(names) +
+        return CONTINUITY[0]
+    return CONTINUITY[0] + ("\n\nVARIETY: the latest videos were built around these scenes: " + ", ".join(names) +
             ". Where this legend allows it, build the story around different events and places. Never change the legend to avoid them.")
 
 
@@ -5422,6 +5450,7 @@ def plan_main():
     series = "folklore" if len(history) % 2 == 1 else "hybrid"
     episode = 1 + sum(1 for k in history if k.startswith("folk:") == (series == "folklore"))
     set_scene_memory(series, episode)
+    set_continuity(history, series, episode)
     plan, lines = None, []
     if series == "folklore":
         try:
@@ -5440,6 +5469,7 @@ def plan_main():
             series = "hybrid"
             episode = 1 + sum(1 for k in history if not k.startswith("folk:"))
             set_scene_memory(series, episode)
+            set_continuity(history, series, episode)
     if series == "hybrid":
         key, a, b, place = pick_idea(history)
         place_name, place_desc = place[0], place[1]
