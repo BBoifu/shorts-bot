@@ -29,6 +29,30 @@ import edge_tts
 import requests
 
 ROOT = pathlib.Path(__file__).parent
+GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash")
+GEMINI_WAITS = (10, 25, 45, 75, 120, 120)      # seconds to wait after each overload ("503") before trying again
+
+
+def gemini_post(url, json=None, timeout=90):
+    """Asks Gemini; when Google is overloaded (503/429/500...) it waits and tries again, and from the third try uses a second model."""
+    last = None
+    for k in range(len(GEMINI_WAITS) + 1):
+        u = url if k < 2 else url.replace(GEMINI_MODEL, GEMINI_FALLBACK_MODEL)
+        try:
+            r = requests.post(u, params={"key": GEMINI_API_KEY}, json=json, timeout=timeout)
+            if r.status_code in (429, 500, 502, 503, 504):
+                last = f"{r.status_code} from Google"
+                raise requests.HTTPError(last, response=r)
+            return r
+        except (requests.HTTPError, requests.ConnectionError, requests.Timeout) as e:
+            last = e
+            if k >= len(GEMINI_WAITS):
+                break
+            print(f"Gemini is busy ({e}); waiting {GEMINI_WAITS[k]} s and trying again" + (" with the backup model" if k + 1 >= 2 else ""), flush=True)
+            time.sleep(GEMINI_WAITS[k])
+    raise requests.HTTPError(f"Gemini stayed unavailable: {last}")
+
+
 HISTORY_FILE = ROOT / "history.json"
 DESIGNS_FILE = ROOT / "hybrids.json"  # every hybrid ever designed, so a new one is never a copy of an old one
 WORK = ROOT / "work"
@@ -261,10 +285,99 @@ def run_capture(cmd, cwd=None):
     return result.stdout + result.stderr
 
 
-def load_history():
+HYB_KINDS = ("face", "feed", "turn", "pov", "loom", "shoulder")
+
+
+def hybrid_kinds():
+    """The hybrid's filler shots, the ones used least lately first and the start rotating from video to video."""
+    return fresh_order(HYB_KINDS)
+
+
+SCENE_TAG = "scenes|"          # memory lines inside history.json: "scenes|series|episode|scene,scene,..." (never counted as stories)
+SCENE_MEMORY = 5               # how many of the latest videos are remembered
+SCENE_RECENCY = {}             # scene name -> how recently / how often the latest videos used it (bigger = more recent)
+MIX = {"offset": 0}            # rotates the parts that are mixed (sky, camera angle, filler scenes) from one video to the next
+
+
+def _raw_history():
     if HISTORY_FILE.exists():
         return json.loads(HISTORY_FILE.read_text())
     return []
+
+
+def load_history():
+    """The stories made so far (the scene-memory lines are kept apart, so the counts and the series turns stay as they were)."""
+    return [k for k in _raw_history() if not str(k).startswith(SCENE_TAG)]
+
+
+def load_scene_log():
+    out = []
+    for k in _raw_history():
+        if str(k).startswith(SCENE_TAG):
+            parts = str(k).split("|", 3)
+            if len(parts) == 4:
+                try:
+                    out.append((parts[1], int(parts[2]), [b for b in parts[3].split(",") if b]))
+                except ValueError:
+                    pass
+    return out
+
+
+def save_history(history, scene_entry=None):
+    """Writes the story list and keeps the scene-memory lines (adding this video's line, replacing an older line of the same video)."""
+    mem = [k for k in _raw_history() if str(k).startswith(SCENE_TAG)]
+    if scene_entry:
+        head = "|".join(scene_entry.split("|", 3)[:3]) + "|"
+        mem = [k for k in mem if not str(k).startswith(head)] + [scene_entry]
+    HISTORY_FILE.write_text(json.dumps(list(history) + mem[-30:], indent=1))
+
+
+def scene_entry(series, episode, beats):
+    return f"{SCENE_TAG}{series}|{episode}|{','.join(b for b in beats if b)}"
+
+
+def set_scene_memory(series, episode):
+    """Loads what the latest videos used (not counting this video's own line) and sets this video's mix offset."""
+    SCENE_RECENCY.clear()
+    MIX["offset"] = max(int(episode or 0), 0)
+    try:
+        log_ = [e for e in load_scene_log() if not (e[0] == series and e[1] == episode)][-SCENE_MEMORY:]
+    except Exception:
+        log_ = []
+    for age, (_, _, beats) in enumerate(reversed(log_)):
+        for b in set(beats):
+            SCENE_RECENCY[b] = SCENE_RECENCY.get(b, 0) + (SCENE_MEMORY - age)
+
+
+def rotated(seq):
+    seq = list(seq)
+    k = MIX["offset"] % len(seq) if seq else 0
+    return seq[k:] + seq[:k]
+
+
+def fresh_order(seq):
+    """The options with the ones used least in the latest videos first (the order is kept among equals)."""
+    return sorted(rotated(seq), key=lambda c: SCENE_RECENCY.get(c, 0))
+
+
+GENERIC_SCENES = ("walk", "stalk", "pov", "shoulder", "loom")
+
+
+def generic_scene(i, beats):
+    """A scene for a sentence that names none: the least used one lately (and in this story). Without memory it is the old plain 'walk'."""
+    if not SCENE_RECENCY and MIX["offset"] == 0:
+        return "walk"
+    return min(rotated(GENERIC_SCENES), key=lambda c: SCENE_RECENCY.get(c, 0) + 3 * beats.count(c))
+
+
+def scene_hint():
+    """A line for the story writer: events the latest videos were built around (so a legend that allows it gets a different event)."""
+    skip = {"walk", "stalk", "attack", "aftermath", "hosts", "omen", "jump", "hold", "frame", "reign"}
+    names = [k for k, v in sorted(SCENE_RECENCY.items(), key=lambda kv: -kv[1]) if k not in skip][:6]
+    if not names:
+        return ""
+    return ("\n\nVARIETY: the latest videos were built around these scenes: " + ", ".join(names) +
+            ". Where this legend allows it, build the story around different events and places. Never change the legend to avoid them.")
 
 
 def load_designs():
@@ -398,13 +511,13 @@ Rules for "sentences" (7 to 9 items, 65 to 85 words in total (the voice reads sl
 """
     url = f"{API_BASE}/models/{GEMINI_MODEL}:generateContent"
     body = {
-        "contents": [{"parts": [{"text": prompt}]}],
+        "contents": [{"parts": [{"text": prompt + scene_hint()}]}],
         "generationConfig": {"temperature": 1.0, "responseMimeType": "application/json"},
     }
     last_err = None
     for attempt in range(3):
         try:
-            r = requests.post(url, params={"key": GEMINI_API_KEY}, json=body, timeout=90)
+            r = gemini_post(url, json=body, timeout=90)
             r.raise_for_status()
             text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
             text = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.M).strip()
@@ -2785,7 +2898,7 @@ def main():
     video_id = upload_to_youtube(out_path, title, description, tags)
     log(f"Uploaded as '{PRIVACY}': https://youtube.com/shorts/{video_id}")
     history.append(key)
-    HISTORY_FILE.write_text(json.dumps(history, indent=1))
+    save_history(history)
 
 
 # ---------------------------------------------------------------- two-step mode: plan, then build
@@ -3304,12 +3417,12 @@ Rules for "sentences" (7 to 9 items, 65 to 85 words in total (the voice reads sl
   and colours listed above, because the other ones were used recently.
 """
     url = f"{API_BASE}/models/{GEMINI_MODEL}:generateContent"
-    body = {"contents": [{"parts": [{"text": prompt}]}],
+    body = {"contents": [{"parts": [{"text": prompt + scene_hint()}]}],
             "generationConfig": {"temperature": 1.0, "responseMimeType": "application/json"}}
     last = None
     for attempt in range(3):
         try:
-            r = requests.post(url, params={"key": GEMINI_API_KEY}, json=body, timeout=90)
+            r = gemini_post(url, json=body, timeout=90)
             r.raise_for_status()
             text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
             text = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.M).strip()
@@ -3490,12 +3603,12 @@ Rules for "sentences" (7 to 9 items, 65 to 85 words in total (the voice reads sl
   collector, a new tenant. The story is allowed to take place outdoors or in another person's house, as the story shape says.
 """
     url = f"{API_BASE}/models/{GEMINI_MODEL}:generateContent"
-    body = {"contents": [{"parts": [{"text": prompt}]}],
+    body = {"contents": [{"parts": [{"text": prompt + scene_hint()}]}],
             "generationConfig": {"temperature": 1.0, "responseMimeType": "application/json"}}
     last = None
     for attempt in range(3):
         try:
-            r = requests.post(url, params={"key": GEMINI_API_KEY}, json=body, timeout=90)
+            r = gemini_post(url, json=body, timeout=90)
             r.raise_for_status()
             text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
             text = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.M).strip()
@@ -3586,12 +3699,12 @@ Rules for "sentences" (65 to 85 words in total, the voice reads slowly so NEVER 
 - The last sentence is a question for viewers that fits THIS story.
 """
     url = f"{API_BASE}/models/{GEMINI_MODEL}:generateContent"
-    body_ = {"contents": [{"parts": [{"text": prompt}]}],
+    body_ = {"contents": [{"parts": [{"text": prompt + scene_hint()}]}],
              "generationConfig": {"temperature": 1.0, "responseMimeType": "application/json"}}
     last = None
     for attempt in range(3):
         try:
-            r = requests.post(url, params={"key": GEMINI_API_KEY}, json=body_, timeout=90)
+            r = gemini_post(url, json=body_, timeout=90)
             r.raise_for_status()
             text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
             text = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.M).strip()
@@ -3775,12 +3888,12 @@ def assign_settings(sentences, beats):
     for i in range(1, len(out)):
         run = run + 1 if out[i] == out[i - 1] else 1
         if run > 2 and beats[i] not in ("home", "village", "mob"):
-            out[i] = next(c for c in SETTING_CYCLE if c != out[i - 1])
+            out[i] = next(c for c in rotated(SETTING_CYCLE) if c != out[i - 1])
             run = 1
     if len(set(out)) < 3:
         for i in range(2, len(out) - 1, 2):
             if beats[i] not in ("home", "village", "mob"):
-                out[i] = next(c for c in SETTING_CYCLE if c not in out)
+                out[i] = next(c for c in rotated(SETTING_CYCLE) if c not in out)
                 break
     return out
 
@@ -3819,14 +3932,14 @@ def assign_modern_beats(sentences, stype=None):
         if said and (said not in STORY_NATURE or stype in NATURE_TYPES) and s.get("speaker", "narrator") == "narrator":
             b = said                                    # what the sentence SAYS decides the picture, not a guess
         if b not in MODERN_SCENES and s.get("speaker") != "host":
-            b = next((name for name, words in MODERN_WORDS if any(w in low for w in words)), MODERN_FILL[i % len(MODERN_FILL)])
+            b = next((name for name, words in MODERN_WORDS if any(w in low for w in words)), fresh_order(MODERN_FILL)[i % len(MODERN_FILL)])
         if s.get("speaker") == "host" and 0 < i < n - 1:
             b = "hosts"                                 # the two hosts react to what was just narrated
         elif not hits_ and frame_line(s) and 0 < i < n - 1 and beats[-1:] != ["hosts"] and beats.count("hosts") < 4 and sentences[i + 1].get("speaker") != "host":
             b = "hosts"                                 # the storyteller recounting, only where the line names no scene of its own
         beats.append(b)
     place = MODERN_PLACE_SCENES.get(stype or "")
-    fill = tuple(place) if place else MODERN_FILL
+    fill = tuple(place) if place else tuple(fresh_order(MODERN_FILL))
     beats[-1] = "jump"
     special = ("woods", "neighbour", "lamp", "road", "mirror", "dig", "fly", "ocean", "lake", "lava", "tornado", "tsunami", "giant")
     final = "giant" if stype in NATURE_TYPES else "jump"
@@ -3927,7 +4040,7 @@ def assign_beats(sentences, modern=False, stype=None):
                         b = name
                         break
             if b is None:
-                b = "stalk" if i >= n - 4 else "walk"
+                b = "stalk" if i >= n - 4 else (generic_scene(i, beats) if i >= 3 else "walk")
         beats.append(b)
     beats[0] = "walk"
     if n >= 5 and "attack" not in beats[2:n - 1]:
@@ -4730,7 +4843,7 @@ def shot_angle(j, beat, sh, modern, n, i):
         return ("dutch", "drift", "high")[j % 3]        # rooms and streets: framing that never depends on the creature being in view
     if sh.get("insert") or modern or beat in ("attack", "hosts", "frame", "emerge", "swirl", "abyss", "dawn") or i == 0 or i == n - 1:
         return "wide"
-    a = ANGLE_CYCLE[j % len(ANGLE_CYCLE)]
+    a = ANGLE_CYCLE[(j + MIX["offset"]) % len(ANGLE_CYCLE)]
     if a in ("low", "close") and beat not in CREATURE_BEATS:
         a = "drift"
     return a
@@ -4834,6 +4947,7 @@ def caption_groups(words):
 
 
 def build_folk_main(plan):
+    set_scene_memory("folklore", plan.get("episode"))
     import toon
     story = plan["story"]
     sentences = story["sentences"]
@@ -4997,7 +5111,7 @@ def build_folk_main(plan):
         if beats[i] == "omen":
             wx["sky"] = origin
         if not wx.get("sky"):                 # every other shot gets its own sky and mist so no two backdrops look alike
-            for k_, v_ in VARY_SKY[j % len(VARY_SKY)].items():
+            for k_, v_ in VARY_SKY[(j + MIX["offset"]) % len(VARY_SKY)].items():
                 wx.setdefault(k_, v_)
         if wx.get("sky") == "aurora":         # the lights are the colour the story says: crimson lights are not teal
             wx["aurora"] = aurora_color(" ".join(x.get("text", "") for x in sentences))
@@ -5232,7 +5346,7 @@ Current sentences:
 """ + "\n".join(f"{i + 1}. {x}" for i, x in enumerate(cur))
         body = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.5, "responseMimeType": "application/json"}}
         try:
-            r = requests.post(url, params={"key": GEMINI_API_KEY}, json=body, timeout=90)
+            r = gemini_post(url, json=body, timeout=90)
             r.raise_for_status()
             text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
             data = json.loads(re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.M).strip())
@@ -5283,6 +5397,21 @@ def build_with_story_fit(builder):
 
 
 
+def plan_scene_entry(plan, series, episode):
+    """What this video will show, for the scene memory: the beats the build will choose for a folklore story, the shot kinds for a hybrid."""
+    try:
+        st = plan["story"]
+        if series == "folklore":
+            fmt = st.get("format")
+            beats = assign_beats(st["sentences"], fmt in ("modern", "prehistoric"), st.get("story_type"))
+        else:
+            beats = list(hybrid_kinds()) + [x.get("action") for x in st["sentences"] if x.get("action")]
+        return scene_entry(series, episode, beats)
+    except Exception as e:
+        log(f"(scene memory: this video's scenes could not be listed: {e})")
+        return None
+
+
 def plan_main():
     if not GEMINI_API_KEY:
         sys.exit("Missing secret: GEMINI_API_KEY")
@@ -5292,6 +5421,7 @@ def plan_main():
     # the two series take turns: hybrid animals, then dark folklore, and so on
     series = "folklore" if len(history) % 2 == 1 else "hybrid"
     episode = 1 + sum(1 for k in history if k.startswith("folk:") == (series == "folklore"))
+    set_scene_memory(series, episode)
     plan, lines = None, []
     if series == "folklore":
         try:
@@ -5309,6 +5439,7 @@ def plan_main():
             log(f"Folklore story failed ({e}); making a hybrid story instead.")
             series = "hybrid"
             episode = 1 + sum(1 for k in history if not k.startswith("folk:"))
+            set_scene_memory(series, episode)
     if series == "hybrid":
         key, a, b, place = pick_idea(history)
         place_name, place_desc = place[0], place[1]
@@ -5340,7 +5471,7 @@ def plan_main():
         lines += ["## The story that will be spoken", "", " ".join(x["text"] for x in story["sentences"]), ""]
     (PLAN_DIR / "plan.json").write_text(json.dumps(plan, indent=1))
     history.append(plan["key"])
-    HISTORY_FILE.write_text(json.dumps(history, indent=1))
+    save_history(history, plan_scene_entry(plan, series, episode))
     md = "\n".join(lines)
     (OUT / "PROMPTS.md").write_text(md)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
@@ -5388,6 +5519,7 @@ def build_main():
     plan = json.loads(plan_file.read_text())
     if plan.get("series") == "folklore":
         return build_folk_main(plan)
+    set_scene_memory("hybrid", plan.get("episode"))
     WORK.mkdir(exist_ok=True)
     OUT.mkdir(exist_ok=True)
     key, a, b = plan["key"], plan["a"], plan["b"]
@@ -5567,7 +5699,7 @@ def build_main():
             ABILITY_LOG.append((sc["ability"], i))
         else:
             # a different physical action in each shot: walk, feed, turn, walk the other way, a close-up reaction
-            kinds = ["face", "feed", "turn", "pov", "loom", "shoulder"]       # walking is NOT a filler: only when the story is about size, weight or approach
+            kinds = list(hybrid_kinds())                                      # walking is NOT a filler: only when the story is about size, weight or approach
             shot_type = kinds[k % len(kinds)]
             act = sentences[sc["si"]].get("action") if "si" in sc else ""
             stext = sentences[sc["si"]].get("text", "") if "si" in sc else ""
