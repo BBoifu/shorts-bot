@@ -4119,7 +4119,7 @@ DRAMATIC_STYLE = ("a deep, confident storyteller with real energy and feeling, t
                   "pauses only where the story needs them. Building speed and intensity toward the frightening reveal and hitting "
                   "the key word hard, then a quiet final line. Never slow, never flat, never monotone, no announcer sing-song, "
                   "not a nature documentary")
-NARR_RATE = float(os.environ.get("NARRATION_RATE", "1.10"))      # the finished narration plays a little faster than the voice reads
+NARR_RATE = float(os.environ.get("NARRATION_RATE", "1.03"))      # the finished narration plays just a touch faster than the voice reads (it was 1.10; the owner found that a bit fast on 26 Nov)
 NARRATOR_STYLE = DRAMATIC_STYLE if os.environ.get("VOICE_TONE", "dramatic") != "warm" else FOLK_STYLE
 REVEAL_BEATS = ("hallway", "woods", "road", "jump", "birth", "loom", "vista", "curtain", "window", "giant", "tsunami", "ocean", "lake",
                 "lava", "erupt", "clash", "mirror", "lamp", "transform", "attack")

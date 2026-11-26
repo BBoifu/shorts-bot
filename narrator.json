@@ -8,9 +8,9 @@
   ],
   "edge_fallback_voice": "en-US-AndrewNeural",
   "language": "en-US",
-  "speaking_rate": 1.1,
+  "speaking_rate": 1.03,
   "pitch_shift_semitones": 0,
   "style": "energetic",
   "approved_by_listening": true,
-  "approved_note": "The owner approved the plain Gemini voice (Charon): NO artificial pitch-down. On 23 Nov 2026 the owner asked for a faster, livelier narrator with the same energy as the girl host: the style text is now brisk and expressive and the finished narration plays at x1.10 (NARRATION_RATE). The voice itself (Charon) is unchanged. Do not slow it down again without the owner's explicit request."
+  "approved_note": "The owner approved the plain Gemini voice (Charon): NO artificial pitch-down. On 23 Nov 2026 the owner asked for a faster, livelier narrator with the same energy as the girl host: the style text is now brisk and expressive and the finished narration plays at x1.10 (NARRATION_RATE). The voice itself (Charon) is unchanged. Do not slow it down again without the owner's explicit request. On 26 Nov 2026 the owner found the pace a bit fast but said the expressions and the vibe are perfect: only the playback pace changed (x1.10 -> x1.03); the voice, the style text and the expressions are untouched."
 }
