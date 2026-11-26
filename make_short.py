@@ -40,7 +40,7 @@ def gemini_post(url, json=None, timeout=90):
         u = url if k < 2 else url.replace(GEMINI_MODEL, GEMINI_FALLBACK_MODEL)
         try:
             r = requests.post(u, params={"key": GEMINI_API_KEY}, json=json, timeout=timeout)
-            if r.status_code in (429, 500, 502, 503, 504):
+            if getattr(r, "status_code", 200) in (429, 500, 502, 503, 504):
                 last = f"{r.status_code} from Google"
                 raise requests.HTTPError(last, response=r)
             return r
@@ -360,7 +360,7 @@ def fresh_order(seq):
     return sorted(rotated(seq), key=lambda c: SCENE_RECENCY.get(c, 0))
 
 
-GENERIC_SCENES = ("walk", "stalk", "pov", "shoulder", "loom")
+GENERIC_SCENES = ("walk", "stalk", "pov", "shoulder", "loom", "walktoward", "walkaway", "walkclimb")
 
 
 def generic_scene(i, beats):
@@ -398,9 +398,9 @@ def set_continuity(history, series, episode):
         CONTINUITY[0] = ""
 
 
-def scene_hint():
+def variety_hint():
     """A line for the story writer: events the latest videos were built around (so a legend that allows it gets a different event)."""
-    skip = {"walk", "stalk", "attack", "aftermath", "hosts", "omen", "jump", "hold", "frame", "reign"}
+    skip = {"walktoward", "walkaway", "walkclimb", "walk", "stalk", "attack", "aftermath", "hosts", "omen", "jump", "hold", "frame", "reign"}
     names = [k for k, v in sorted(SCENE_RECENCY.items(), key=lambda kv: -kv[1]) if k not in skip][:6]
     if not names:
         return CONTINUITY[0]
@@ -539,7 +539,7 @@ Rules for "sentences" (7 to 9 items, 65 to 85 words in total (the voice reads sl
 """
     url = f"{API_BASE}/models/{GEMINI_MODEL}:generateContent"
     body = {
-        "contents": [{"parts": [{"text": prompt + scene_hint()}]}],
+        "contents": [{"parts": [{"text": prompt + variety_hint()}]}],
         "generationConfig": {"temperature": 1.0, "responseMimeType": "application/json"},
     }
     last_err = None
@@ -3445,7 +3445,7 @@ Rules for "sentences" (7 to 9 items, 65 to 85 words in total (the voice reads sl
   and colours listed above, because the other ones were used recently.
 """
     url = f"{API_BASE}/models/{GEMINI_MODEL}:generateContent"
-    body = {"contents": [{"parts": [{"text": prompt + scene_hint()}]}],
+    body = {"contents": [{"parts": [{"text": prompt + variety_hint()}]}],
             "generationConfig": {"temperature": 1.0, "responseMimeType": "application/json"}}
     last = None
     for attempt in range(3):
@@ -3631,7 +3631,7 @@ Rules for "sentences" (7 to 9 items, 65 to 85 words in total (the voice reads sl
   collector, a new tenant. The story is allowed to take place outdoors or in another person's house, as the story shape says.
 """
     url = f"{API_BASE}/models/{GEMINI_MODEL}:generateContent"
-    body = {"contents": [{"parts": [{"text": prompt + scene_hint()}]}],
+    body = {"contents": [{"parts": [{"text": prompt + variety_hint()}]}],
             "generationConfig": {"temperature": 1.0, "responseMimeType": "application/json"}}
     last = None
     for attempt in range(3):
@@ -3727,7 +3727,7 @@ Rules for "sentences" (65 to 85 words in total, the voice reads slowly so NEVER 
 - The last sentence is a question for viewers that fits THIS story.
 """
     url = f"{API_BASE}/models/{GEMINI_MODEL}:generateContent"
-    body_ = {"contents": [{"parts": [{"text": prompt + scene_hint()}]}],
+    body_ = {"contents": [{"parts": [{"text": prompt + variety_hint()}]}],
              "generationConfig": {"temperature": 1.0, "responseMimeType": "application/json"}}
     last = None
     for attempt in range(3):
@@ -3788,7 +3788,8 @@ ATTACK_WORDS = ("attack", "lunge", "pounc", "tore", "torn", "bit ", "bite", "blo
 
 SCENE_NAME = {"chase": "person_chase"}   # folk stories: a person runs and the monster gives chase (the plain chase_scene is the hybrid animal hunt)
 SCENE_FUNCS = ("dig", "fly", "bedroom", "stairs", "basement", "hallway", "cctv", "jump", "hook", "footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
-               "omen", "pov", "mpov", "curtain", "shoulder", "loom", "emerge", "swirl", "abyss", "dawn", "hosts", "vista")
+               "omen", "pov", "mpov", "curtain", "shoulder", "loom", "emerge", "swirl", "abyss", "dawn", "hosts", "vista",
+               "walktoward", "walkaway", "walkclimb")
 CAMERA_SCENES = ("pov", "mpov", "curtain", "shoulder", "loom")
 MODERN_SCENES = ("bedroom", "stairs", "basement", "hallway", "cctv", "door", "window", "curtain", "jump",
                  "woods", "neighbour", "lamp", "road", "mirror", "dig", "fly",
@@ -3863,7 +3864,8 @@ def write_storyboard(sentences, beats, durs, settings, path):
 
 
 SCENES = ("walk", "dig", "fly", "footprints", "home", "village", "window", "door", "transform", "chase", "hide", "mob",
-          "stalk", "attack", "aftermath", "omen", "pov", "mpov", "curtain", "shoulder", "loom", "emerge", "swirl", "abyss", "dawn", "hosts", "vista")
+          "stalk", "attack", "aftermath", "omen", "pov", "mpov", "curtain", "shoulder", "loom", "emerge", "swirl", "abyss", "dawn", "hosts", "vista",
+          "walktoward", "walkaway", "walkclimb")
 SCENE_WORDS = (("dig", ("dig ", "digging", "dug ", "unearth", "shovel", "burying", "buried it", "claw at the earth", "clawing at the ground")),
                ("fly", ("flew", "flying", "fly ", "wings", "soared", "soaring", "took off", "takes off", "into the sky", "swooped")),
                ("footprints", ("footstep", "footprint", "steps behind", "tracks")),

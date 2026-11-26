@@ -1710,6 +1710,7 @@ def closeup(im, d, sp, t, dur, z0, z1, roar=0.6, shake=0.0, tt=0.0):
 
 # ---------------------------------------------------------------- scenes
 PLACES = {
+    "a desert canyon at sunset": dict(sky=("#4a2f6e", "#f29a58"), far="#a24f68", near="#3f1d26", ground="#5a2c26", sil="mesas", sun="#ffd9a0", part="dust", clouds="sunset"),
     "the Sahara desert": dict(sky=("#f2b46d", "#8a3d2c"), far="#b5623c", near="#6e3426", ground="#4a2419", sil="dunes", sun="#ffe0a3", part="dust"),
     "Antarctica": dict(sky=("#b5cfe6", "#4a6682"), far="#8aa5bd", near="#547089", ground="#e3edf5", sil="spikes", sun="#ffffff", part="snow"),
     "the deep ocean": dict(sky=("#0d4468", "#02121f"), far="#0e3550", near="#071e30", ground="#06141f", sil="rocks", sun=None, part="bubbles"),
@@ -2032,6 +2033,8 @@ class World:
             dark = sum(rgb(st["sky"][0])) < 260
             if dark and isinstance(sun, str) and sun not in ("two", "planet", "hole", "eclipse") and fx not in ("redsky", "virus", "thunder"):
                 self.clouds = self._cloud_strip(sx)
+            if st.get("clouds") == "sunset":
+                self.clouds = self._cloud_strip(sx, sunset=True)
         except Exception:
             self.clouds = None
         # layers
@@ -2121,7 +2124,19 @@ class World:
             if sil in ("peaks", "spikes"):                                    # snow caught on the ridge line
                 cap = np.clip(1 - (yy - top[None, :]) / (40 + 12 * n1), 0, 1) * (alpha > 8)
                 col = col * (1 - cap[..., None] * 0.8) + np.array([235, 242, 255], dtype=np.float32) * (cap[..., None] * 0.8)
-            if sil in ("rocks", "dunes", "cones", "clouds"):                  # layered rock strata / wind ripples
+            if sil == "mesas":                                                # vertical rock streaks, and the sun side of every tower catching the light
+                xs_ = np.arange(PW, dtype=np.float32)[None, :]
+                streak = (np.sin(xs_ * 0.23 + 3 * n1) * 0.5 + 0.5) * (np.sin(xs_ * 0.071 + 5 * n2) * 0.5 + 0.5)
+                col = col * (1.0 - 0.20 * streak[..., None] * (alpha > 8)[..., None])
+                lit_ = np.zeros_like(alpha)
+                dif = np.zeros(PW, dtype=np.float32)
+                dif[1:] = top[1:] - top[:-1]                                # the ridge line rising toward the right = a face turned to the sun
+                lit_ = np.clip(np.convolve(np.clip(dif, -400, 400), np.ones(1), "same")[None, :] * 0.0, 0, 1)
+                warm = np.array([255, 170, 90], dtype=np.float32)
+                face_ = (np.sin(xs_ * 0.015 + seed * 0.001) > 0.2).astype(np.float32) * 0.0
+                band = np.clip(1 - (yy - top[None, :]) / 220.0, 0, 1) * (alpha > 8)
+                col = col * (1 - band[..., None] * 0.22) + warm * (band[..., None] * 0.22)
+            if sil in ("rocks", "dunes", "cones", "clouds", "mesas"):         # layered rock strata / wind ripples
                 strata = (np.sin((yy + 6 * n1) * 0.34) > 0.82).astype(np.float32) * (alpha > 8) * 0.10
                 col = col * (1 - strata[..., None]) + sky_lo * strata[..., None] * 0.6
         # a thin, bright edge where the ridge meets the sky
@@ -2194,7 +2209,7 @@ class World:
                     d.arc((x + off, y, x + off + L_, y + 26), 200, 340, fill=lightc + (70,), width=2)
         return big.reduce(SS).convert("RGB")
 
-    def _cloud_strip(self, sx):
+    def _cloud_strip(self, sx, sunset=False):
         """Thin, soft, wide clouds (tileable) that drift slowly across the night sky and catch the moonlight."""
         PW, rnd = self.PW, random.Random(self.rnd.random())
         hh = 560
@@ -2214,6 +2229,13 @@ class World:
         arr = np.zeros((hh, PW, 4), dtype=np.uint8)
         arr[..., :3] = col.astype(np.uint8)
         arr[..., 3] = (g * 105).astype(np.uint8)
+        if sunset:                                                        # big, warm, glowing clouds: bright gold on the underside, pink-violet on top
+            yy_ = np.arange(hh, dtype=np.float32)[:, None]
+            lo = np.clip((yy_ - 250) / 250.0, 0, 1)
+            gold = np.array([255, 190, 110], np.float32); rose = np.array([232, 130, 150], np.float32)
+            c2 = rose[None, None, :] * (1 - lo[..., None]) + gold[None, None, :] * lo[..., None]
+            arr[..., :3] = np.clip(c2 * np.ones((hh, PW, 3), np.float32), 0, 255).astype(np.uint8)
+            arr[..., 3] = (np.clip(g * 1.6, 0, 1) * 190).astype(np.uint8)
         img = Image.fromarray(arr, "RGBA")
         img.top = 60
         return img
@@ -2233,11 +2255,19 @@ class World:
             hy = min([p[1] for p in pts if abs(p[0] - x) < 14] or [base_y])
             s = rnd.uniform(0.7, 1.4) * (1.0 if far else 1.25)
             shapes = []
+            if sil == "mesas" and rnd.random() < 0.42:                          # gaps between the towers, so the distance shows through
+                continue
             if sil in ("spikes", "peaks", "cones"):
                 w, h = (60 if sil != "peaks" else 130) * s, (120 if sil == "spikes" else 200) * s * (1.4 if sil == "peaks" else 1)
                 shapes.append([(x - w, hy + 8), (x + w * 0.15, hy - h), (x + w, hy + 8)])
                 if sil == "cones":
                     shapes[-1][1] = (x, hy - h * 0.8)
+            elif sil == "mesas":                                             # tall flat-topped rock towers with stepped, crumbling sides
+                w, h = rnd.uniform(46, 100) * s, rnd.uniform(170, 360) * s * (1.0 if far else 0.8)
+                step = rnd.choice((0.0, 0.18, 0.28))
+                shapes.append([(x - w * 1.5, hy + 8), (x - w * 1.05, hy - h * 0.38), (x - w * (0.9 - step), hy - h * 0.40), (x - w * (0.9 - step), hy - h * 0.86),
+                               (x - w * 0.82, hy - h), (x + w * 0.82, hy - h), (x + w * (0.9 - step), hy - h * 0.86), (x + w * (0.9 - step), hy - h * 0.40),
+                               (x + w * 1.05, hy - h * 0.38), (x + w * 1.5, hy + 8)])
             elif sil == "rocks":
                 w, h = 70 * s, 55 * s
                 shapes.append([(x - w, hy + 6), (x - w * 0.5, hy - h), (x + w * 0.3, hy - h * 0.8), (x + w, hy + 6)])
@@ -10936,7 +10966,140 @@ def _scatter_objs(world):
     return objs
 
 
-def _draw_scatter_obj(d, o, x, t):
+def _tree_palette(world):
+    """Leaf, bark and light colours of the background trees, taken from the place itself (never plain black), with distance haze."""
+    st = world.st
+    near_c, far_c = rgb(st["near"]), rgb(st["far"])
+    hz = rgb(st["sky"][1])
+    sun = st.get("sun")
+    sun_c = rgb(sun) if isinstance(sun, str) and sun.startswith("#") else (235, 235, 215)
+    dark = tuple(int(c * 0.50 + 4) for c in near_c)
+    mid = tuple(int(min(255, c * 0.85 + 10)) for c in near_c)
+    light = tuple(int(min(255, 0.5 * c + 0.6 * n + 26 + 0.05 * h)) for c, n, h in zip(far_c, near_c, hz))
+    rim = tuple(int(0.5 * a + 0.5 * b) for a, b in zip(sun_c, light))
+    def lift(c, lum):                                                  # no tree is ever (nearly) black: every tone keeps a minimum brightness, in its own hue
+        base = c if (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) > 10 else far_c
+        cur = max(1.0, 0.299 * base[0] + 0.587 * base[1] + 0.114 * base[2])
+        if cur >= lum:
+            return tuple(int(v) for v in base) if base is not c else c
+        f = lum / cur
+        return tuple(int(min(255, v * f)) for v in base)
+    dark, mid, light = lift(dark, 34), lift(mid, 60), lift(light, 100)
+    gm = sum(light) / 3.0
+    rich = tuple(int(max(0, min(255, gm + (v - gm) * 1.7))) for v in light)                 # the place's own light tone, made more colourful
+    sunlit = lift(tuple(int(0.8 * a + 0.2 * b) for a, b in zip(rich, sun_c)), 140)
+    return dict(dark=dark, mid=mid, light=light, rim=rim, sunlit=sunlit, sun_c=sun_c, hz=hz, sun_x=getattr(world, "sun_xy", (W * 0.65, 520, 85))[0])
+
+
+def _hz_mix(c, hz, f):
+    return tuple(int(a * (1 - f) + b * f) for a, b in zip(c, hz))
+
+
+def _leafy(d, cx, cy, r, fill, rnd, flat=0.82, spikes=11):
+    """A clump of leaves: an outline of many small points (like the leafy edges of a painted tree), not a smooth ball."""
+    pts = []
+    for i in range(spikes * 2):
+        a = i / (spikes * 2.0) * 6.283 + rnd.uniform(-0.08, 0.08)
+        rr = r * (1.0 if i % 2 == 0 else rnd.uniform(0.68, 0.82))
+        pts.append((cx + math.cos(a) * rr, cy + math.sin(a) * rr * flat))
+    d.polygon(pts, fill=fill)
+
+
+def _draw_tree(d, o, x, t, pal):
+    """A natural tree: a bending trunk with a root flare, and either a crown of many leaf clumps (dark underneath, lit on the sun side, a few bright
+    flecks), a layered conifer with ragged tiers, or bare branches that fork. Far trees fade into the haze."""
+    y, sc = o["y"], o["sc"]
+    rnd = random.Random(o["seed"])
+    sway, _hop = _shock(t, x)
+    wind = 1.2 * math.sin(t * 1.3 + o["ox"] * 0.01)
+    near = max(0.0, min(1.0, (sc - 0.45) / 0.45))
+    haze = 0.30 * (1.0 - near)
+    dk, md, lt, rm = (_hz_mix(pal[k], pal["hz"], haze) for k in ("dark", "mid", "light", "rim"))
+    face = -1.0 if x > pal["sun_x"] else 1.0                              # the side that faces the sun (the light comes from there)
+    kind = rnd.choice(("broad", "broad", "conifer", "bare", "broad"))
+    H = (235 + rnd.uniform(-35, 55)) * sc
+    lean = rnd.uniform(-0.10, 0.10)
+    bend = (sway * 40 + wind * 6) * sc
+
+    def trunk_pt(f):
+        return (x + H * lean * f + bend * f * f + 10 * sc * math.sin(f * 3.1 + o["seed"]) * f, y - H * f)
+    n = 12
+    pts = [trunk_pt(i / n) for i in range(n + 1)]
+    w0, w1 = 15 * sc, 4 * sc
+    left = [(px - (w0 + (w1 - w0) * (i / n) ** 0.8), py) for i, (px, py) in enumerate(pts)]
+    right = [(px + (w0 + (w1 - w0) * (i / n) ** 0.8), py) for i, (px, py) in enumerate(pts)]
+    flare = [(x - w0 * 2.2, y + 4), (x - w0, y - 30 * sc), (x + w0, y - 30 * sc), (x + w0 * 2.2, y + 4)]
+    d.polygon(flare, fill=dk + (255,))
+    d.polygon(left + right[::-1], fill=dk + (255,))
+    lit = [(px + face * (w0 + (w1 - w0) * (i / n) ** 0.8) * 0.55, py) for i, (px, py) in enumerate(pts)]
+    edge = [(px + face * (w0 + (w1 - w0) * (i / n) ** 0.8), py) for i, (px, py) in enumerate(pts)]
+    d.polygon([(a_[0], a_[1]) for a_ in lit] + [(b_[0], b_[1]) for b_ in edge[::-1]], fill=md + (255,))      # the lit side of the bark
+    d.line(edge, fill=rm + (150,), width=max(1, int(2 * sc)))
+    tx, ty = pts[-1]
+    if kind == "broad":
+        clumps = []
+        for k in range(7):
+            ang = k / 7.0 * 6.283 + rnd.uniform(-0.3, 0.3)
+            r_ = rnd.uniform(0.45, 1.0)
+            cx = tx + math.cos(ang) * 96 * sc * r_
+            cy = ty - 20 * sc + math.sin(ang) * 66 * sc * r_ - 22 * sc
+            clumps.append((cx, cy))
+        clumps.append((tx, ty - 36 * sc))
+        blobs = []
+        for cx, cy in clumps:
+            for _ in range(7):
+                a = rnd.uniform(0, 6.283); rr = rnd.uniform(0, 30) * sc
+                blobs.append((cx + math.cos(a) * rr, cy + math.sin(a) * rr * 0.8, rnd.uniform(18, 36) * sc))
+        blobs.sort(key=lambda b: b[1])
+        for bx, by, r in blobs:                                                         # dark base of every clump
+            sw = sway * 16 * sc * max(0.2, (ty - by + 80 * sc) / (160 * sc))
+            _leafy(d, bx + sw, by, r * 1.08, dk + (255,), rnd)
+        for bx, by, r in blobs:                                                         # the middle tone, shifted toward the sun
+            sw = sway * 16 * sc * max(0.2, (ty - by + 80 * sc) / (160 * sc))
+            _leafy(d, bx + face * r * 0.20 + sw, by - r * 0.22, r * 0.82, md + (255,), rnd, spikes=9)
+        for bx, by, r in blobs:                                                         # lighter tops
+            if by < ty + 6 * sc:
+                sw = sway * 16 * sc * max(0.2, (ty - by + 80 * sc) / (160 * sc))
+                _leafy(d, bx + face * r * 0.34 + sw, by - r * 0.40, r * 0.58, lt + (255,), rnd, spikes=8)
+        for bx, by, r in blobs:                                                         # the brightest sunlit leaves, only on the sun side
+            if by < ty - 14 * sc and rnd.random() < 0.7:
+                sw = sway * 16 * sc * max(0.2, (ty - by + 80 * sc) / (160 * sc))
+                _leafy(d, bx + face * r * 0.5 + sw, by - r * 0.55, r * 0.34, pal["sunlit"] + (245,), rnd, spikes=6)
+    elif kind == "conifer":
+        tiers = 7
+        top_y = y - H * 1.08
+        for k in range(tiers):
+            f = k / (tiers - 1.0)
+            wd = (30 + 86 * f) * sc
+            yb = top_y + 52 * sc + f * H * 0.98                           # the bottom edge of this tier
+            cx = x + H * lean * (1.0 - f) + (sway * 22 * sc + bend * 0.2) * (1.0 - f)
+            tip = (cx + (tx - x) * 0.0, yb - (60 + 28 * f) * sc)
+            bottom = [(cx + wd * (-1 + 2 * i / 6.0), yb + (7 * sc if i % 2 else 0)) for i in range(7)]
+            d.polygon([tip] + bottom, fill=dk + (255,))
+            d.polygon([tip, (cx, yb + 3 * sc)] + [q for q in (bottom[3:] if face > 0 else bottom[:4][::-1])], fill=md + (255,))     # the half facing the sun
+            d.line([tip] + (bottom[3:] if face > 0 else bottom[:4][::-1])[::-1][::-1], fill=lt + (190,), width=max(1, int(2 * sc)))
+    else:                                                                              # bare branches that fork three times
+        def branch(bx, by, ang, ln, wdt, depth):
+            ex = bx + math.cos(ang) * ln + sway * 18 * sc * (1 - depth / 4.0)
+            ey = by - math.sin(ang) * ln
+            d.line((bx, by, ex, ey), fill=dk + (255,), width=max(1, int(wdt)))
+            if face * (ex - bx) > 0 and depth < 3:
+                d.line((bx + face * wdt * 0.3, by, ex + face * wdt * 0.3, ey), fill=rm + (70,), width=1) if wdt > 3 else None
+            if depth >= 3:
+                return
+            for s_ in (-1, 1):
+                branch(ex, ey, ang + s_ * rnd.uniform(0.35, 0.8), ln * rnd.uniform(0.58, 0.72), wdt * 0.62, depth + 1)
+        for j in range(4):
+            f = 0.5 + 0.13 * j
+            bx, by = trunk_pt(f)
+            for s_ in (-1, 1):
+                branch(bx, by, 1.57 + s_ * rnd.uniform(0.55, 1.05) - 0.0, (78 - 12 * j) * sc, max(2.0, 6.0 * sc - j), 0)
+        branch(tx, ty, 1.57 + lean, 60 * sc, max(2.0, 5 * sc), 1)
+
+
+def _draw_scatter_obj(d, o, x, t, pal=None):
+    if pal is not None and o["kind"] == "tree" and TREES_NATURAL:
+        return _draw_tree(d, o, x, t, pal)
     y, sc, col, kind = o["y"], o["sc"], tuple(int(c) for c in o["col"]), o["kind"]
     rnd = random.Random(o["seed"])
     sway, hop = _shock(t, x)
@@ -10988,6 +11151,64 @@ def _draw_scatter_obj(d, o, x, t):
             d.ellipse((x - w * 0.8, y - h * 0.6 - hop * 14, x + w * 0.8, y + 6), fill=(150, 135, 115, int(70 * min(1, hop))))
 
 
+SHADOWS_ON = os.environ.get("BG_SHADOWS", "1") != "0"
+TREES_NATURAL = os.environ.get("BG_TREES", "1") != "0"
+
+
+SUN_PATCH = [(255, 235, 170)]
+
+
+def _scatter_shadow(d, o, x, t, sun_x, base, lenf=0.6):
+    """A cast shadow on the ground, shaped like the thing that casts it: a tree's trunk line and the flattened outline of its crown (or its bare
+    branches) laid along the ground away from the sun; a stone's and a tuft's dark patch. Colour = the scene's own deep tone, strength and
+    softness follow the distance (far ones are fainter and softer), and it sways a little with the tree."""
+    y, sc, kind = o["y"], o["sc"], o["kind"]
+    dr = 1.0 if x >= sun_x else -1.0
+    dr = dr * (0.6 + 0.4 * min(1.0, abs(x - sun_x) / 500.0))             # nearer the sun's side the shadow lies more toward the viewer
+    near = max(0.0, min(1.0, (sc - 0.45) / 0.45))                        # 0 = far, 1 = near
+    fade = 0.55 + 0.45 * near
+    rnd = random.Random(o["seed"])
+    sway, _h = _shock(t, x)
+
+    def blob(cx, cy, rx, ry, a):
+        for k, f in ((1.0, 0.30), (0.78, 0.45), (0.56, 0.62), (0.34, 0.85)):
+            d.ellipse((cx - rx * k, cy - ry * k, cx + rx * k, cy + ry * k), fill=base + (int(a * fade * f),))
+    if kind == "tree":
+        H = (230 + rnd.uniform(-30, 40)) * sc
+        L = H * lenf * dr
+        sx1, sy1 = x + L + sway * 14 * sc, y + 5 + H * 0.045
+        d.polygon([(x - 8 * sc, y + 3), (x + 8 * sc, y + 7 * sc), (sx1 + 2.5 * sc, sy1 + 2), (sx1 - 2.5 * sc, sy1 - 2)], fill=base + (int(150 * fade),))
+        if rnd.random() < 0.5:                                           # leafy crown: its blobs, flattened, lie along the ground
+            for dx, dy, r in ((-34, 8, 46), (30, 4, 50), (0, -34, 54), (-6, 26, 42)):
+                hb = H - dy * sc                                          # the blob's height above the ground
+                cx = x + dx * sc * 0.9 + dr * hb * lenf + sway * 14 * sc
+                blob(cx, y + 5 + hb * 0.045, r * sc * 1.05, r * sc * 0.17, 150)
+        else:                                                            # bare branches: thin lines
+            for s_ in (-1, 1):
+                for j in range(3):
+                    hb = H * (0.55 + 0.14 * j)
+                    bx0 = x + dr * hb * lenf
+                    ex = bx0 + s_ * (70 - 14 * j) * sc
+                    yy = y + 5 + hb * 0.045
+                    d.line((bx0, yy, ex, yy + 3 * sc), fill=base + (int(110 * fade),), width=max(2, int(3 * sc)))
+        blob(x, y + 6, 26 * sc, 7 * sc, 190)                              # roots meet the ground
+        if kind == "tree" and sc > 0.55:                                  # the leaves break the light into patches on the ground under the tree
+            rr2 = random.Random(o["seed"] + 5)
+            cx0 = x + dr * H * lenf * 0.35
+            blob(cx0, y + 14 * sc, 120 * sc, 16 * sc, 120)
+            for _ in range(9):
+                fx = cx0 + rr2.uniform(-105, 105) * sc
+                fy = y + 14 * sc + rr2.uniform(-8, 9) * sc
+                rw, rh = rr2.uniform(9, 22) * sc, rr2.uniform(2.5, 5.5) * sc
+                d.ellipse((fx - rw, fy - rh, fx + rw, fy + rh), fill=SUN_PATCH[0] + (int(55 * fade),))
+    elif kind == "rock":
+        blob(x + dr * 34 * sc, y + 6 * sc, 66 * sc, 12 * sc, 175)
+    elif kind == "grave":
+        blob(x + dr * 40 * sc, y + 6 * sc, 52 * sc, 10 * sc, 165)
+    elif kind == "grass":
+        blob(x + dr * 16 * sc, y + 4 * sc, 40 * sc, 7 * sc, 115)
+
+
 def _scatter_draw(world, im, cam, t, front):
     if getattr(world, "no_scatter", False):
         return
@@ -10996,10 +11217,23 @@ def _scatter_draw(world, im, cam, t, front):
         return
     d = ImageDraw.Draw(im, "RGBA")
     P = 1500.0
+    sun_x = getattr(world, "sun_xy", (W * 0.65, 520, 85))[0]
+    far_c, sky_c = rgb(world.st["far"]), rgb(world.st["sky"][0])
+    base = tuple(int(0.12 * f + 0.05 * k) for f, k in zip(far_c, sky_c))                 # a deep tone of the scene itself, never plain black
+    lenf = 0.62 if sum(sky_c) < 330 else 0.42                                              # night shadows lie longer than midday ones
+    seen = []
     for o in sorted(objs, key=lambda o: o["y"]):
         x = (o["ox"] - cam * o["k"]) % P - 220
         if -200 < x < W + 200:
-            _draw_scatter_obj(d, o, x, t)
+            seen.append((o, x))
+    pal = _tree_palette(world) if (TREES_NATURAL and not front) else None
+    if pal:
+        SUN_PATCH[0] = tuple(int(0.8 * c + 0.2 * 255) for c in pal['sun_c'])
+    if SHADOWS_ON and not front:
+        for o, x in seen:                                                # every tree, stone and tuft casts a small soft shadow away from the sun
+            _scatter_shadow(d, o, x, t, sun_x, base, lenf)
+    for o, x in seen:
+        _draw_scatter_obj(d, o, x, t, pal)
 
 
 _wf_depth0 = World.frame
@@ -12565,3 +12799,63 @@ def vista_scene(out, dur, world, sp, kind=None, seed=None, cwd=None, finale="fac
     return info
 
 STORY_FUNCS["vista"] = vista_scene
+
+
+# ================================================================ person-walk scenes (a lone walker, no creature): filler scenes for sentences that name no scene
+def _pw_mist(d, a):
+    """A smooth bank of mist at ground height (many thin strips whose strength follows a soft bell, so no edge shows)."""
+    for y in range(GROUND - 330, GROUND + 140, 4):
+        k = math.exp(-((y - (GROUND - 60)) / 120.0) ** 2)
+        d.rectangle((0, y, 1080, y + 4), fill=(150, 172, 190, int(a * 0.55 * k)))
+
+
+def walktoward_scene(out, dur, world, sp, cwd=None):
+    """A person comes out of the distance toward the camera, lantern swinging, mist drifting past."""
+    def paint(im, d, t, u, cam):
+        s = 0.42 + 0.95 * u
+        y = GROUND - 40 + 130 * u
+        sway = math.sin(u * 5)
+        x = 540 + 40 * sway * (1 - u * 0.4)
+        draw_human(d, x, y, t * STEP * 0.5, 1 if sway >= 0 else -1, s, lamp="lantern", cast=False)
+        _pw_mist(d, 120 * (1 - u) + 20 * math.sin(t * 1.3))
+    write_video(out, dur, paint, world, cwd, 0.2)
+    return {"hits": []}
+
+
+def walkaway_scene(out, dur, world, sp, cwd=None):
+    """A person walks away and shrinks into thick mist; near the end two red eyes open in the dark behind them."""
+    def paint(im, d, t, u, cam):
+        s = 1.25 - 0.8 * u
+        y = GROUND + 90 - 130 * u
+        sway = math.sin(u * 4)
+        x = 540 - 60 * sway
+        draw_human(d, x, y, t * STEP * 0.5, -1 if sway > 0 else 1, s, lamp="lantern", cast=False)
+        _pw_mist(d, 60 + 260 * u)
+        if u > 0.8:
+            a = int(255 * min(1.0, (u - 0.8) / 0.1))
+            blink = 0.0 if (u > 0.93 and int(t * 9) % 7 == 0) else 1.0
+            for ex in (700, 745):
+                d.ellipse((ex - 14, GROUND - 210 - 9, ex + 14, GROUND - 210 + 9), fill=(255, 60, 40, int(a * 0.25)))
+                d.ellipse((ex - 9, GROUND - 210 - 6 * blink - 1, ex + 9, GROUND - 210 + 6 * blink + 1), fill=(255, 70, 45, a))
+    write_video(out, dur, paint, world, cwd, 0.2)
+    return {"hits": []}
+
+
+def walkclimb_scene(out, dur, world, sp, cwd=None):
+    """A person climbs a hill with a moonlit edge and grass tufts, lantern in hand, a little mist at their feet."""
+    def hy(x):
+        return GROUND + 150 - (math.sin(min(max(x / 1080.0, 0), 1) * math.pi * 0.62) ** 1.2) * 330
+
+    def paint(im, d, t, u, cam):
+        crest = [(x, hy(x)) for x in range(0, 1081, 20)]
+        d.polygon([(0, 1920), (0, hy(0))] + crest + [(1080, 1920)], fill=(7, 9, 15, 255))
+        d.line(crest, fill=(70, 95, 120, 150), width=3)
+        for gx in range(30, 1080, 70):
+            gy = hy(gx)
+            for q in (-9, 0, 9):
+                d.line([(gx + q, gy + 2), (gx + q * 1.6, gy - 26 - abs(q))], fill=(7, 9, 15, 255), width=4)
+        x = 140 + 780 * u
+        draw_human(d, x, hy(x) + 6, t * STEP * 0.5, 1, 0.85, lamp="lantern", cast=False)
+        _pw_mist(d, 70)
+    write_video(out, dur, paint, world, cwd, 0.2)
+    return {"hits": []}
