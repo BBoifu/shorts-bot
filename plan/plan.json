@@ -1,104 +1,294 @@
 {
- "series": "folklore",
- "key": "folk:snake:The Wet Lens|orb|sea|bone|A research ship off the Irish coast, 3:33 AM|",
- "episode": 33,
+ "series": "hybrid",
+ "key": "eagle+whale@a land of active volcanoes",
+ "a": "eagle",
+ "b": "whale",
+ "place": [
+  "a land of active volcanoes",
+  "black rock and glowing red lava rivers",
+  "volcano rumble",
+  "glowing orange light from lava and smoke",
+  "red"
+ ],
  "story": {
-  "legend_name": "The Wet Lens",
-  "region": "A research ship off the Irish coast, 3:33 AM",
-  "time": "3:33",
-  "animal": "snake",
-  "title": "The Glass Eye in the Deep Water",
-  "narrator": {
-   "gender": "male",
-   "persona": "a marine biologist reviewing audio logs three years later"
-  },
-  "hero": "traveller",
-  "people": "alone",
-  "monster": {
-   "body": "orb",
-   "palette": "bone",
-   "eyes": "red",
-   "size": "huge",
-   "horn": null,
-   "spine": "none",
-   "eye_count": 2
-  },
+  "title": "When an Eagle-Whale Claims a Volcano",
+  "creature_name": "The Aethelcetus",
+  "prey": "ash-rats",
+  "signature_move": "It plunges from above, using its whale tail to whip up a wall of superheated ash while snatching prey with hooked talons.",
+  "hybrid_look": "This beast features a broad-chested raptor body with layered brown feathers mixed with smooth texture, a whale-shaped head bearing an eagle's mouth and eyes, powerful legs with hooked talons, bird wings, and a broad horizontal whale tail fluke.",
   "sentences": [
    {
-    "text": "Three slow thuds against the steel hull, repeated until the rivets groaned.",
-    "beat": "ocean",
-    "delivery": "dread",
+    "text": "It boils the very air before it even lands.",
+    "image": "jagged black basalt peaks trembling under a bruised, sulfur-choked sky",
+    "action": "walk",
     "speaker": "narrator",
-    "voice": "man",
     "frame": false
    },
    {
-    "text": "I was there that night.",
-    "beat": "tsunami",
-    "delivery": "hushed",
+    "text": "The imaginary Aethelcetus inherits the wings of an eagle and the heavy fluke of a whale.",
+    "image": "rivers of glowing orange lava carving through vast fields of grey volcanic ash",
+    "action": "face",
     "speaker": "narrator",
-    "voice": "man",
     "frame": false
    },
    {
-    "text": "My partner went down to check the wet well and never came back up.",
-    "beat": "tidelog",
-    "delivery": "trembling",
+    "text": "We should have turned back.",
+    "image": "a narrow mountain pass choked with thick, swirling clouds of white steam",
+    "action": "turn",
+    "frame": true,
+    "speaker": "narrator"
+   },
+   {
+    "text": "An alpha fire-drake roared, claiming this smoking caldera.",
+    "image": "a massive jagged crater with bubbling pools of crimson molten rock",
+    "action": "",
     "speaker": "narrator",
-    "voice": "man",
     "frame": false
    },
    {
-    "text": "I called his name into the radio, waiting for an answer.",
-    "beat": "radio",
-    "delivery": "urgent",
+    "text": "It plunges from above, using its whale tail to whip up a wall of superheated ash while snatching prey with hooked talons.",
+    "image": "steep obsidian cliffs overlooking a dark valley filled with drifting smoke",
+    "action": "hunt",
     "speaker": "narrator",
-    "voice": "man",
-    "frame": false
-   },
-   {
-    "text": "I am right here by the hatch.",
-    "beat": "door",
-    "delivery": "whisper",
-    "speaker": "mimic",
-    "voice": "man",
     "frame": false
    },
    {
     "text": "Wait, WHAT?!",
-    "beat": "harbor",
-    "delivery": "shout",
     "speaker": "host",
-    "voice": "host",
+    "image": "a dramatic view of a land of active volcanoes",
+    "action": "",
     "frame": false
    },
    {
-    "text": "Instead of my friend, a small silver coin sat on the wet deck, and the black sea began to rise like oil.",
-    "beat": "swirl",
-    "delivery": "sorrow",
+    "text": "Its eagle wings blinded the drake, then the whale tail crushed its skull.",
+    "image": "shattered volcanic boulders resting on a scorched and blackened plateau",
+    "action": "walkback",
     "speaker": "narrator",
-    "voice": "man",
     "frame": false
    },
    {
-    "text": "A giant floating bloodshot eyeball with a toothed mouth and trailing nerves crested the black water.",
-    "beat": "rise",
-    "delivery": "calm",
+    "text": "Sadly, it melts completely in heavy rain. What should I combine next? Tell me in the comments.",
+    "image": "dark storm clouds gathering tightly over sharp, smoking mountain ridges",
+    "action": "footprints",
     "speaker": "narrator",
-    "voice": "man",
-    "frame": false
-   },
-   {
-    "text": "Would you have kept that silver coin?",
-    "beat": "giant",
-    "delivery": "awe",
-    "speaker": "narrator",
-    "voice": "man",
     "frame": false
    }
   ],
-  "story_type": "sea",
-  "format": "modern",
-  "origin": ""
- }
+  "format": "Rival showdown"
+ },
+ "episode": 38,
+ "design": {
+  "hybrid": true,
+  "parents": [
+   "eagle",
+   "whale"
+  ],
+  "dominant": "eagle",
+  "secondary": "whale",
+  "dom_weight": 0.62,
+  "torso": [
+   "teardrop",
+   388.256733411004,
+   161.7767410372991,
+   0.5599999999999999
+  ],
+  "arch": 0.0,
+  "legs": [
+   "bird",
+   2,
+   110.97563158278166,
+   18.20216376270658
+  ],
+  "foot": "talon",
+  "gait": "strut",
+  "legs_from": "eagle",
+  "arms": null,
+  "head": {
+   "skull": [
+    72.45689067858889,
+    70.44419927085032
+   ],
+   "snout": [
+    "beak_hook",
+    96.0,
+    44.85426565817408,
+    20.70196876531111,
+    0.0
+   ],
+   "teeth": "none",
+   "ears": [
+    "none",
+    0
+   ],
+   "eyes": "fierce",
+   "brow": 0.4,
+   "extras": [
+    "barnacles"
+   ],
+   "eyecol": [
+    240,
+    190,
+    40
+   ]
+  },
+  "neck": [
+   15.685292492664363,
+   0.21
+  ],
+  "neck_bow": 0.12,
+  "tail": "fluke",
+  "tail_len": 1.068399288358274,
+  "wings": [
+   "bird",
+   494.9046482456421
+  ],
+  "wingfly": true,
+  "shell": null,
+  "dorsal": [],
+  "skin": "feathers",
+  "skin2": "smooth",
+  "pal": [
+   [
+    97,
+    82,
+    70
+   ],
+   [
+    148,
+    158,
+    169
+   ],
+   [
+    168,
+    175,
+    180
+   ]
+  ],
+  "pat": "spots",
+  "hover": 109.10374954966238,
+  "temper": "savage",
+  "glow": true,
+  "ribs": false,
+  "cracks": true,
+  "strike": "dive",
+  "sig": [
+   "snout",
+   "a beak hook snout"
+  ],
+  "sigscale": {
+   "snout": 1.3
+  },
+  "donors": {
+   "body": "eagle",
+   "legs": "eagle",
+   "head": "whale",
+   "face": "eagle",
+   "mouth": "eagle",
+   "tail": "whale",
+   "wings": "eagle",
+   "skin": "eagle",
+   "palette": [
+    "eagle",
+    "whale"
+   ]
+  },
+  "flies": false,
+  "words": {},
+  "name": "eagle-whale",
+  "fingerprint": {
+   "prof": "teardrop",
+   "pitch": 1,
+   "L": 3,
+   "H": 2,
+   "legs": "bird",
+   "nlegs": 2,
+   "legh": 2,
+   "neck": 0,
+   "snout": "beak_hook",
+   "snoutl": 2,
+   "teeth": "none",
+   "ears": "none",
+   "eyes": "fierce",
+   "tail": "fluke",
+   "wings": "bird",
+   "shell": "none",
+   "dorsal": "none",
+   "skin": "feathers",
+   "skin2": "smooth",
+   "pat": "spots",
+   "hue": 0,
+   "light": 1,
+   "gait": "strut",
+   "hover": true,
+   "arms": "none",
+   "extras": "barnacles"
+  },
+  "fp_distance": 99.0,
+  "attempt": 0
+ },
+ "profile": {
+  "hybrid_name": "eagle-whale",
+  "parent_a": "eagle",
+  "parent_b": "whale",
+  "dominant_parent": "eagle",
+  "dominant": [
+   "eagle body structure"
+  ],
+  "secondary": [
+   "eagle eyes and face details",
+   "whale tail",
+   "eagle wings"
+  ],
+  "proportions": "teardrop torso, 388x161, horizontal posture, neck 15, legs bird x2",
+  "head": "a whale-shaped head with the eagle's mouth and the eagle's eyes",
+  "limbs": "bird x2",
+  "texture": "feathers body, smooth limbs and tail",
+  "colour": {
+   "main": [
+    97,
+    82,
+    70
+   ],
+   "accent": [
+    148,
+    158,
+    169
+   ],
+   "belly": [
+    168,
+    175,
+    180
+   ],
+   "pattern": "spots"
+  },
+  "silhouette": "teardrop-wings-fluke",
+  "locomotion": "struts proudly, wings half-open, hovers off the ground, beats its wings",
+  "gait": "strut",
+  "hovers": true,
+  "signature_ability": "dive",
+  "temperament": "savage",
+  "signature_feature": "a beak hook snout",
+  "summary": [
+   "a broad-chested raptor's body (from the eagle)",
+   "a whale-shaped head with the eagle's mouth and the eagle's eyes",
+   "powerful legs with hooked talons (from the eagle)",
+   "bird wings (from the eagle)",
+   "a broad horizontal tail fluke (from the whale)",
+   "layered brown feathers mixed with smooth texture"
+  ]
+ },
+ "clips": [
+  {
+   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in a land of active volcanoes: black rock and glowing red lava rivers. This beast features a broad-chested raptor body with layered brown feathers mixed with smooth texture, a whale-shaped head bearing an eagle's mouth and eyes, powerful legs with hooked talons, bird wings, and a broad horizontal whale tail fluke. It is menacing and dominant."
+  },
+  {
+   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In black rock and glowing red lava rivers, the same hybrid creature goes after ash-rats. It plunges from above, using its whale tail to whip up a wall of superheated ash while snatching prey with hooked talons.. Fast, powerful movement, camera follows the action. This beast features a broad-chested raptor body with layered brown feathers mixed with smooth texture, a whale-shaped head bearing an eagle's mouth and eyes, powerful legs with hooked talons, bird wings, and a broad horizontal whale tail fluke."
+  },
+  {
+   "title": "Clip 3 - the close-up (plays at the end)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. This beast features a broad-chested raptor body with layered brown feathers mixed with smooth texture, a whale-shaped head bearing an eagle's mouth and eyes, powerful legs with hooked talons, bird wings, and a broad horizontal whale tail fluke."
+  }
+ ]
 }
