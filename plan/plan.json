@@ -1,301 +1,129 @@
 {
- "series": "hybrid",
- "key": "eagle+owl@the edge of a black hole",
- "a": "eagle",
- "b": "owl",
- "place": [
-  "the edge of a black hole",
-  "a glowing black hole warping stars in deep space",
-  "deep space drone",
-  "eerie dim bluish glow",
-  "cool"
- ],
+ "series": "folklore",
+ "key": "folk:wolf:Tsuchigumo|arachnid|bloodline|charcoal|Kyoto, Japan|redsky",
+ "episode": 35,
  "story": {
-  "title": "When an Eagle Owl Hybrid Flees a Black Hole",
-  "creature_name": "Aethel",
-  "prey": "event-horizon gulls",
-  "signature_move": "It hovers silently above the abyss before dropping its broad tail fan to brake instantly over prey.",
-  "hybrid_look": "The creature has a round, upright, feathered body and feathered legs ending in talons from the owl, matched with an eagle-shaped head, the owl's eyes, bird wings, and a broad tail fan.",
+  "legend_name": "Tsuchigumo",
+  "region": "Kyoto, Japan",
+  "animal": "wolf",
+  "title": "The Web in the Kyoto Mists",
+  "narrator": {
+   "gender": "male",
+   "persona": "an old villager"
+  },
+  "hero": "farmer",
+  "people": "alone",
+  "monster": {
+   "body": "arachnid",
+   "palette": "charcoal",
+   "eyes": "red",
+   "size": "huge",
+   "horn": "antlers",
+   "spine": "none",
+   "eye_count": 4
+  },
   "sentences": [
    {
-    "text": "It takes one person every night, never forgetting who was counted last.",
-    "image": "a collapsing accretion disk swirling with violet plasma near a heavy gravitational well",
-    "action": "face",
+    "text": "My grandfather always walked these damp valley paths alone when the autumn chill settled in.",
+    "beat": "walk",
+    "setting": "pathway",
+    "delivery": "calm",
     "speaker": "narrator",
-    "frame": false
+    "frame": false,
+    "voice": ""
    },
    {
-    "text": "Meet Aethel, an imaginary hybrid combining an eagle's head and wings with an owl's round body and eyes.",
-    "image": "cracked obsidian plates floating in the heavy vacuum of a deep space chasm",
-    "action": "walk",
+    "text": "The sky turned blood red at dusk and hundreds of crows gathered above the old shrine.",
+    "beat": "omen",
+    "setting": "hills",
+    "delivery": "hushed",
     "speaker": "narrator",
-    "frame": false
+    "frame": false,
+    "voice": ""
    },
    {
-    "text": "The hybrid hovers off the ground, then beats its wings to snatch event-horizon gulls from the edge.",
-    "image": "shimmering gravitational waves rippling across a dark horizon of crushed star dust",
-    "action": "hunt",
+    "text": "According to old Kyoto legends, this was the exact sign that the great earth spider wakened.",
+    "beat": "stalk",
+    "setting": "hills",
+    "delivery": "low",
     "speaker": "narrator",
-    "frame": false
+    "frame": false,
+    "voice": ""
    },
    {
-    "text": "A massive shadow surges upward from the void, hunting it for breaking the cosmic count.",
-    "image": "a towering wall of crushing dark matter swallowing distant glowing star clusters",
-    "action": "turn",
+    "text": "It never walks, but glides a hand width above the ground with no sound and no wind.",
+    "beat": "mpov",
+    "setting": "pathway",
+    "delivery": "whisper",
     "speaker": "narrator",
-    "frame": false
+    "frame": false,
+    "voice": ""
    },
    {
-    "text": "I watched the great pursuer close in while jagged space debris rained down all around.",
-    "image": "shards of frozen methane tumbling through a freezing, silent gravitational rift",
-    "action": "walkback",
-    "frame": true,
-    "speaker": "narrator"
-   },
-   {
-    "text": "It tries to dive fast using its eagle wings, but the intense gravity pulls it right back.",
-    "image": "a violent vortex of trapped light spinning endlessly inside a towering funnel",
-    "action": "footprints",
+    "text": "The creature possessed a charcoal body with four glowing red eyes and thick bristling legs.",
+    "beat": "shoulder",
+    "setting": "forest",
+    "delivery": "dread",
     "speaker": "narrator",
-    "frame": false
+    "frame": false,
+    "voice": ""
    },
    {
-    "speaker": "host",
-    "text": "Wait, it escaped that pull?!",
-    "image": "a dramatic view of the edge of a black hole",
-    "action": "",
-    "frame": false
-   },
-   {
-    "text": "Then its silent owl feathers let it vanish completely into the dark, saving its life.",
-    "image": "thick clouds of cold cosmic dust rolling heavily over jagged metallic cliffs",
-    "action": "feed",
+    "text": "Each night it changed one small detail, and the grandfather clock in the hall ran backwards.",
+    "beat": "home",
+    "setting": "village",
+    "delivery": "trembling",
     "speaker": "narrator",
+    "frame": false,
+    "voice": ""
+   },
+   {
+    "text": "He reached his wooden gate and whispered a quiet plea into the dark.",
+    "beat": "door",
+    "setting": "village",
+    "delivery": "urgent",
+    "speaker": "narrator",
+    "frame": false,
+    "voice": ""
+   },
+   {
+    "text": "Let me inside before it finds me.",
+    "beat": "door",
+    "setting": "village",
+    "delivery": "shout",
+    "speaker": "person",
+    "voice": "old_man",
     "frame": false
    },
    {
-    "text": "It fears absolute silence above all else. What should I combine next? Tell me in the comments.",
-    "image": "a dead zone where all light bends away into an endless echoing void",
-    "action": "turn",
+    "text": "A sudden shadow lunged from the eaves in a frantic blur of motion.",
+    "beat": "attack",
+    "setting": "village",
+    "delivery": "shout",
     "speaker": "narrator",
-    "frame": false
+    "frame": false,
+    "voice": ""
+   },
+   {
+    "text": "Only a dropped lantern remained smoking on the cobblestones.",
+    "beat": "aftermath",
+    "setting": "village",
+    "delivery": "sorrow",
+    "speaker": "narrator",
+    "frame": false,
+    "voice": ""
+   },
+   {
+    "text": "Would you keep walking if your grandfather clock started running backwards?",
+    "beat": "stalk",
+    "setting": "village",
+    "delivery": "calm",
+    "speaker": "narrator",
+    "frame": false,
+    "voice": ""
    }
   ],
-  "format": "The great escape"
- },
- "episode": 39,
- "design": {
-  "hybrid": true,
-  "parents": [
-   "eagle",
-   "owl"
-  ],
-  "dominant": "owl",
-  "secondary": "eagle",
-  "dom_weight": 0.88,
-  "torso": [
-   "teardrop",
-   248.31665602390277,
-   178.9691063372861,
-   0.94
-  ],
-  "arch": 0.0,
-  "legs": [
-   "bird",
-   2,
-   66.2503158727674,
-   16.180427545533476
-  ],
-  "foot": "talon",
-  "gait": "strut",
-  "legs_from": "owl",
-  "arms": null,
-  "head": {
-   "skull": [
-    48.666721837761294,
-    44.03179594845069
-   ],
-   "snout": [
-    "beak_hook",
-    64,
-    26,
-    12,
-    0.0
-   ],
-   "teeth": "none",
-   "ears": [
-    "tufts",
-    46.349258893106
-   ],
-   "eyes": "owl",
-   "brow": 0.0,
-   "extras": [
-    "facial_disc"
-   ],
-   "eyecol": [
-    240,
-    170,
-    30
-   ]
-  },
-  "neck": [
-   31.829899829340516,
-   0.39
-  ],
-  "neck_bow": 0.12,
-  "tail": "fan",
-  "tail_len": 0.9679171675698857,
-  "wings": [
-   "bird",
-   352.7751224325349
-  ],
-  "wingfly": true,
-  "shell": null,
-  "dorsal": [],
-  "skin": "feathers",
-  "skin2": "feathers",
-  "pal": [
-   [
-    136,
-    96,
-    61
-   ],
-   [
-    246,
-    246,
-    242
-   ],
-   [
-    204,
-    181,
-    149
-   ]
-  ],
-  "pat": "stripes",
-  "hover": 71.49044489846966,
-  "temper": "eerie",
-  "glow": true,
-  "ribs": false,
-  "cracks": true,
-  "strike": "dive",
-  "sig": [
-   "facial_disc",
-   "a striking facial disc"
-  ],
-  "sigscale": {
-   "facial_disc": 1.3
-  },
-  "donors": {
-   "body": "owl",
-   "legs": "owl",
-   "head": "eagle",
-   "face": "owl",
-   "mouth": "eagle",
-   "tail": "eagle",
-   "wings": "eagle",
-   "skin": "owl",
-   "palette": [
-    "owl",
-    "eagle"
-   ]
-  },
-  "flies": false,
-  "words": {},
-  "name": "eagle-owl",
-  "fingerprint": {
-   "prof": "teardrop",
-   "pitch": 2,
-   "L": 1,
-   "H": 3,
-   "legs": "bird",
-   "nlegs": 2,
-   "legh": 1,
-   "neck": 1,
-   "snout": "beak_hook",
-   "snoutl": 1,
-   "teeth": "none",
-   "ears": "tufts",
-   "eyes": "owl",
-   "tail": "fan",
-   "wings": "bird",
-   "shell": "none",
-   "dorsal": "none",
-   "skin": "feathers",
-   "skin2": "feathers",
-   "pat": "stripes",
-   "hue": 0,
-   "light": 1,
-   "gait": "strut",
-   "hover": true,
-   "arms": "none",
-   "extras": "facial_disc"
-  },
-  "fp_distance": 99.0,
-  "attempt": 0
- },
- "profile": {
-  "hybrid_name": "eagle-owl",
-  "parent_a": "eagle",
-  "parent_b": "owl",
-  "dominant_parent": "owl",
-  "dominant": [
-   "owl body structure"
-  ],
-  "secondary": [
-   "owl eyes and face details",
-   "eagle tail",
-   "eagle wings"
-  ],
-  "proportions": "teardrop torso, 248x178, upright posture, neck 31, legs bird x2",
-  "head": "a eagle-shaped head and the owl's eyes",
-  "limbs": "bird x2",
-  "texture": "feathers body, feathers limbs and tail",
-  "colour": {
-   "main": [
-    136,
-    96,
-    61
-   ],
-   "accent": [
-    246,
-    246,
-    242
-   ],
-   "belly": [
-    204,
-    181,
-    149
-   ],
-   "pattern": "stripes"
-  },
-  "silhouette": "teardrop-wings-fan",
-  "locomotion": "struts upright, head swivelling, hovers off the ground, beats its wings",
-  "gait": "strut",
-  "hovers": true,
-  "signature_ability": "dive",
-  "temperament": "eerie",
-  "signature_feature": "a striking facial disc",
-  "summary": [
-   "a round, upright, feathered body (from the owl)",
-   "a eagle-shaped head and the owl's eyes",
-   "feathered legs ending in talons (from the owl)",
-   "bird wings (from the eagle)",
-   "a broad tail fan (from the eagle)",
-   "soft barred feathers mixed with feathers texture"
-  ]
- },
- "clips": [
-  {
-   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in the edge of a black hole: a glowing black hole warping stars in deep space. The creature has a round, upright, feathered body and feathered legs ending in talons from the owl, matched with an eagle-shaped head, the owl's eyes, bird wings, and a broad tail fan. It is menacing and dominant."
-  },
-  {
-   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In a glowing black hole warping stars in deep space, the same hybrid creature goes after event-horizon gulls. It hovers silently above the abyss before dropping its broad tail fan to brake instantly over prey.. Fast, powerful movement, camera follows the action. The creature has a round, upright, feathered body and feathered legs ending in talons from the owl, matched with an eagle-shaped head, the owl's eyes, bird wings, and a broad tail fan."
-  },
-  {
-   "title": "Clip 3 - the close-up (plays at the end)",
-   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. The creature has a round, upright, feathered body and feathered legs ending in talons from the owl, matched with an eagle-shaped head, the owl's eyes, bird wings, and a broad tail fan."
-  }
- ]
+  "story_type": "bloodline",
+  "origin": "redsky"
+ }
 }
