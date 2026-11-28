@@ -76,11 +76,13 @@
  "crocodile+fox@a land of active volcanoes",
  "folk:wolf:The Gallu Scurry|swarm|child|ash|County Cork, Ireland|asteroid",
  "lion+turtle@the deep ocean",
+ "folk:snake:The Floor Blossom|bloom|basement|rust|A suburban house in Ohio, 3:07 AM|",
  "scenes|hybrid|38|turn,pov,loom,shoulder,face,feed,walk,face,turn,hunt,walkback,footprints",
  "scenes|folklore|34|valley,valley,valley,erupt,erupt,birth,birth,clash,reign",
  "scenes|hybrid|39|pov,loom,shoulder,face,feed,turn,face,walk,hunt,turn,walkback,footprints,feed,turn",
  "scenes|folklore|35|walk,omen,stalk,mpov,shoulder,chase,door,stalk,attack,aftermath,stalk",
  "scenes|hybrid|40|loom,face,feed,turn,pov,shoulder,face,walk,hunt,turn,walkback,footprints,feed",
  "scenes|folklore|36|walk,omen,transform,window,stalk,pov,door,aftermath,stalk",
- "scenes|hybrid|41|face,feed,turn,loom,shoulder,pov,face,walk,hunt,footprints,turn,walkback,feed"
+ "scenes|hybrid|41|face,feed,turn,loom,shoulder,pov,face,walk,hunt,footprints,turn,walkback,feed",
+ "scenes|folklore|37|bedroom,stairs,curtain,hosts,basement,basement,jump"
 ]
