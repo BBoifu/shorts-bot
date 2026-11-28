@@ -74,9 +74,11 @@
  "eagle+owl@the edge of a black hole",
  "folk:wolf:Tsuchigumo|arachnid|bloodline|charcoal|Kyoto, Japan|redsky",
  "crocodile+fox@a land of active volcanoes",
+ "folk:wolf:The Gallu Scurry|swarm|child|ash|County Cork, Ireland|asteroid",
  "scenes|hybrid|38|turn,pov,loom,shoulder,face,feed,walk,face,turn,hunt,walkback,footprints",
  "scenes|folklore|34|valley,valley,valley,erupt,erupt,birth,birth,clash,reign",
  "scenes|hybrid|39|pov,loom,shoulder,face,feed,turn,face,walk,hunt,turn,walkback,footprints,feed,turn",
  "scenes|folklore|35|walk,omen,stalk,mpov,shoulder,chase,door,stalk,attack,aftermath,stalk",
- "scenes|hybrid|40|loom,face,feed,turn,pov,shoulder,face,walk,hunt,turn,walkback,footprints,feed"
+ "scenes|hybrid|40|loom,face,feed,turn,pov,shoulder,face,walk,hunt,turn,walkback,footprints,feed",
+ "scenes|folklore|36|walk,omen,transform,window,stalk,pov,door,aftermath,stalk"
 ]
