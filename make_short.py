@@ -1863,6 +1863,16 @@ def _spaced(draw, xy_center, text, font, fill, spacing):
     return (int(xy_center[0] - total / 2), bb[1], int(xy_center[0] + total / 2), bb[3])
 
 
+def card_word(animal, title, narration):
+    """The big word on the title card: the animal only if the story really is about it; otherwise the story's own title (a story about a
+    swarm of dust must not be headed 'wolf')."""
+    a = str(animal or "").strip()
+    if a and re.search(r"\b" + re.escape(a.lower()) + r"s?\b", str(narration or "").lower()):
+        return a
+    t = str(title or "").strip()
+    return t if t else a
+
+
 def title_card_png(series, episode, title, place, path, accent=None):
     """series (small), episode (discreet), title (cursive, the focus), place (small). Returns the layout report.
     Every box is measured; the card is refused if two boxes touch, anything leaves the safe width, or text is too small for a phone."""
@@ -4968,7 +4978,23 @@ def shot_angle(j, beat, sh, modern, n, i):
     return a
 
 
-def plan_shots(beats, durs, fmt, stype, rnd=None):
+CUT_WORDS = {   # a cutaway is only used on a sentence that is about what the cutaway shows
+    "lantern": r"\b(lantern|lamp|candle|flame|firelight|torch|lit)\b",
+    "eyes": r"\b(eyes?|stared|staring|gaze|gazed|watching|watched|glow\w*|looked)\b",
+    "notice": r"\b(notice\w*|saw|seen|heard|hear|spotted|looked|turned|felt|realis\w*|realiz\w*)\b",
+    "establish": r"\b(village|field|fields|pasture|farm|hill|hills|road|forest|woods|valley|house|cottage|town|night|moor|lake|river|sea|shore)\b",
+    "tower": r"\b(tower|castle|ruin\w*|church|steeple|lighthouse|hill|mountain)\b",
+}
+
+
+def cut_fits(kind, text):
+    """Does this sentence talk about what the cutaway shows? (No text given: the old behaviour, always yes.)"""
+    if text is None or kind not in CUT_WORDS:
+        return True
+    return bool(re.search(CUT_WORDS[kind], str(text).lower()))
+
+
+def plan_shots(beats, durs, fmt, stype, rnd=None, texts=None):
     """Turns each scene into two shots: a short cutaway first (wide establishing shot, a person noticing something, a lantern
     close-up, eyes in the dark), then the main scene. The first and last scenes stay whole. No cutaway type is used twice in
     a row, and the establishing shots rotate through different camera moves."""
@@ -4993,12 +5019,14 @@ def plan_shots(beats, durs, fmt, stype, rnd=None):
             continue
         if 0 < i < n - 1 and d >= MIN_SHOT and b not in ("attack", "aftermath") and gap_ok:
             opts = [p for p in pool if p != last_ins] or pool
+            opts = [p for p in opts if cut_fits(p, texts[i] if texts else None)]
             if i + 1 < n and beats[i + 1] == "attack":
                 opts = [p for p in opts if p != "notice"] or opts
-            least = min(used_ins.get(p, 0) for p in opts)          # use every cutaway once before any is used again
-            opts = [p for p in opts if used_ins.get(p, 0) == least]
-            ins = rnd.choice(opts)
-            used_ins[ins] = used_ins.get(ins, 0) + 1
+            if opts:
+                least = min(used_ins.get(p, 0) for p in opts)          # use every cutaway once before any is used again
+                opts = [p for p in opts if used_ins.get(p, 0) == least]
+                ins = rnd.choice(opts)
+                used_ins[ins] = used_ins.get(ins, 0) + 1
         if ins:
             var = None
             if ins == "establish":
@@ -5214,7 +5242,7 @@ def build_folk_main(plan):
     SHAKE = {"chase": 3.5}
     VARY_SKY = ({}, {"sky": "fullmoon"}, {"fog": 0.5}, {"sky": "fullmoon", "fog": 0.3}, {"fog": 0.7}, {})
     FIRST_SIGN_AT = next((j for j, b in enumerate(beats) if b == "omen"), n)
-    shots = plan_shots(beats, durs, fmt, story.get("story_type"))
+    shots = plan_shots(beats, durs, fmt, story.get("story_type"), texts=[str(x.get("text", "")) for x in sentences])
     try:                                # reference pictures for this episode, chosen from its story and then kept for every scene
         import refs
         _chosen = refs.begin_episode(story.get("title", "") + str(len(sentences)), " ".join([str(story.get("story_type") or "")] + [str(x.get("text", x) if isinstance(x, dict) else x) for x in sentences]))
@@ -5344,7 +5372,7 @@ def build_folk_main(plan):
     has_caps = write_captions(words, total, WORK / "captions.ass",
                               card=(f"{region.upper()}  \u00b7  LOST WORLD #{episode}" if fmt == "prehistoric"
                                     else f"{region.upper()}  \u00b7  DARK FOLKLORE #{episode}"), track=cap_track,
-                              card_big=animal)
+                              card_big=card_word(animal, story.get("title"), " ".join(str(x.get("text", "")) for x in sentences)))
     sounds = prepare_sounds(animal, animal, ambient_query)
     quiet = []
     clock("all scenes are drawn")
