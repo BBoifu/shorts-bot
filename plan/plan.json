@@ -1,111 +1,283 @@
 {
- "series": "folklore",
- "key": "folk:wolf:The Gallu Scurry|swarm|child|ash|County Cork, Ireland|asteroid",
- "episode": 36,
+ "series": "hybrid",
+ "key": "lion+turtle@the deep ocean",
+ "a": "lion",
+ "b": "turtle",
+ "place": [
+  "the deep ocean",
+  "the dark deep sea floor with faint blue light",
+  "underwater ambience",
+  "dim murky blue light from above",
+  "teal"
+ ],
  "story": {
-  "legend_name": "The Gallu Scurry",
-  "region": "County Cork, Ireland",
-  "animal": "wolf",
-  "title": "The Cloud That Walked Like a Man",
-  "narrator": {
-   "gender": "male",
-   "persona": "an old villager"
-  },
-  "hero": "shepherd",
-  "people": "child",
-  "monster": {
-   "body": "swarm",
-   "palette": "ash",
-   "eyes": "gold",
-   "size": "medium",
-   "horn": null,
-   "spine": "none",
-   "eye_count": 4
-  },
+  "title": "What If a Lion Had a Turtle Shell in the Deep Ocean?",
+  "creature_name": "The Abyss-Panzer",
+  "prey": "giant glowing siphonophore",
+  "signature_move": "It uses its thick, padded paws to silently stalk the siphonophore before pulling it beneath its heavy dome shell.",
+  "hybrid_look": "Its heavy, muscular big-cat body with tawny fur mixed with a scale texture prowls with slow, heavy confidence, featuring a turtle-shaped head, the lion's eyes, thick padded paws, a dome shell, and a long tail ending in a dark tuft.",
   "sentences": [
    {
-    "text": "Never speak the old name after midnight in County Cork.",
-    "beat": "walk",
-    "setting": "pathway",
-    "delivery": "hushed",
+    "text": "It turns to stone the moment anyone looks at it.",
+    "image": "Pitch-black abyssal trenches lit only by faint bioluminescent currents in freezing water.",
+    "action": "face",
     "speaker": "narrator",
-    "voice": "old_man",
     "frame": false
    },
    {
-    "text": "An asteroid fell near the pasture, bringing an ash-colored swarm with golden eyes.",
-    "beat": "omen",
-    "setting": "field",
-    "delivery": "low",
+    "text": "This is the imaginary abyss-panzer, born from a lion and a deep sea turtle.",
+    "image": "Crushing water pressure descending into the silent, sunless depths of the open ocean.",
+    "action": "walk",
     "speaker": "narrator",
-    "voice": "old_man",
     "frame": false
    },
    {
-    "text": "The old tales say the creature grows louder every time its forbidden name is whispered.",
-    "beat": "transform",
-    "setting": "hills",
-    "delivery": "dread",
+    "text": "It stalks a giant glowing siphonophore in the dark.",
+    "image": "Floating amber debris drifting slowly through the cold, midnight blue pelagic zone.",
+    "action": "hunt",
     "speaker": "narrator",
-    "voice": "old_man",
     "frame": false
    },
    {
-    "text": "My grandson pulled my coat and pointed at the dark glass window.",
-    "beat": "window",
-    "setting": "village",
-    "delivery": "trembling",
+    "text": "We should have turned back before finding its sunken egg clutch.",
+    "image": "A desolate plain of white silt surrounded by jagged underwater basalt columns.",
+    "action": "footprints",
+    "frame": true,
+    "speaker": "narrator"
+   },
+   {
+    "text": "When a hungry shark swims near the nest, it freezes completely.",
+    "image": "Murky abyssal currents swirling around towering underwater cliffs of black volcanic rock.",
+    "action": "turn",
     "speaker": "narrator",
-    "voice": "old_man",
     "frame": false
    },
    {
-    "text": "Grandpa, there is a man made of buzzing dust outside.",
-    "beat": "window",
-    "setting": "village",
-    "delivery": "urgent",
-    "speaker": "person",
-    "voice": "boy",
+    "text": "It only moves while nobody is looking at it.",
+    "image": "Endless miles of barren seabed stretching out into absolute, crushing darkness.",
+    "action": "walkback",
+    "speaker": "narrator",
     "frame": false
    },
    {
-    "text": "It moved in rigid jerks, like an old film with missing frames.",
-    "beat": "stalk",
-    "setting": "village",
-    "delivery": "calm",
+    "text": "Its surprising weakness is a blinking light, and What should I combine next? Tell me in the comments.",
+    "image": "Distant volcanic hydrothermal vents pumping ghostly white smoke into the ocean.",
+    "action": "feed",
     "speaker": "narrator",
-    "voice": "old_man",
-    "frame": false
-   },
-   {
-    "text": "The latch gave way, and the hollow face leaned inside.",
-    "beat": "attack",
-    "setting": "village",
-    "delivery": "shout",
-    "speaker": "narrator",
-    "voice": "old_man",
-    "frame": false
-   },
-   {
-    "text": "Only a scattered heap of ash remained upon the floorboards.",
-    "beat": "aftermath",
-    "setting": "village",
-    "delivery": "sorrow",
-    "speaker": "narrator",
-    "voice": "old_man",
-    "frame": false
-   },
-   {
-    "text": "Who speaks its name tonight?",
-    "beat": "stalk",
-    "setting": "village",
-    "delivery": "whisper",
-    "speaker": "narrator",
-    "voice": "old_man",
     "frame": false
    }
   ],
-  "story_type": "child",
-  "origin": "asteroid"
- }
+  "format": "Guardian of the nest"
+ },
+ "episode": 41,
+ "design": {
+  "hybrid": true,
+  "parents": [
+   "lion",
+   "turtle"
+  ],
+  "dominant": "lion",
+  "secondary": "turtle",
+  "dom_weight": 0.62,
+  "torso": [
+   "barrel",
+   343.0063775540453,
+   184.20238934181322,
+   0.0
+  ],
+  "arch": 0.0,
+  "legs": [
+   "digi",
+   4,
+   174.40977458850014,
+   40.150342480110574
+  ],
+  "foot": "paw",
+  "gait": "prowl",
+  "legs_from": "lion",
+  "arms": null,
+  "head": {
+   "skull": [
+    32.97171989863783,
+    27.476433248864858
+   ],
+   "snout": [
+    "beak_turtle",
+    34,
+    20,
+    14,
+    0.0
+   ],
+   "teeth": "fangs",
+   "ears": [
+    "round",
+    32.97171989863783
+   ],
+   "eyes": "beady",
+   "brow": 0.2,
+   "extras": [
+    "mane"
+   ],
+   "eyecol": [
+    230,
+    200,
+    60
+   ]
+  },
+  "neck": [
+   57.63840029344257,
+   0.1875
+  ],
+  "neck_bow": 0.12,
+  "tail": "tuft",
+  "tail_len": 0.9555034985890181,
+  "wings": null,
+  "wingfly": false,
+  "shell": "dome",
+  "dorsal": [],
+  "skin": "fur",
+  "skin2": "scales",
+  "pal": [
+   [
+    168,
+    153,
+    78
+   ],
+   [
+    87,
+    68,
+    37
+   ],
+   [
+    215,
+    190,
+    136
+   ]
+  ],
+  "pat": "plain",
+  "hover": 0,
+  "temper": "regal",
+  "glow": false,
+  "ribs": false,
+  "cracks": false,
+  "strike": "pounce",
+  "sig": [
+   "mane",
+   "a striking mane"
+  ],
+  "sigscale": {
+   "mane": 1.3
+  },
+  "donors": {
+   "body": "lion",
+   "legs": "lion",
+   "head": "turtle",
+   "face": "lion",
+   "mouth": "turtle",
+   "tail": "lion",
+   "shell": "turtle",
+   "skin": "lion",
+   "palette": [
+    "lion",
+    "turtle"
+   ]
+  },
+  "flies": false,
+  "words": {},
+  "name": "lion-turtle",
+  "fingerprint": {
+   "prof": "barrel",
+   "pitch": 0,
+   "L": 2,
+   "H": 3,
+   "legs": "digi",
+   "nlegs": 4,
+   "legh": 3,
+   "neck": 1,
+   "snout": "beak_turtle",
+   "snoutl": 0,
+   "teeth": "fangs",
+   "ears": "round",
+   "eyes": "beady",
+   "tail": "tuft",
+   "wings": "none",
+   "shell": "dome",
+   "dorsal": "none",
+   "skin": "fur",
+   "skin2": "scales",
+   "pat": "plain",
+   "hue": 1,
+   "light": 1,
+   "gait": "prowl",
+   "hover": false,
+   "arms": "none",
+   "extras": "mane"
+  },
+  "fp_distance": 99.0,
+  "attempt": 0
+ },
+ "profile": {
+  "hybrid_name": "lion-turtle",
+  "parent_a": "lion",
+  "parent_b": "turtle",
+  "dominant_parent": "lion",
+  "dominant": [
+   "lion body structure"
+  ],
+  "secondary": [
+   "lion eyes and face details",
+   "lion tail"
+  ],
+  "proportions": "barrel torso, 343x184, horizontal posture, neck 57, legs digi x4",
+  "head": "a turtle-shaped head and the lion's eyes",
+  "limbs": "digi x4",
+  "texture": "fur body, scales limbs and tail",
+  "colour": {
+   "main": [
+    168,
+    153,
+    78
+   ],
+   "accent": [
+    87,
+    68,
+    37
+   ],
+   "belly": [
+    215,
+    190,
+    136
+   ],
+   "pattern": "plain"
+  },
+  "silhouette": "barrel-tuft-shell",
+  "locomotion": "prowls with slow, heavy confidence",
+  "gait": "prowl",
+  "hovers": false,
+  "signature_ability": "pounce",
+  "temperament": "regal",
+  "signature_feature": "a striking mane",
+  "summary": [
+   "a heavy, muscular big-cat body (from the lion)",
+   "a turtle-shaped head and the lion's eyes",
+   "thick, padded paws (from the lion)",
+   "a dome shell",
+   "a long tail ending in a dark tuft (from the lion)",
+   "tawny fur mixed with scales texture"
+  ]
+ },
+ "clips": [
+  {
+   "title": "Clip 1 - the reveal (plays when the hybrid first appears)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. A massive imaginary hybrid creature steps out and walks toward the camera in the deep ocean: the dark deep sea floor with faint blue light. Its heavy, muscular big-cat body with tawny fur mixed with a scale texture prowls with slow, heavy confidence, featuring a turtle-shaped head, the lion's eyes, thick padded paws, a dome shell, and a long tail ending in a dark tuft. It is menacing and dominant."
+  },
+  {
+   "title": "Clip 2 - the signature move on its prey (plays in the middle of the story)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. In the dark deep sea floor with faint blue light, the same hybrid creature goes after giant glowing siphonophore. It uses its thick, padded paws to silently stalk the siphonophore before pulling it beneath its heavy dome shell.. Fast, powerful movement, camera follows the action. Its heavy, muscular big-cat body with tawny fur mixed with a scale texture prowls with slow, heavy confidence, featuring a turtle-shaped head, the lion's eyes, thick padded paws, a dome shell, and a long tail ending in a dark tuft."
+  },
+  {
+   "title": "Clip 3 - the close-up (plays at the end)",
+   "prompt": "Photorealistic cinematic footage, handheld camera, natural lighting, realistic motion, real fur, skin and scale texture, vertical 9:16, no text, no people. Extreme close-up of the same hybrid creature's face, glowing eyes, snarling and breathing heavily, wind and dust moving around it. Its heavy, muscular big-cat body with tawny fur mixed with a scale texture prowls with slow, heavy confidence, featuring a turtle-shaped head, the lion's eyes, thick padded paws, a dome shell, and a long tail ending in a dark tuft."
+  }
+ ]
 }
