@@ -574,7 +574,7 @@ STORY FORMAT: "{fname}". {brief} Tell THIS story, with a beginning, a rising pro
 {strange_block}
 Return ONLY valid JSON, no markdown, in exactly this shape:
 {{
-  "title": "catchy title under 70 characters, no hashtags",
+  "title": "{TITLE_HYBRID}",
   "creature_name": "a fun invented name for the hybrid",
   "prey": "a specific animal that lives in {place_name} and that the hybrid hunts",
   "signature_move": "one sentence: the hybrid's signature move on that prey, using abilities taken from the {a} and the {b} (an action, not gore)",
@@ -1863,6 +1863,23 @@ def _spaced(draw, xy_center, text, font, fill, spacing):
     return (int(xy_center[0] - total / 2), bb[1], int(xy_center[0] + total / 2), bb[3])
 
 
+# Title rules per series (from the 28 Nov analytics: question and 'What if' hooks and real legend names did best)
+TITLE_HYBRID = ("a question hook that names both animals, in the style of 'What If a Polar Bear Could Fly?', under 70 characters, no hashtags")
+TITLE_FOLK = ("the REAL legend or creature name from the folklore followed by a hook, in the style of 'The Werebear: Half Man, Half Beast' "
+              "or a question about it, under 70 characters, no hashtags")
+TITLE_MODERN = ("a specific, eerie question or detail, in the style of 'Why Does the Knocking Start at 2:48?', under 70 characters, no hashtags")
+TITLE_PRE = ("a question hook that names the creature or place, in the style of 'What Woke Up Inside the Volcano?', under 70 characters, no hashtags")
+
+
+def fix_title(t):
+    """Plain title: no hashtags or quotes, one line, cut at a word under 70 characters."""
+    t = re.sub(r"#\w+", "", str(t or "")).replace('"', "").replace("\n", " ")
+    t = re.sub(r"\s+", " ", t).strip(" -|:")
+    if len(t) > 70:
+        t = t[:70].rsplit(" ", 1)[0].rstrip(" ,;:-")
+    return t
+
+
 def card_word(animal, title, narration):
     """The big word on the title card: the animal only if the story really is about it; otherwise the story's own title (a story about a
     swarm of dust must not be headed 'wolf')."""
@@ -2980,7 +2997,7 @@ def main():
     log(f"Video ready: {out_path} ({total:.1f}s of speech, animated creatures: {sprites}/3, "
         f"real animal calls: {sounds['real_calls']}/2)")
 
-    title = story["title"][:80].rstrip() + " #Shorts"
+    title = (fix_title(story["title"]) or str(story["title"])[:70]) + " #Shorts"
     description = (
         f"Impossible Animals #{plan.get('episode', 1)}: {story['creature_name']}, an imaginary animal hybrid ({a} + {b}) in {place_name}.\n"
         "This is a fictional story made for fun and the creature is not real. "
@@ -3470,7 +3487,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
   "legend_name": "the name of the legend or creature, 1 to 3 words",
   "region": "short place name, for example Kerala, India",
   "animal": "ONE word from this list that best matches the creature: {", ".join(FOLK_ANIMALS)}",
-  "title": "catchy title under 70 characters, no hashtags",
+  "title": "{TITLE_FOLK}",
   "narrator": {{"gender": "male or female", "persona": "who is telling this, for example an old villager, a frightened witness, a grandmother"}},
   "hero": "the main person, ONE of: traveller, farmer, hunter, priest, shepherd, doctor, soldier, girl, worker",
   "people": "who walks with the hero: one of alone, child, elder, pair, dog",
@@ -3653,7 +3670,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
   "region": "short place and time, for example A house in Ohio, 2:48 AM",
   "time": "the minute it happens, like 2:48",
   "animal": "ONE word from this list that best matches the creature: {", ".join(FOLK_ANIMALS)}",
-  "title": "catchy title under 70 characters, no hashtags",
+  "title": "{TITLE_MODERN}",
   "narrator": {{"gender": "male or female", "persona": "the narrator, for example a night-shift nurse telling it a year later"}},
   "hero": "traveller",
   "people": "alone",
@@ -3805,7 +3822,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
 {{
   "legend_name": "what the new predator is called, 1 to 3 words, a made-up creature name such as The Ashmaw or Emberfang",
   "region": "a short time and place, for example Late Cretaceous, 66 million years ago",
-  "title": "catchy title under 70 characters, no hashtags",
+  "title": "{TITLE_PRE}",
   "narrator": {{"gender": "male or female", "persona": "a calm, warm storyteller, like a nature documentary narrator who is quietly afraid"}},
   "monster": {{"palette": "ONE of: {", ".join(var["palettes"])}", "eyes": "one of: red, gold, green, white, violet, orange, blue", "size": "medium or huge"}},
   "sentences": [{{"text": "one spoken sentence", "delivery": "one voice mood: calm, hushed, whisper, urgent, trembling, low, sorrow, awe or dread"}}],
@@ -5394,7 +5411,7 @@ def build_folk_main(plan):
                                                                       "captions.ass" if has_caps else None, out_path))
     clock("the quality check is done")
 
-    title = story["title"][:80].rstrip() + " #Shorts"
+    title = (fix_title(story["title"]) or str(story["title"])[:70]) + " #Shorts"
     description = (
         (f"{story['legend_name']}: an original prehistoric horror story. Fiction, not real science.\n"
          "The animation is drawn by software, " if fmt == "prehistoric" else
@@ -5959,7 +5976,7 @@ def build_main():
     clock("the quality check is done")
     remember_locations(PLACES_USED)
 
-    title = story["title"][:80].rstrip() + " #Shorts"
+    title = (fix_title(story["title"]) or str(story["title"])[:70]) + " #Shorts"
     description = (
         f"{story['creature_name']}: an imaginary animal hybrid ({a} + {b}) in {place_name}.\n"
         "This is a fictional story made for fun and the creature is not real. "
