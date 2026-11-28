@@ -30,5 +30,29 @@ check("every sentence still has its main shot, in order", [s["i"] for s in sh if
 check("the card says the story's title when the story is not about the animal", ms.card_word("wolf", "The Cloud That Walked Like a Man", "An asteroid fell near the pasture, bringing an ash-colored swarm.") == "The Cloud That Walked Like a Man")
 check("the card keeps the animal when the story is about it", ms.card_word("wolf", "Night of the Wolf", "The wolf came down from the hills.") == "wolf")
 check("the card falls back to the animal when there is no title", ms.card_word("wolf", "", "Nothing here.") == "wolf")
+
+# ---- titles: each series asks for a hook title, and titles are cleaned
+src = pathlib.Path(ms.__file__).read_text()
+check("all four series prompts use their own title rule (no placeholder left)", all('"title": "{' + n + '}"' in src for n in ("TITLE_HYBRID", "TITLE_FOLK", "TITLE_MODERN", "TITLE_PRE")) and "catchy title under 70" not in src)
+check("the hybrid rule asks for a 'What if' question naming both animals", "What If a Polar Bear Could Fly" in ms.TITLE_HYBRID)
+check("the folklore rule asks for the real legend name", "REAL legend" in ms.TITLE_FOLK)
+check("hashtags and quotes are removed from a title", ms.fix_title('"Why Does It Knock? #Shorts #scary"') == "Why Does It Knock?")
+check("a long title is cut at a word under 70 characters", len(ms.fix_title("What If a Gigantic Prehistoric Monster Woke Up Inside the Volcano Tonight")) <= 70 and not ms.fix_title("What If a Gigantic Prehistoric Monster Woke Up Inside the Volcano Tonight").endswith(" "))
+check("an empty title stays empty (the caller falls back)", ms.fix_title(None) == "")
+check("the uploaded title still ends with #Shorts", src.count('+ " #Shorts"') >= 3)
+
+# ---- shorter, hook-first, looping stories
+check("stories are asked for at about 35 seconds (48-62 words), never 65-85", src.count("48 to 62 words") == 4 and "65 to 85 words" not in src)
+check("the word cap for a returned story is lowered", ms.STORY_WORD_CAP <= 85)
+check("a hook rule forbids scene-setting openings", "no scene-setting" in ms.HOOK_RULE and "FIRST sentence" in ms.HOOK_RULE)
+check("a loop rule makes the last sentence echo the first", "LAST sentence" in ms.LOOP_RULE and "FIRST" in ms.LOOP_RULE)
+check("the folklore, modern and hybrid prompts carry both rules", src.count("{HOOK_RULE}") >= 3 and src.count("{LOOP_RULE}") >= 4)
+check("the title card is on screen only for the first 3 seconds", ms.CARD_OFF <= 3.0 and ms.CARD_ON < 1.0)
+check("no hook idea starts with a calm scene any more", not any("calm detail" in h for h in ms.HOOKS))
+
+# ---- the title-card check must look while the card is fully on (it once looked at 2.6 s, after the card had faded out)
+check("the title card is fully visible for at least half a second", (ms.CARD_OFF - 0.7) - (ms.CARD_ON + 0.8) >= 0.5)
+check("the card check samples inside the fully-visible time", ms.CARD_ON + 0.8 <= (ms.CARD_ON + 0.8 + ms.CARD_OFF - 0.7) / 2 <= ms.CARD_OFF - 0.7 and "2.6], size=(270, 480)" not in src)
+check("the card check's 'before' sample is before the card starts", "t_off = max(0.0, CARD_ON - 0.2)" in src)
 print("ALL CUTAWAY CHECKS PASSED" if ok else "SOME CHECKS FAILED")
 sys.exit(0 if ok else 1)

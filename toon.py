@@ -7,7 +7,7 @@ import math
 import os
 import random
 import subprocess
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
 import numpy as np
 
 W, H = 1080, 1920       # drawing size
@@ -1930,12 +1930,53 @@ def bg_polish(img, ambient, need=1.0, clarity=True):
     return Image.fromarray(out)
 
 
+TOD = {"name": "night"}           # time of day for this episode: "day", "dawn", "dusk" or "night" (set by make_short; the same for every scene)
+TOD_SKY = {"day": (("#3f86d6", "#c6e6f7"), "#fff1b0"), "dawn": (("#34406f", "#f7b98f"), "#ffdca8"), "dusk": (("#3b2a62", "#f28d50"), "#ff9c55")}
+
+
+def tod_apply(st, fx=None):
+    """Sky colours, sun and stars for the episode's time of day (night keeps the place's own look; special skies such as eclipses are left alone)."""
+    name = TOD["name"]
+    if name not in TOD_SKY or fx in ("eclipse", "redsky", "virus", "bluemoon", "fullmoon", "tomb", "aurora", "comet", "ufo"):
+        return
+    st["sky"], st["sun"] = TOD_SKY[name]
+    st["stars"] = False
+    if name == "day":                                  # night-blue hills and ground would look like ghosts in daylight: give dark layers daytime colours
+        def _lum(c):
+            try:
+                c = c.lstrip("#"); return 0.299 * int(c[0:2], 16) + 0.587 * int(c[2:4], 16) + 0.114 * int(c[4:6], 16)
+            except Exception:
+                return 255
+        if _lum(st.get("far", "#ffffff")) < 130:
+            st["far"] = "#5f8199"
+        if _lum(st.get("near", "#ffffff")) < 100:
+            st["near"] = "#365a44"
+
+
+_TOD_LUT = {}
+
+
+def tod_grade(im):
+    """The colour of the light: bright and warm by day, rosy gold at dawn, orange-purple at dusk. Night is unchanged. Done with lookup tables, so it is fast."""
+    name = TOD["name"]
+    if name not in TOD_SKY:
+        return im
+    if name not in _TOD_LUT:
+        gam, tint, sat = {"day": (0.72, (1.04, 1.02, 0.96), 1.18), "dawn": (0.82, (1.10, 0.97, 0.90), 1.08),
+                          "dusk": (0.86, (1.12, 0.94, 0.86), 1.10)}[name]
+        _TOD_LUT[name] = (sum(([min(255, int(255 * ((i / 255.0) ** gam) * tint[c])) for i in range(256)] for c in range(3)), []), sat)
+    lut, sat = _TOD_LUT[name]
+    out = im.convert("RGB").point(lut)
+    return ImageEnhance.Color(out).enhance(sat) if sat != 1.0 else out
+
+
 class World:
     PW = 2160  # the repeating width of the scrolling layers
 
     def __init__(self, place, seed=0, weather=None):
         weather = weather or {}
         self.st = dict(PLACES.get(place, DEFAULT_PLACE))
+        tod_apply(self.st, weather.get("sky"))
         self.fog = weather.get("fog", self.st.get("fog", 0.0))
         self.storm = weather.get("storm", self.st.get("storm", False))
         self.push, self.shake, self.tilt, self.focus_y = 0.0, 0.0, 0.0, 0.62
@@ -2624,6 +2665,8 @@ def _write_video(out, dur, painter, world, cwd, cam_dir, cam_fn, rs, fast=False)
             up = zoom_now * OW / (W * rs)                  # how much the drawing was enlarged to make this frame
             if up > 1.02:                                  # enlarging softens edges: win the crispness back (more for tighter shots)
                 im = im.filter(ImageFilter.UnsharpMask(radius=1.0 + 0.5 * (up - 1.0), percent=int(min(190, 20 + 115 * (up - 1.0))), threshold=3))
+            if TOD["name"] in TOD_SKY:
+                im = tod_grade(im)
             if _SINK[0] is not None:
                 _SINK[0].append(im.copy())
                 if fast:

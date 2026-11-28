@@ -395,10 +395,46 @@ def scene_entry(series, episode, beats):
     return f"{SCENE_TAG}{series}|{episode}|{','.join(b for b in beats if b)}"
 
 
+TODS = ("day", "dawn", "dusk", "night")
+TOD_TEXT = {
+    "day": "BROAD DAYLIGHT. A bright, peaceful, ordinary day: sun, open sky, normal sounds. The horror must happen in the sunlight, which makes it more unsettling. Never mention night, midnight, the moon or darkness.",
+    "dawn": "DAWN, the first light before and at sunrise: pale gold and rose sky, cold mist, birdsong. Never mention midnight or the moon.",
+    "dusk": "DUSK, sunset turning to twilight: an orange and purple sky, long shadows, the last light going. Never mention midnight.",
+    "night": "DEEP NIGHT: darkness, moonlight, silence.",
+}
+TOD_TIMES = {"day": ["10:15", "11:40", "1:20", "2:35", "3:10"], "dawn": ["5:10", "5:45", "6:05"], "dusk": ["6:40", "7:05", "7:30"],
+             "night": ["2:48", "3:07", "3:33", "1:14", "4:04", "2:19", "3:51", "12:37"]}
+
+
+def pick_tod(series, episode):
+    """The time of day for an episode. Dealt like shuffled cards, so every four episodes of a series use day, dawn, dusk and night once each,
+    in a different order every round. It depends only on the series and the episode number, so planning and building always agree."""
+    try:
+        e = max(int(episode or 1) - 1, 0)
+    except Exception:
+        e = 0
+    return random.Random(f"tod|{series}|{e // 4}").sample(TODS, 4)[e % 4]
+
+
+def time_line():
+    """The time-of-day instruction for the story prompt (the episode's time, set by set_scene_memory)."""
+    try:
+        import toon
+        name = toon.TOD["name"]
+    except Exception:
+        name = "night"
+    return f"TIME OF DAY: {TOD_TEXT.get(name, TOD_TEXT['night'])} Ignore any other time of day mentioned in the examples."
+
+
 def set_scene_memory(series, episode):
     """Loads what the latest videos used (not counting this video's own line) and sets this video's mix offset."""
     SCENE_RECENCY.clear()
     MIX["offset"] = max(int(episode or 0), 0)
+    try:
+        import toon
+        toon.TOD["name"] = pick_tod(series, episode)
+    except Exception:
+        pass
     TRACKS.clear()
     try:
         TRACKS.extend(tr for ep, tr in load_track_log() if not (ep == episode and series == "folklore"))
@@ -587,6 +623,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
 Rules for "sentences" (6 to 8 items, 48 to 62 words in total (the voice reads about 1.6 words per second, so this makes a tight Short of about 35 seconds, and NEVER go over 70 words), plain spoken English, no emojis):
 - Sentence 1: a short, shocking hook (under 14 words) about the most terrifying thing this creature does. {HOOK_RULE}
 - {LOOP_RULE}
+- {time_line()}
 - Sentence 2: names the creature, says it is imaginary, and says what it inherits from the {a} and from the {b}.
 - One middle sentence describes the signature move on its prey.
 - Middle sentences: {middle}
@@ -2661,11 +2698,13 @@ def run_quality_checks(video_path, words, kind):
         if TITLECARD and TITLECARD_STATUS and TITLECARD_STATUS[-1]:
             tb = TITLECARD_BOX[-1] if TITLECARD_BOX else None
             if tb:
-                big = _gray_frames(video_path, [0.7, 2.6], size=(270, 480))
+                t_off = max(0.0, CARD_ON - 0.2)                            # just before the card starts to fade in
+                t_on = (CARD_ON + 0.8 + CARD_OFF - 0.7) / 2.0              # the middle of the time it is fully visible
+                big = _gray_frames(video_path, [t_off, t_on], size=(270, 480))
                 if all(f is not None for f in big):
                     x0_, y0_, x1_, y1_ = [int(v / 4) for v in tb]
                     on, off = [float((f[y0_:y1_, x0_:x1_] > 235).mean()) for f in (big[1], big[0])]
-                    add("Title card visible", on >= 0.01 and on > off + 0.005, f"title text on screen at 2.6s ({on:.3f} bright vs {off:.3f} before it appears)")
+                    add("Title card visible", on >= 0.01 and on > off + 0.005, f"title text on screen at {t_on:.1f}s ({on:.3f} bright vs {off:.3f} before it appears)")
         if LOOP_INFO:
             try:
                 from PIL import Image as _I
@@ -3506,6 +3545,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
 Rules for "sentences" (6 to 8 items, 48 to 62 words in total (the voice reads about 1.6 words per second, so this makes a tight Short of about 35 seconds, and NEVER go over 70 words), plain spoken English, no emojis):
 - Sentence 1: a gripping hook. {var["hook"]} {HOOK_RULE}
 - {LOOP_RULE}
+- {time_line()}
 - Retell the legend as "the old tales say". Never present it as true or as something that really happens.
 - Be respectful of the culture it comes from. Do not mock any people, religion or community.
 - Horror is welcome: dread, screams, attacks and their terrifying aftermath. Show harm through implication and
@@ -3650,7 +3690,8 @@ def _enforce_voices(sents):
 def ask_modern(var):
     used = var["legends"]
     plot, scene_hint = MODERN_TYPES[var["type"]]
-    times = ["2:48", "3:07", "3:33", "1:14", "4:04", "2:19", "3:51", "12:37"]
+    import toon
+    times = TOD_TIMES.get(toon.TOD["name"], TOD_TIMES["night"])
     time_hint = random.choice(times)
     nature = var["type"] in NATURE_TYPES
     where = ("OUTDOORS in nature on a vast scale (open sea, a lake, a volcano, a storm, a coastline, mountains), where the "
@@ -3689,6 +3730,7 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
 Rules for "sentences" (6 to 8 items, 48 to 62 words in total (the voice reads about 1.6 words per second, so this makes a tight Short of about 35 seconds, and NEVER go over 70 words), plain spoken English, first person "I", no emojis):
 - Sentence 1: a gripping hook. {var["hook"]} {HOOK_RULE}
 - {LOOP_RULE}
+- {time_line()}
 - Horror is welcome: dread, noises, something wrong. Show harm only through implication (a police detail, a stain, a silence).
   Never describe injuries in explicit detail, and never name real people.
 - Every sentence gets a "beat": the ONE scene that best shows it. Pick from: "bedroom" (lying awake in bed, the red clock
@@ -3843,6 +3885,7 @@ sentence with that number (1 = first sentence). Never after sentence 1 or after 
 
 Rules for "sentences" (48 to 62 words in total, the voice reads about 1.6 words per second so NEVER go over 70 words, no filler, plain spoken English, no emojis, no quotation marks):
 - Make sentence 1 gripping (a threat, a sound or a question) while still describing what its step shows. {LOOP_RULE}
+- {time_line()}
 - Short, concrete, visual sentences: what can be SEEN and HEARD (ash, roars, glowing eyes, the ground shaking).
 - Horror is welcome, but harm is only implied (a roar cut off, a silence, a trail). No explicit injuries.
 - Do not use real people's names. Do not claim it is real science. The first sentence is a hook that makes people stay.
