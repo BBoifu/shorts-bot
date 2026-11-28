@@ -73,8 +73,10 @@
  "folk:crocodile:The Aether Blob|tendril|meteor|crimson|Late Cretaceous, 66 million years ago|",
  "eagle+owl@the edge of a black hole",
  "folk:wolf:Tsuchigumo|arachnid|bloodline|charcoal|Kyoto, Japan|redsky",
+ "crocodile+fox@a land of active volcanoes",
  "scenes|hybrid|38|turn,pov,loom,shoulder,face,feed,walk,face,turn,hunt,walkback,footprints",
  "scenes|folklore|34|valley,valley,valley,erupt,erupt,birth,birth,clash,reign",
  "scenes|hybrid|39|pov,loom,shoulder,face,feed,turn,face,walk,hunt,turn,walkback,footprints,feed,turn",
- "scenes|folklore|35|walk,omen,stalk,mpov,shoulder,chase,door,stalk,attack,aftermath,stalk"
+ "scenes|folklore|35|walk,omen,stalk,mpov,shoulder,chase,door,stalk,attack,aftermath,stalk",
+ "scenes|hybrid|40|loom,face,feed,turn,pov,shoulder,face,walk,hunt,turn,walkback,footprints,feed"
 ]
