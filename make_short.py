@@ -584,8 +584,9 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
   ]
 }}
 
-Rules for "sentences" (7 to 9 items, 65 to 85 words in total (the voice reads slowly, about 1.6 words per second, and a Short must stay under 50 seconds, so NEVER go over 90 words), plain spoken English, no emojis):
-- Sentence 1: a short, shocking hook (under 14 words) about the most terrifying thing this creature does.
+Rules for "sentences" (6 to 8 items, 48 to 62 words in total (the voice reads about 1.6 words per second, so this makes a tight Short of about 35 seconds, and NEVER go over 70 words), plain spoken English, no emojis):
+- Sentence 1: a short, shocking hook (under 14 words) about the most terrifying thing this creature does. {HOOK_RULE}
+- {LOOP_RULE}
 - Sentence 2: names the creature, says it is imaginary, and says what it inherits from the {a} and from the {b}.
 - One middle sentence describes the signature move on its prey.
 - Middle sentences: {middle}
@@ -1820,7 +1821,7 @@ FONT_URLS = {
     "caps": ("Cinzel.ttf", "https://raw.githubusercontent.com/google/fonts/main/ofl/cinzel/Cinzel%5Bwght%5D.ttf"),
 }
 TITLECARD = {}                       # set by write_captions: what the card says and when it is on screen
-CARD_ON, CARD_OFF = 1.2, 4.6
+CARD_ON, CARD_OFF = 0.4, 2.8
 CARD_Y0, CARD_Y1 = 250, 1000          # the band of the frame the card uses (captions keep out of it while it shows)
 CARD_ACCENTS = {"DARK FOLKLORE": (232, 185, 80), "MODERN": (150, 190, 235), "LOST WORLD": (240, 130, 70),
                 "IMPOSSIBLE ANIMALS": (140, 220, 150), "NATURE": (110, 200, 200)}
@@ -3091,11 +3092,15 @@ STORY_TYPES = {
     "blizzard": ("Lost in snow or fog, a stranger offers warmth and shelter. Their tracks do not match their feet.",
                  "hills, footprints, hide, stalk, attack"),
 }
+HOOK_RULE = ("The FIRST sentence is the most shocking moment of the story, said straight away: no scene-setting, no weather, no 'It was a dark night', "
+             "no 'Long ago'. A viewer decides in two seconds, so it must make them need the next sentence.")
+LOOP_RULE = ("The LAST sentence must echo the key words of the FIRST sentence, so that when the video repeats, the end flows straight back into "
+             "the start (for example start 'Never answer the knocking.' and end 'So never answer the knocking.').")
 HOOKS = ("Open with a rule: \"Never <do something> after midnight in <place>.\"",
          "Open with a sound: a sound the listener should dread, repeated, for example \"Three knocks. Always three.\"",
          "Open with a question: \"Have you ever felt someone <doing something> behind you?\"",
          "Open with the old people's warning, for example \"In <place>, the elders say...\"",
-         "Open with a scene already under way, one calm detail that feels wrong.",
+         "Open mid-action at the worst moment, for example \"The scratching stopped. Then the door opened.\"",
          "Open in the classic form \"If <something> follows you at night in <place>... don't look back.\"")
 ENDINGS = ("a tragic ending: the victim is simply never seen again",
            "a narrow escape: someone survives, but is changed by what they saw",
@@ -3498,8 +3503,9 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
   "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "setting": "one place word from the list below", "delivery": "one voice mood from the list below", "speaker": "narrator, person, creature, mimic or host", "voice": "only for person and mimic lines: man, woman, boy, girl, old_man or old_woman"}}]
 }}
 
-Rules for "sentences" (7 to 9 items, 65 to 85 words in total (the voice reads slowly, about 1.6 words per second, and a Short must stay under 50 seconds, so NEVER go over 90 words), plain spoken English, no emojis):
-- Sentence 1: a gripping hook. {var["hook"]}
+Rules for "sentences" (6 to 8 items, 48 to 62 words in total (the voice reads about 1.6 words per second, so this makes a tight Short of about 35 seconds, and NEVER go over 70 words), plain spoken English, no emojis):
+- Sentence 1: a gripping hook. {var["hook"]} {HOOK_RULE}
+- {LOOP_RULE}
 - Retell the legend as "the old tales say". Never present it as true or as something that really happens.
 - Be respectful of the culture it comes from. Do not mock any people, religion or community.
 - Horror is welcome: dread, screams, attacks and their terrifying aftermath. Show harm through implication and
@@ -3680,8 +3686,9 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
   "sentences": [{{"text": "one spoken sentence", "beat": "one scene word from the list below", "delivery": "one voice mood from the list below", "speaker": "narrator, person, creature, mimic or host", "voice": "only for person and mimic lines: man, woman, boy, girl, old_man or old_woman"}}]
 }}
 
-Rules for "sentences" (7 to 9 items, 65 to 85 words in total (the voice reads slowly, about 1.6 words per second, and a Short must stay under 50 seconds, so NEVER go over 90 words), plain spoken English, first person "I", no emojis):
-- Sentence 1: a gripping hook. {var["hook"]}
+Rules for "sentences" (6 to 8 items, 48 to 62 words in total (the voice reads about 1.6 words per second, so this makes a tight Short of about 35 seconds, and NEVER go over 70 words), plain spoken English, first person "I", no emojis):
+- Sentence 1: a gripping hook. {var["hook"]} {HOOK_RULE}
+- {LOOP_RULE}
 - Horror is welcome: dread, noises, something wrong. Show harm only through implication (a police detail, a stain, a silence).
   Never describe injuries in explicit detail, and never name real people.
 - Every sentence gets a "beat": the ONE scene that best shows it. Pick from: "bedroom" (lying awake in bed, the red clock
@@ -3834,7 +3841,8 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
 sentence with that number (1 = first sentence). Never after sentence 1 or after the last sentence, never two in a row.
 "tracker" only describes the story you wrote (it is saved so later episodes can be different).
 
-Rules for "sentences" (65 to 85 words in total, the voice reads slowly so NEVER go over 90 words, plain spoken English, no emojis, no quotation marks):
+Rules for "sentences" (48 to 62 words in total, the voice reads about 1.6 words per second so NEVER go over 70 words, no filler, plain spoken English, no emojis, no quotation marks):
+- Make sentence 1 gripping (a threat, a sound or a question) while still describing what its step shows. {LOOP_RULE}
 - Short, concrete, visual sentences: what can be SEEN and HEARD (ash, roars, glowing eyes, the ground shaking).
 - Horror is welcome, but harm is only implied (a roar cut off, a silence, a trail). No explicit injuries.
 - Do not use real people's names. Do not claim it is real science. The first sentence is a hook that makes people stay.
@@ -5461,7 +5469,7 @@ def check_speech_fits(speech, lead, tail, extra=0.0):
 
 
 WEAK_END = {"the", "a", "an", "of", "and", "to", "in", "with", "that", "his", "her", "its", "their", "on", "at", "by", "for", "as", "but", "or", "from", "into", "than", "then", "was", "were", "is"}
-STORY_WORD_CAP = 110
+STORY_WORD_CAP = 85
 
 
 def _word_guard(data, attempt):

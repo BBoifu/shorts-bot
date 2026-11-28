@@ -40,5 +40,14 @@ check("hashtags and quotes are removed from a title", ms.fix_title('"Why Does It
 check("a long title is cut at a word under 70 characters", len(ms.fix_title("What If a Gigantic Prehistoric Monster Woke Up Inside the Volcano Tonight")) <= 70 and not ms.fix_title("What If a Gigantic Prehistoric Monster Woke Up Inside the Volcano Tonight").endswith(" "))
 check("an empty title stays empty (the caller falls back)", ms.fix_title(None) == "")
 check("the uploaded title still ends with #Shorts", src.count('+ " #Shorts"') >= 3)
+
+# ---- shorter, hook-first, looping stories
+check("stories are asked for at about 35 seconds (48-62 words), never 65-85", src.count("48 to 62 words") == 4 and "65 to 85 words" not in src)
+check("the word cap for a returned story is lowered", ms.STORY_WORD_CAP <= 85)
+check("a hook rule forbids scene-setting openings", "no scene-setting" in ms.HOOK_RULE and "FIRST sentence" in ms.HOOK_RULE)
+check("a loop rule makes the last sentence echo the first", "LAST sentence" in ms.LOOP_RULE and "FIRST" in ms.LOOP_RULE)
+check("the folklore, modern and hybrid prompts carry both rules", src.count("{HOOK_RULE}") >= 3 and src.count("{LOOP_RULE}") >= 4)
+check("the title card is on screen only for the first 3 seconds", ms.CARD_OFF <= 3.0 and ms.CARD_ON < 1.0)
+check("no hook idea starts with a calm scene any more", not any("calm detail" in h for h in ms.HOOKS))
 print("ALL CUTAWAY CHECKS PASSED" if ok else "SOME CHECKS FAILED")
 sys.exit(0 if ok else 1)
