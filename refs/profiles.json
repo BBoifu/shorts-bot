@@ -1,0 +1,162 @@
+{
+ "forest_aerial_canopy_01": {
+  "id": "forest_aerial_canopy_01",
+  "category": "forest",
+  "subject": "mixed rainforest canopy",
+  "view": "aerial_wide",
+  "file": "aerial_canopy_01.png",
+  "tags": [
+   "canopy",
+   "tropical",
+   "overcast",
+   "daylight"
+  ],
+  "watermark": false,
+  "notes": "Straight-down drone view; crowns of many sizes in pale green, deep green, grey-pink, orange and cream; dark gaps between crowns; visible bare branches in some crowns.",
+  "size": [
+   1632,
+   1166
+  ],
+  "palette": [
+   {
+    "rgb": [
+     17,
+     25,
+     25
+    ],
+    "w": 0.098
+   },
+   {
+    "rgb": [
+     60,
+     78,
+     57
+    ],
+    "w": 0.0915
+   },
+   {
+    "rgb": [
+     47,
+     69,
+     51
+    ],
+    "w": 0.0889
+   },
+   {
+    "rgb": [
+     94,
+     109,
+     78
+    ],
+    "w": 0.0802
+   },
+   {
+    "rgb": [
+     27,
+     45,
+     36
+    ],
+    "w": 0.0761
+   },
+   {
+    "rgb": [
+     39,
+     52,
+     44
+    ],
+    "w": 0.0757
+   },
+   {
+    "rgb": [
+     136,
+     149,
+     114
+    ],
+    "w": 0.0721
+   },
+   {
+    "rgb": [
+     105,
+     129,
+     88
+    ],
+    "w": 0.0701
+   },
+   {
+    "rgb": [
+     75,
+     95,
+     66
+    ],
+    "w": 0.069
+   },
+   {
+    "rgb": [
+     129,
+     133,
+     108
+    ],
+    "w": 0.0672
+   },
+   {
+    "rgb": [
+     166,
+     176,
+     142
+    ],
+    "w": 0.0616
+   },
+   {
+    "rgb": [
+     81,
+     107,
+     72
+    ],
+    "w": 0.0537
+   },
+   {
+    "rgb": [
+     111,
+     113,
+     92
+    ],
+    "w": 0.0498
+   },
+   {
+    "rgb": [
+     75,
+     84,
+     65
+    ],
+    "w": 0.0461
+   }
+  ],
+  "lum_mean": 0.3392,
+  "lum_std": 0.1653,
+  "sat": 0.3102,
+  "accents": {
+   "pink_purple": {
+    "rgb": [
+     131,
+     108,
+     108
+    ],
+    "share": 0.0099
+   },
+   "cream_pale": {
+    "rgb": [
+     193,
+     192,
+     177
+    ],
+    "share": 0.017
+   }
+  },
+  "texture": 14.308,
+  "dark_share": 0.1592,
+  "light_top_bottom": -0.0401,
+  "sharp": 1087.1,
+  "hash": "0000110000100000000000000000000000000000011111000100001011111000001111111100000001011111111101100100100011111100011000111111110000100011111111110010000111111000000100110011110000011110111110111101111011001001100001101100100000000001110000010001000101001111",
+  "file_sha": "f79006099ccd"
+ }
+}

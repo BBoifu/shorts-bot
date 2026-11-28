@@ -295,6 +295,10 @@ def hybrid_kinds():
 
 SCENE_TAG = "scenes|"          # memory lines inside history.json: "scenes|series|episode|scene,scene,..." (never counted as stories)
 SCENE_MEMORY = 5               # how many of the latest videos are remembered
+TRACK_TAG = "track|"           # episode variation tracker lines: "track|episode|{json}" (prehistoric episodes; never counted as stories)
+TRACK_FIELDS = ("main_dinosaur", "secondary_dinosaur", "monster", "environment", "location", "conflict", "monster_intro", "reveal", "ending", "camera")
+TRACK_MEMORY = 6               # how many of the latest prehistoric episodes are compared against
+TRACKS = []                    # the latest tracker records (set by set_scene_memory)
 SCENE_RECENCY = {}             # scene name -> how recently / how often the latest videos used it (bigger = more recent)
 MIX = {"offset": 0}            # rotates the parts that are mixed (sky, camera angle, filler scenes) from one video to the next
 
@@ -305,9 +309,26 @@ def _raw_history():
     return []
 
 
+def _is_mem(k):
+    return str(k).startswith((SCENE_TAG, TRACK_TAG))
+
+
 def load_history():
-    """The stories made so far (the scene-memory lines are kept apart, so the counts and the series turns stay as they were)."""
-    return [k for k in _raw_history() if not str(k).startswith(SCENE_TAG)]
+    """The stories made so far (the memory lines are kept apart, so the counts and the series turns stay as they were)."""
+    return [k for k in _raw_history() if not _is_mem(k)]
+
+
+def load_track_log():
+    out = []
+    for k in _raw_history():
+        if str(k).startswith(TRACK_TAG):
+            parts = str(k).split("|", 2)
+            if len(parts) == 3:
+                try:
+                    out.append((int(parts[1]), dict(json.loads(parts[2]))))
+                except Exception:
+                    pass
+    return out
 
 
 def load_scene_log():
@@ -323,13 +344,51 @@ def load_scene_log():
     return out
 
 
-def save_history(history, scene_entry=None):
-    """Writes the story list and keeps the scene-memory lines (adding this video's line, replacing an older line of the same video)."""
-    mem = [k for k in _raw_history() if str(k).startswith(SCENE_TAG)]
+def save_history(history, scene_entry=None, track_entry=None):
+    """Writes the story list and keeps the memory lines (adding this video's lines, replacing an older line of the same video)."""
+    old = [k for k in _raw_history() if _is_mem(k)]
+    mem = [k for k in old if str(k).startswith(SCENE_TAG)]
+    trk = [k for k in old if str(k).startswith(TRACK_TAG)]
     if scene_entry:
         head = "|".join(scene_entry.split("|", 3)[:3]) + "|"
         mem = [k for k in mem if not str(k).startswith(head)] + [scene_entry]
-    HISTORY_FILE.write_text(json.dumps(list(history) + mem[-30:], indent=1))
+    if track_entry:
+        head = "|".join(track_entry.split("|", 2)[:2]) + "|"
+        trk = [k for k in trk if not str(k).startswith(head)] + [track_entry]
+    HISTORY_FILE.write_text(json.dumps(list(history) + mem[-30:] + trk[-30:], indent=1))
+
+
+def clean_tracker(tr, story=None):
+    """A tracker record with only the known fields, short plain text; missing ones are filled from what the story itself says."""
+    tr = tr if isinstance(tr, dict) else {}
+    out = {k: re.sub(r"\s+", " ", str(tr.get(k, "") or "")).strip()[:80] for k in TRACK_FIELDS}
+    st = story or {}
+    out["monster"] = out["monster"] or str(st.get("legend_name", ""))[:80]
+    out["environment"] = out["environment"] or str(st.get("story_type", ""))[:40]
+    out["location"] = out["location"] or str(st.get("region", ""))[:80]
+    return out
+
+
+def track_entry(episode, tracker):
+    return f"{TRACK_TAG}{int(episode or 0)}|{json.dumps(tracker, separators=(',', ':'))}"
+
+
+def track_hint():
+    """A paragraph for the prehistoric story writer: what the latest episodes used, and a request for a substantially different combination."""
+    if not TRACKS:
+        return ""
+    rows = []
+    for tr in TRACKS[-TRACK_MEMORY:][::-1]:
+        bits = [f"{k.replace('_', ' ')}: {tr[k]}" for k in TRACK_FIELDS if tr.get(k)]
+        if bits:
+            rows.append("- " + "; ".join(bits))
+    if not rows:
+        return ""
+    return ("\n\nEPISODE VARIATION TRACKER. The latest prehistoric episodes were:\n" + "\n".join(rows) +
+            "\nMake THIS episode a substantially different combination: a new main dinosaur species, a different environment (forest, tropical forest, grassland, "
+            "wetland or swamp, river or lake, rocky valley, mountains, volcanic land, cave, coast), a different conflict, a different way of introducing the "
+            "danger or monster, a different reveal and a different kind of ending. Do not just swap the dinosaur and keep the same story shape. Not every "
+            "episode needs a giant monster or a fight: it can be exploration, survival, a migration, territorial behaviour or a mysterious discovery.")
 
 
 def scene_entry(series, episode, beats):
@@ -340,6 +399,11 @@ def set_scene_memory(series, episode):
     """Loads what the latest videos used (not counting this video's own line) and sets this video's mix offset."""
     SCENE_RECENCY.clear()
     MIX["offset"] = max(int(episode or 0), 0)
+    TRACKS.clear()
+    try:
+        TRACKS.extend(tr for ep, tr in load_track_log() if not (ep == episode and series == "folklore"))
+    except Exception:
+        pass
     try:
         log_ = [e for e in load_scene_log() if not (e[0] == series and e[1] == episode)][-SCENE_MEMORY:]
     except Exception:
@@ -3239,8 +3303,22 @@ PRE_TYPES = {
                 "The old king roars up at it. The dragon answers with fire. Imply, do not describe, what happens to the king.",
                 "The sky and the ground have a new ruler. End with a question for viewers that fits this story."]),
 }
-PRE_BODIES = {"volcano": ("theropod",), "meteor": ("theropod",), "dragon": ("dragon",)}
-PRE_CRACKS = {"volcano": True, "meteor": False, "dragon": True}
+PRE_TYPES["river"] = ("A wide, winding prehistoric river seen from a drone. A Spinosaurus, a great sail-backed fish-hunter, swims along it. Something far bigger "
+                      "lives under the water and hunts the hunter. It drags the Spinosaurus under and then rises: the real owner of the river. "
+                      "(Set in a river valley. No lava, no volcano, no T-rex.)",
+                      ["rivdrone", "rivdrone", "rivspino", "rivshadow", "rivattack", "rivafter", "rivemerge", "rivemerge"],
+                      ["Hook: open high above a prehistoric river valley and say, in one vivid line, that this river feeds everything in it and nothing in it feels afraid.",
+                       "The camera drifts lower over the endless forest and the slow, winding water. Describe the size of the land and the quiet.",
+                       "Now we see it: a Spinosaurus, a giant with a sail on its back and a long snout, swimming up the river as the king of the water.",
+                       "Something is wrong. The water below it darkens, a huge shadow moves underneath, and the Spinosaurus turns its head.",
+                       "Without warning enormous arms burst out of the water on every side and seize the Spinosaurus. It is dragged under. Imply, do not describe, what happens next.",
+                       "The river goes still. A dark stain and bubbles are all that is left, and the shadow stays down there, waiting.",
+                       "Then the water rises. Something much bigger than the Spinosaurus breaks the surface: a head with horns, glowing eyes, a toothed mouth, a body wider than the river.",
+                       "The river has a new ruler. Give this creature a name and end with a question for viewers that fits this story."])
+PRE_BODIES = {"volcano": ("theropod",), "meteor": ("theropod",), "dragon": ("dragon",), "river": ("serpent",)}
+PRE_CRACKS = {"volcano": True, "meteor": False, "dragon": True, "river": False}
+RIVER_BEATS = ("rivdrone", "rivspino", "rivshadow", "rivattack", "rivafter", "rivemerge")
+RIVER_SOUND_BEAT = {"rivdrone": "valley", "rivspino": "valley", "rivshadow": "omen", "rivattack": "attack", "rivafter": "aftermath", "rivemerge": "birth"}
 # Creature designs that are never picked again (the owner did not like them). The drawing code stays, but nothing chooses them.
 BANNED_BODIES = ("stalker",)      # the tall, thin, antlered forest spirit with the skull face
 MODERN_BODIES = ("crawler", "wraith", "owlman", "beast", "arachnid", "hollow")
@@ -3690,6 +3768,13 @@ Rules for "sentences" (7 to 9 items, 65 to 85 words in total (the voice reads sl
 def ask_prehistoric(var):
     used = var["legends"]
     plot, stages, steps = PRE_TYPES[var["type"]]
+    import toon
+    toon.WORLD_ENV["name"] = "river"
+    if var["type"] == "river" and random.random() < 0.5:     # the same flight over a dark, misty swamp instead of a clear forest river
+        toon.WORLD_ENV["name"] = "wetland"
+        plot = plot.replace("(Set in a river valley.", "(The river runs through a dark, misty swamp: tea-coloured water, reeds, drowned trees and still pools. Set in a wetland.")
+        steps = [t.replace("prehistoric river valley", "prehistoric swamp and its slow river").replace("endless forest", "endless swamp") for t in steps]
+    log(f"Environment: {toon.WORLD_ENV['name']}")
     body = var["bodies"][0]
     steps_text = "\n".join(f"  {i + 1}. {t}" for i, t in enumerate(steps))
     log(f"Strangeness: body {body} | rule {var['strange']['rule']} | move {var['strange']['move']} | tone {var['strange']['tone']}")
@@ -3714,11 +3799,13 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
   "narrator": {{"gender": "male or female", "persona": "a calm, warm storyteller, like a nature documentary narrator who is quietly afraid"}},
   "monster": {{"palette": "ONE of: {", ".join(var["palettes"])}", "eyes": "one of: red, gold, green, white, violet, orange, blue", "size": "medium or huge"}},
   "sentences": [{{"text": "one spoken sentence", "delivery": "one voice mood: calm, hushed, whisper, urgent, trembling, low, sorrow, awe or dread"}}],
-  "host_lines": [{{"after": 3, "text": "Wait, WHAT?!"}}]
+  "host_lines": [{{"after": 3, "text": "Wait, WHAT?!"}}],
+  "tracker": {{"main_dinosaur": "species", "secondary_dinosaur": "species or none", "monster": "its name", "environment": "forest, wetland, grassland, mountains, volcanic, river, cave, coast...", "location": "place", "conflict": "3 to 6 words", "monster_intro": "how it first shows up, 3 to 6 words", "reveal": "the big reveal, 3 to 6 words", "ending": "kind of ending, 2 to 5 words", "camera": "the main camera look, 2 to 5 words"}}
 }}
 
 "host_lines": ONE or TWO short reactions (2 to 6 words) from the storyteller's curious friend, said out loud right after the
 sentence with that number (1 = first sentence). Never after sentence 1 or after the last sentence, never two in a row.
+"tracker" only describes the story you wrote (it is saved so later episodes can be different).
 
 Rules for "sentences" (65 to 85 words in total, the voice reads slowly so NEVER go over 90 words, plain spoken English, no emojis, no quotation marks):
 - Short, concrete, visual sentences: what can be SEEN and HEARD (ash, roars, glowing eyes, the ground shaking).
@@ -3727,7 +3814,7 @@ Rules for "sentences" (65 to 85 words in total, the voice reads slowly so NEVER 
 - The last sentence is a question for viewers that fits THIS story.
 """
     url = f"{API_BASE}/models/{GEMINI_MODEL}:generateContent"
-    body_ = {"contents": [{"parts": [{"text": prompt + variety_hint()}]}],
+    body_ = {"contents": [{"parts": [{"text": prompt + variety_hint() + track_hint()}]}],
              "generationConfig": {"temperature": 1.0, "responseMimeType": "application/json"}}
     last = None
     for attempt in range(3):
@@ -3768,6 +3855,7 @@ Rules for "sentences" (65 to 85 words in total, the voice reads slowly so NEVER 
             data["monster"] = m
             data["animal"] = "crocodile"
             data["story_type"] = var["type"]
+            data["tracker"] = clean_tracker(data.get("tracker"), data)
             data["format"] = "prehistoric"
             data["origin"] = ""
             data["time"] = "2:48"
@@ -3796,7 +3884,7 @@ MODERN_SCENES = ("bedroom", "stairs", "basement", "hallway", "cctv", "door", "wi
                  "ocean", "lake", "lava", "tornado", "tsunami", "giant",
                  "retreat", "tidelog", "radio", "harbor", "rise", "glass", "ridge", "emerge", "swirl", "abyss", "dawn", "hosts", "vista")
 SECOND_BEAT = {}   # sentence index -> a second story scene for the same sentence
-STORY_SCENES = ("retreat", "tidelog", "radio", "harbor", "rise", "glass", "ridge", "emerge", "swirl", "abyss", "dawn", "hosts", "vista")   # scenes for one specific narrated event
+STORY_SCENES = ("rivdrone", "rivspino", "rivshadow", "rivattack", "rivafter", "rivemerge", "retreat", "tidelog", "radio", "harbor", "rise", "glass", "ridge", "emerge", "swirl", "abyss", "dawn", "hosts", "vista")   # scenes for one specific narrated event
 STORY_NATURE = ("retreat", "harbor", "rise", "ridge")                                  # only for stories set in nature
 MODERN_WORDS = (("vista", ("waterfall", "from the cave", "out of the cave", "mouth of the cave", "the cave", "cavern", "ruined tower", "old tower", "abandoned tower", "ruins on the")),
                 ("emerge", ("out of the ground", "out of the earth", "from the soil", "clawed its way", "dug itself out", "from the grave", "burst from the ground", "broke through the ground")),
@@ -4004,7 +4092,8 @@ def assign_pre_beats(n, stype):
     """Prehistoric stories follow a fixed order of scenes, spread evenly over however many sentences came back."""
     stages = PRE_TYPES[stype][1]
     beats = [stages[min(len(stages) - 1, int(i * len(stages) / n))] for i in range(n)]
-    beats[-1] = "reign"
+    if stype != "river":
+        beats[-1] = "reign"
     return beats
 
 
@@ -5126,8 +5215,26 @@ def build_folk_main(plan):
     VARY_SKY = ({}, {"sky": "fullmoon"}, {"fog": 0.5}, {"sky": "fullmoon", "fog": 0.3}, {"fog": 0.7}, {})
     FIRST_SIGN_AT = next((j for j, b in enumerate(beats) if b == "omen"), n)
     shots = plan_shots(beats, durs, fmt, story.get("story_type"))
+    try:                                # reference pictures for this episode, chosen from its story and then kept for every scene
+        import refs
+        _chosen = refs.begin_episode(story.get("title", "") + str(len(sentences)), " ".join([str(story.get("story_type") or "")] + [str(x.get("text", x) if isinstance(x, dict) else x) for x in sentences]))
+        log("References: " + (", ".join(f"{c}={p['id']}" for c, p in _chosen.items()) or "none for this story"))
+    except Exception as e:
+        log(f"References: not used ({e})")
     log(f"Shots ({len(shots)}): " + ", ".join(sh["beat"] + (f"[{sh['variant']}]" if sh["variant"] else "") for sh in shots))
     SMASH_AT.clear()
+    river_seg = {}                      # river episode: which part of its phase each shot shows (shots of one phase share it in order)
+    j0 = 0
+    while j0 < len(shots):
+        j1 = j0
+        while j1 + 1 < len(shots) and shots[j1 + 1]["beat"] == shots[j0]["beat"]:
+            j1 += 1
+        grp_total = sum(shots[x]["dur"] for x in range(j0, j1 + 1)) or 1.0
+        acc = 0.0
+        for x in range(j0, j1 + 1):
+            river_seg[x] = (shots[x]["beat"], acc / grp_total, (acc + shots[x]["dur"]) / grp_total)
+            acc += shots[x]["dur"]
+        j0 = j1 + 1
     scenes, impacts, blooded, hits = [], {}, False, {}
     arm_clock(total)                                                                          # the scenes share one time budget
     cap_track, scene_at = [], 0.0
@@ -5170,7 +5277,14 @@ def build_folk_main(plan):
         if beat == "vista" and (dur < 3.4 or i == 0 or last):           # too short to read: a plainer scene instead
             beat = (("valley" if fmt == "prehistoric" else "ridge" if story.get("story_type") in NATURE_TYPES else "hallway") if modern else "stalk")
             sh["beat"] = beat
-        if sh["insert"]:
+        if beat in RIVER_BEATS:                                    # the river episode: consecutive pieces of ONE continuous drone flight
+            ph, a_, b_ = river_seg[j]
+            toon.river_scene(out, dur, w, cur, phase=beat, a=a_, b=b_, cwd=WORK)
+            if beat == "rivattack":                                # the first arm closes on the Spinosaurus: the boom lands there
+                t_imp = ((0.62 - 0.58) / 0.14 - a_) / max(b_ - a_, 1e-6)
+                impacts[j] = min(max(t_imp, 0.15), 0.85) * dur
+            sh["beat"] = RIVER_SOUND_BEAT[beat]
+        elif sh["insert"]:
             w.variant = sh["variant"]
             if beat == "valley":  # the wide view of the valley, used as an establishing cutaway
                 w.push, w.pull = (0.0, 0.18) if sh["variant"] == "pull" else (0.18, 0.0)
@@ -5427,6 +5541,17 @@ def build_with_story_fit(builder):
 
 
 
+def plan_track_entry(plan, episode):
+    """The variation tracker line of a prehistoric episode (None for every other series)."""
+    try:
+        st = plan["story"]
+        if st.get("format") == "prehistoric" and isinstance(st.get("tracker"), dict):
+            return track_entry(episode, st["tracker"])
+    except Exception as e:
+        log(f"(variation tracker: could not be saved: {e})")
+    return None
+
+
 def plan_scene_entry(plan, series, episode):
     """What this video will show, for the scene memory: the beats the build will choose for a folklore story, the shot kinds for a hybrid."""
     try:
@@ -5503,7 +5628,7 @@ def plan_main():
         lines += ["## The story that will be spoken", "", " ".join(x["text"] for x in story["sentences"]), ""]
     (PLAN_DIR / "plan.json").write_text(json.dumps(plan, indent=1))
     history.append(plan["key"])
-    save_history(history, plan_scene_entry(plan, series, episode))
+    save_history(history, plan_scene_entry(plan, series, episode), plan_track_entry(plan, episode))
     md = "\n".join(lines)
     (OUT / "PROMPTS.md").write_text(md)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
